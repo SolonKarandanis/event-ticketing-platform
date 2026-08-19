@@ -1813,100 +1813,13 @@ We're not writing any locale-resolution code at all -- Spring MVC's default `Loc
 - Configured `LocalValidatorFactoryBean` to resolve Bean Validation's `{code}` messages against the same source
 - Locale comes from the standard `Accept-Language` header -- no custom header, no manual locale-reading code anywhere
 
-### Configuring Mapstruct
+### On Mapping: No MapStruct
 
-In this lesson, we'll integrate Mapstruct with our Event Ticket Platform to efficiently handle object mapping between different layers of our application, while ensuring it works smoothly with Project Lombok.
+Every DTO in this build needs converting to and from our domain entities somewhere. We're deliberately not reaching for MapStruct to generate that code. Instead, each service gets its own explicit `convertToXxx`/`convertFromXxx` methods, written by hand, living right next to the business logic that produces the entities they convert.
 
-#### Understanding Mapstruct and Lombok Integration
+The trade-off is honest: MapStruct means less code to write and maintain by hand, field-by-field mapping bugs caught at compile time instead of runtime, and less boilerplate overall. Hand-written conversion methods mean more typing, and a missed field is a runtime bug (a `null` in a response) rather than a compiler error. What we get in exchange: no annotation processor to configure, no generated implementation classes to go looking for when something maps unexpectedly, and every conversion is a plain method you can open, read top to bottom, and step through in a debugger -- nothing to look up in generated code you didn't write. Given how much this build already leans on `@NaturalId`/`domainId` mapping (a place MapStruct's automatic field-name matching specifically *doesn't* help, since `id` and `domainId` never share a name), the "just read the method" trade-off is one we're choosing on purpose.
 
-Mapstruct is a code generator that helps us create type-safe bean mappings between Java bean classes.
-
-When using Mapstruct alongside Lombok, we need special configuration to ensure both tools work together properly during the compilation process.
-
-The order of annotation processing is important - Lombok must process its annotations before Mapstruct can generate its mapper implementations.
-
-#### Configuring Dependencies
-
-Let's start by adding the required version properties and dependencies to our `pom.xml` file.
-
-First, we'll add the version properties:
-
-```xml
-<properties>
-    <org.mapstruct.version>1.6.3</org.mapstruct.version>
-    <lombok.version>1.18.36</lombok.version>
-</properties>
-```
-
-We'll need to pin the Lombok version to ensure it works with Mapstruct:
-
-```xml
-<dependency>
-    <groupId>org.projectlombok</groupId>
-    <artifactId>lombok</artifactId>
-    <version>${lombok.version}</version>
-    <optional>true</optional>
-</dependency>
-```
-
-Next, we'll add the Mapstruct dependency:
-
-```xml
-<dependency>
-    <groupId>org.mapstruct</groupId>
-    <artifactId>mapstruct</artifactId>
-    <version>${org.mapstruct.version}</version>
-</dependency>
-```
-
-#### Setting up the Maven Compiler Plugin
-
-The Maven Compiler Plugin needs specific configuration to handle both Lombok and Mapstruct annotation processing:
-
-```xml
-<plugin>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-compiler-plugin</artifactId>
-    <configuration>
-        <annotationProcessorPaths>
-            <!-- Lombok must come first -->
-            <path>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <version>${lombok.version}</version>
-            </path>
-            <!-- Mapstruct processor -->
-            <path>
-                <groupId>org.mapstruct</groupId>
-                <artifactId>mapstruct-processor</artifactId>
-                <version>${org.mapstruct.version}</version>
-            </path>
-            <!-- Lombok-Mapstruct binding -->
-            <path>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok-mapstruct-binding</artifactId>
-                <version>0.2.0</version>
-            </path>
-        </annotationProcessorPaths>
-    </configuration>
-</plugin>
-```
-
-#### Understanding the Configuration
-
-The `annotationProcessorPaths` section defines the order of annotation processing:
-
-1. Lombok processes its annotations first
-2. Mapstruct processes its annotations second
-3. The Lombok-Mapstruct binding ensures compatibility between both tools
-
-There's some conflicting information about if the order is required or not, but I found that it is needed.
-
-#### Summary
-
-- Added Mapstruct dependency and version property to the project
-- Configured Maven Compiler Plugin for annotation processing
-- Set up Lombok-Mapstruct binding for compatibility
+We'll write the first of these -- `EventServiceImpl.convertToDto` and friends -- in the next lesson, as soon as we have a DTO that needs one.
 
 ## Domain
 
@@ -2028,7 +1941,7 @@ A few things worth calling out:
 - `@NaturalId` (from `org.hibernate.annotations.NaturalId`, not `jakarta.persistence`) marks `domainId` as a business key -- a stable, unique identifier that isn't the primary key, but that we'll look entities up by just as often. Hibernate can cache natural ID lookups separately from primary key lookups.
 - `domainId` is `updatable = false` -- once set, it never changes.
 - Every repository interface changes from `JpaRepository<X, UUID>` to `JpaRepository<X, Long>`, since the JPA `@Id` is now a `Long`. Anywhere we used to call `repository.findById(someUuid)`, we now need a `findByDomainId(someUuid)` method instead -- `findById` now expects a `Long`, which we never hand out.
-- Every DTO keeps its existing `id: UUID` field name -- the frontend doesn't need to know or care that it's internally called `domainId` -- but every mapper method that populates it needs an explicit `@Mapping(target = "id", source = "domainId")`. MapStruct won't auto-match `id` to a differently-named source field, and our mappers all use `unmappedTargetPolicy = ReportingPolicy.IGNORE`, which would otherwise silently leave `id` as `null` instead of failing to compile.
+- Every DTO keeps its existing `id: UUID` field name -- the frontend doesn't need to know or care that it's internally called `domainId` -- but every hand-written `convertToXxx` method needs to explicitly map `.setId(entity.getDomainId())`. It's a one-line reminder, but an easy one to forget, and forgetting it doesn't fail loudly: the DTO's `id` just comes back `null`, since Java initializes an unset field to `null` rather than erroring.
 - Most entities generate their own `domainId` in application code (`UUID.randomUUID()`) at creation time. `User` is the one exception: its `domainId` is set to the Keycloak JWT subject during provisioning, so we can look a user up by the ID Keycloak already gave them.
 
 We'll apply this pattern to every entity as we build it.
@@ -2037,7 +1950,7 @@ We'll apply this pattern to every entity as we build it.
 
 - Every entity gets a sequential `id: Long` (internal, database-generated primary key) and a `domainId: UUID` (external identifier, exposed to DTOs and the frontend)
 - Repositories key off `Long` now; external lookups go through a new `findByDomainId`-style method instead of `findById`
-- Mappers need an explicit `@Mapping(target = "id", source = "domainId")` wherever a DTO exposes an `id`
+- Every hand-written `convertToXxx` method needs to explicitly set a DTO's `id` from the entity's `domainId` -- there's no automatic field-name matching to lean on
 
 ### Create User Entity
 
@@ -3802,9 +3715,9 @@ The service includes error handling for cases where the organizer or venue doesn
 - Created the `EventServiceImpl` class
 - Implemented the `createEvent` method, including resolving the event's `Venue` by ID
 
-### Dtos Mappers
+### Dtos And Conversion Methods
 
-In this lesson, we'll implement the DTOs and Mappers needed to handle event creation in our REST API.
+In this lesson, we'll implement the DTOs and conversion methods needed to handle event creation in our REST API.
 
 These components help us maintain a clear separation between our API contract and internal domain model, while ensuring data validation at the API boundary.
 
@@ -3910,32 +3823,120 @@ public class CreateEventResponseDto {
 }
 ```
 
-#### Implementing the Mapper
+#### Add CreateTicketTypeResponseDto
 
-MapStruct helps us convert between DTOs and domain objects:
+`CreateEventResponseDto.ticketTypes` needs a shape of its own too -- this one was always implied but never actually written out:
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface EventMapper {
-    CreateTicketTypeRequest fromDto(CreateTicketTypeRequestDto dto);
-    CreateEventRequest fromDto(CreateEventRequestDto dto);
-
-    @Mapping(target = "id", source = "domainId")
-    VenueResponseDto toVenueResponseDto(Venue venue);
-
-    @Mapping(target = "id", source = "domainId")
-    CreateEventResponseDto toDto(Event event);
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CreateTicketTypeResponseDto {
+    private UUID id;
+    private String name;
+    private Double price;
+    private String description;
+    private Integer totalAvailable;
 }
 ```
 
-Since `CreateEventResponseDto.venue` and `Event.venue` share the same field name, MapStruct automatically uses our `toVenueResponseDto` method to map the nested `Venue` -- no `@Mapping` annotation needed for that part. We'll rely on this same convention for every other event DTO going forward. The `id` field is different, though: it needs an explicit `@Mapping(target = "id", source = "domainId")` on every mapper method that returns a DTO with an `id`, since the entity's `id` (`Long`) and `domainId` (`UUID`) no longer share a name with the DTO's `id` (`UUID`) -- see [Entity Identifiers](#entity-identifiers).
+#### Convert Between DTOs and Domain Objects
+
+No MapStruct -- these are plain methods, declared on `EventService` alongside `createEvent` and implemented in `EventServiceImpl`:
+
+```java
+public interface EventService {
+    Event createEvent(UUID organizerId, CreateEventRequest event);
+
+    CreateEventRequest convertFromDto(CreateEventRequestDto dto);
+    CreateTicketTypeRequest convertFromDto(CreateTicketTypeRequestDto dto);
+    VenueResponseDto convertToVenueResponseDto(Venue venue);
+    CreateTicketTypeResponseDto convertToCreateTicketTypeResponseDto(TicketType ticketType);
+    CreateEventResponseDto convertToCreateEventResponseDto(Event event);
+}
+```
+
+```java
+@Override
+public CreateEventRequest convertFromDto(CreateEventRequestDto dto) {
+    CreateEventRequest request = new CreateEventRequest();
+    request.setName(dto.getName());
+    request.setStart(dto.getStart());
+    request.setEnd(dto.getEnd());
+    request.setVenueId(dto.getVenueId());
+    request.setSalesStart(dto.getSalesStart());
+    request.setSalesEnd(dto.getSalesEnd());
+    request.setStatus(dto.getStatus());
+    request.setTicketTypes(dto.getTicketTypes().stream()
+            .map(this::convertFromDto)
+            .toList());
+    return request;
+}
+
+@Override
+public CreateTicketTypeRequest convertFromDto(CreateTicketTypeRequestDto dto) {
+    CreateTicketTypeRequest request = new CreateTicketTypeRequest();
+    request.setName(dto.getName());
+    request.setPrice(dto.getPrice());
+    request.setDescription(dto.getDescription());
+    request.setTotalAvailable(dto.getTotalAvailable());
+    return request;
+}
+
+@Override
+public VenueResponseDto convertToVenueResponseDto(Venue venue) {
+    VenueResponseDto dto = new VenueResponseDto();
+    dto.setId(venue.getDomainId());
+    dto.setName(venue.getName());
+    dto.setAddressLine1(venue.getAddressLine1());
+    dto.setAddressLine2(venue.getAddressLine2());
+    dto.setCity(venue.getCity());
+    dto.setPostalCode(venue.getPostalCode());
+    dto.setCountry(venue.getCountry());
+    dto.setLatitude(venue.getLatitude());
+    dto.setLongitude(venue.getLongitude());
+    return dto;
+}
+
+@Override
+public CreateTicketTypeResponseDto convertToCreateTicketTypeResponseDto(TicketType ticketType) {
+    CreateTicketTypeResponseDto dto = new CreateTicketTypeResponseDto();
+    dto.setId(ticketType.getDomainId());
+    dto.setName(ticketType.getName());
+    dto.setPrice(ticketType.getPrice());
+    dto.setDescription(ticketType.getDescription());
+    dto.setTotalAvailable(ticketType.getTotalAvailable());
+    return dto;
+}
+
+@Override
+public CreateEventResponseDto convertToCreateEventResponseDto(Event event) {
+    CreateEventResponseDto dto = new CreateEventResponseDto();
+    dto.setId(event.getDomainId());
+    dto.setName(event.getName());
+    dto.setStart(event.getStart());
+    dto.setEnd(event.getEnd());
+    dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+    dto.setSalesStart(event.getSalesStart());
+    dto.setSalesEnd(event.getSalesEnd());
+    dto.setStatus(event.getStatus());
+    dto.setTicketTypes(event.getTicketTypes().stream()
+            .map(this::convertToCreateTicketTypeResponseDto)
+            .toList());
+    dto.setCreatedAt(event.getCreatedAt());
+    dto.setUpdatedAt(event.getUpdatedAt());
+    return dto;
+}
+```
+
+Every field gets set explicitly, one line each -- there's no automatic field-name matching to lean on, so a renamed or newly-added field on either side is a compile error at the call site the moment it's used, not a silent gap. `id` is the field most worth double-checking in every one of these: it's always `dto.setId(entity.getDomainId())`, never `entity.getId()`.
 
 #### Summary
 
-- Created the `VenueResponseDto` (reused by every event response DTO from here on)
+- Created `CreateTicketTypeResponseDto`, closing a gap that was always implied but never actually defined
+- Added `convertFromDto`/`convertToXxx` methods to `EventService`, hand-written in `EventServiceImpl`
 - Created the `CreateEventRequestDto` (now takes a `venueId` instead of a `venue` string)
 - Created the `CreateEventResponseDto`
-- Created the `EventMapper` interface
 - The DTOs make use of validation annotations to ensure data consistency
 
 ### Event Controller
@@ -3951,7 +3952,6 @@ The event controller is responsible for handling HTTP requests related to events
 @RequestMapping("/api/v1/events")
 @RequiredArgsConstructor
 public class EventController {
-    private final EventMapper eventMapper;
     private final EventService eventService;
 
     @PostMapping
@@ -3959,7 +3959,7 @@ public class EventController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateEventRequestDto createEventRequestDto) {
         // Convert DTO to domain object
-        CreateEventRequest createEventRequest = eventMapper.fromDto(createEventRequestDto);
+        CreateEventRequest createEventRequest = eventService.convertFromDto(createEventRequestDto);
 
         // Extract user ID from JWT
         UUID userId = UUID.fromString(jwt.getSubject());
@@ -3968,17 +3968,20 @@ public class EventController {
         Event createdEvent = eventService.createEvent(userId, createEventRequest);
 
         // Convert response to DTO
-        CreateEventResponseDto createEventResponseDto = eventMapper.toDto(createdEvent);
+        CreateEventResponseDto createEventResponseDto = eventService.convertToCreateEventResponseDto(createdEvent);
 
         return new ResponseEntity<>(createEventResponseDto, HttpStatus.CREATED);
     }
 }
 ```
 
+Notice the controller no longer injects a separate mapper -- `eventService` is the only dependency, for both the business logic and the conversions either side of it.
+
 #### Summary
 
 - Created the `EventController` class
 - Implemented create event endpoint
+- The controller now depends only on `EventService`, not a separate mapper bean
 
 ### Global Exception Handler
 
@@ -4273,7 +4276,7 @@ public Page<Event> listEventsForOrganizer(UUID organizerId, Pageable pageable) {
 - Added the `findByOrganizerDomainId` method to the `EventRepository` interface
 - Implemented `listEventsForOrganizer` method in the `EventServiceImpl` class
 
-### Dtos And Mappers
+### Dtos And Conversion Methods
 
 In this lesson we implement the DTOs and mappers required to implement the list event functionality.
 
@@ -4313,24 +4316,50 @@ public class ListEventTicketTypeResponseDto {
 }
 ```
 
-#### Mapping Strategy
+#### Conversion Methods
 
-We'll update our `EventMapper` interface to include methods for converting our entities to these new DTOs:
+Two more methods on `EventService`/`EventServiceImpl`:
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface EventMapper {
+public interface EventService {
     // Existing methods...
 
-    @Mapping(target = "id", source = "domainId")
-    ListEventTicketTypeResponseDto toDto(TicketType ticketType);
-
-    @Mapping(target = "id", source = "domainId")
-    ListEventResponseDto toListEventResponseDto(Event event);
+    ListEventTicketTypeResponseDto convertToListEventTicketTypeResponseDto(TicketType ticketType);
+    ListEventResponseDto convertToListEventResponseDto(Event event);
 }
 ```
 
-As covered in [Entity Identifiers](#entity-identifiers), every entity-to-DTO mapping from here on needs this same `@Mapping(target = "id", source = "domainId")` -- we'll keep adding it wherever a new mapper method returns a DTO with an `id`.
+```java
+@Override
+public ListEventTicketTypeResponseDto convertToListEventTicketTypeResponseDto(TicketType ticketType) {
+    ListEventTicketTypeResponseDto dto = new ListEventTicketTypeResponseDto();
+    dto.setId(ticketType.getDomainId());
+    dto.setName(ticketType.getName());
+    dto.setPrice(ticketType.getPrice());
+    dto.setDescription(ticketType.getDescription());
+    dto.setTotalAvailable(ticketType.getTotalAvailable());
+    return dto;
+}
+
+@Override
+public ListEventResponseDto convertToListEventResponseDto(Event event) {
+    ListEventResponseDto dto = new ListEventResponseDto();
+    dto.setId(event.getDomainId());
+    dto.setName(event.getName());
+    dto.setStart(event.getStart());
+    dto.setEnd(event.getEnd());
+    dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+    dto.setSalesStart(event.getSalesStart());
+    dto.setSalesEnd(event.getSalesEnd());
+    dto.setStatus(event.getStatus());
+    dto.setTicketTypes(event.getTicketTypes().stream()
+            .map(this::convertToListEventTicketTypeResponseDto)
+            .toList());
+    return dto;
+}
+```
+
+Note this one's named `convertToListEventTicketTypeResponseDto`, not `convertToCreateTicketTypeResponseDto` from the last lesson, even though both take a `TicketType` and both exist purely to represent it in a response -- Java can't overload on return type alone, so a `TicketType` mapping to a different DTO shape needs a different method name each time. It's more typing than MapStruct's single overloaded `toDto`, but it also means the method name always tells you exactly which shape you're getting.
 
 #### Data Transfer Considerations
 
@@ -4346,7 +4375,7 @@ When designing DTOs for listing events, we've made specific choices about what d
 
 - Created the `ListEventResponseDto`
 - Create the `ListEventTicketTypeResponseDto`
-- Updated the `EventMapper`to map to these DTO classes
+- Added `convertToListEventResponseDto`/`convertToListEventTicketTypeResponseDto` to `EventService`
 
 ### Event Controller
 
@@ -4364,7 +4393,7 @@ public ResponseEntity<Page<ListEventResponseDto>> listEvents(
     UUID userId = parseUserId(jwt);
     Page<Event> events = eventService.listEventsForOrganizer(userId, pageable);
     return ResponseEntity.ok(
-            events.map(eventMapper::toListEventResponseDto)
+            events.map(eventService::convertToListEventResponseDto)
     );
 }
 ```
@@ -4380,7 +4409,7 @@ The endpoint follows a clear flow:
 
 1. Extract the user ID from the JWT token using our helper method `parseUserId`
 2. Call the service layer to retrieve a page of events for the organizer
-3. Map the page of events to DTOs using our mapper
+3. Map the page of events to DTOs using `EventService.convertToListEventResponseDto`
 4. Return the mapped page with a 200 OK status
 
 The `Pageable` parameter deserves special attention.
@@ -4576,20 +4605,48 @@ public class GetEventDetailsResponseDto {
 }
 ```
 
-#### Adding Mapper Methods
-
-We need to add methods to our `EventMapper` interface to convert our entities to these DTOs:
+#### Add Conversion Methods
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface EventMapper {
+public interface EventService {
     // ... existing methods ...
 
-    @Mapping(target = "id", source = "domainId")
-    GetEventDetailsTicketTypesResponseDto toGetEventDetailsTicketTypesResponseDto(TicketType ticketType);
+    GetEventDetailsTicketTypesResponseDto convertToGetEventDetailsTicketTypesResponseDto(TicketType ticketType);
+    GetEventDetailsResponseDto convertToGetEventDetailsResponseDto(Event event);
+}
+```
 
-    @Mapping(target = "id", source = "domainId")
-    GetEventDetailsResponseDto toGetEventDetailsResponseDto(Event event);
+```java
+@Override
+public GetEventDetailsTicketTypesResponseDto convertToGetEventDetailsTicketTypesResponseDto(TicketType ticketType) {
+    GetEventDetailsTicketTypesResponseDto dto = new GetEventDetailsTicketTypesResponseDto();
+    dto.setId(ticketType.getDomainId());
+    dto.setName(ticketType.getName());
+    dto.setPrice(ticketType.getPrice());
+    dto.setDescription(ticketType.getDescription());
+    dto.setTotalAvailable(ticketType.getTotalAvailable());
+    dto.setCreatedAt(ticketType.getCreatedAt());
+    dto.setUpdatedAt(ticketType.getUpdatedAt());
+    return dto;
+}
+
+@Override
+public GetEventDetailsResponseDto convertToGetEventDetailsResponseDto(Event event) {
+    GetEventDetailsResponseDto dto = new GetEventDetailsResponseDto();
+    dto.setId(event.getDomainId());
+    dto.setName(event.getName());
+    dto.setStart(event.getStart());
+    dto.setEnd(event.getEnd());
+    dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+    dto.setSalesStart(event.getSalesStart());
+    dto.setSalesEnd(event.getSalesEnd());
+    dto.setStatus(event.getStatus());
+    dto.setTicketTypes(event.getTicketTypes().stream()
+            .map(this::convertToGetEventDetailsTicketTypesResponseDto)
+            .toList());
+    dto.setCreatedAt(event.getCreatedAt());
+    dto.setUpdatedAt(event.getUpdatedAt());
+    return dto;
 }
 ```
 
@@ -4597,7 +4654,7 @@ public interface EventMapper {
 
 - Created `GetEventDetailsResponseDto` to represent complete event information
 - Created `GetEventDetailsTicketTypeResponseDto` to represent ticket type details
-- Added mapper methods to convert entities to DTOs
+- Added `convertToGetEventDetailsResponseDto`/`convertToGetEventDetailsTicketTypesResponseDto` to `EventService`
 
 ### Implement Controller Endpoint
 
@@ -4618,7 +4675,7 @@ public ResponseEntity<GetEventDetailsResponseDto> getEvent(
 
     // Call the service layer and transform the response
     return eventService.getEventForOrganizer(userId, eventId)
-            .map(eventMapper::toGetEventDetailsResponseDto)
+            .map(eventService::convertToGetEventDetailsResponseDto)
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
 }
@@ -4657,7 +4714,7 @@ By testing through the UI, we can ensure our endpoint not only returns data but 
 
 First, let's prepare our development environment:
 
-1. Clean and compile the project to ensure no issues with Lombok or MapStruct:
+1. Clean and compile the project to ensure no issues with Lombok:
 
 ```bash
 ./mvnw clean compile
@@ -5032,7 +5089,7 @@ public class Event {
 - Implemented the `updateEventForOrganizer` method in the `EventServiceImpl` class
 - Updated the `Event` class to handle orphaned `TicketTypes`
 
-### Dtos Mappers
+### Dtos And Conversion Methods
 
 In this lesson, we'll implement the DTOs and mappers needed for updating events through our presentation layer, following the same pattern we used for creating events.
 
@@ -5097,33 +5154,125 @@ public class UpdateEventRequestDto {
 }
 ```
 
-#### Mapper Updates
+#### Response DTOs
 
-We need to extend our `EventMapper` interface to handle the new update DTOs:
+`UpdateTicketTypeResponseDto` and `UpdateEventResponseDto` were always referenced by the mapper but never actually defined -- let's close that gap now. They mirror `GetEventDetailsTicketTypesResponseDto`/`GetEventDetailsResponseDto` exactly, since "the event as it looks right after updating it" is the same shape as "the event's full details":
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface EventMapper {
-    // Existing mappings...
-
-    UpdateTicketTypeRequest fromDto(UpdateTicketTypeRequestDto dto);
-
-    UpdateEventRequest fromDto(UpdateEventRequestDto dto);
-
-    @Mapping(target = "id", source = "domainId")
-    UpdateTicketTypeResponseDto toUpdateTicketTypeResponseDto(TicketType ticketType);
-
-    @Mapping(target = "id", source = "domainId")
-    UpdateEventResponseDto toUpdateEventResponseDto(Event event);
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class UpdateTicketTypeResponseDto {
+    private UUID id;
+    private String name;
+    private Double price;
+    private String description;
+    private Integer totalAvailable;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
 ```
 
-The `fromDto` methods don't need a `@Mapping` -- `UpdateTicketTypeRequestDto.id` and `UpdateEventRequestDto.id` are already `domainId` values coming *in* from the frontend, and they map straight across to the matching `id` field on `UpdateTicketTypeRequest`/`UpdateEventRequest` (both plain `UUID`s, same field name, no entity involved). The `@Mapping` is only needed going the other direction, from an entity's `domainId` out to a response DTO's `id`.
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class UpdateEventResponseDto {
+    private UUID id;
+    private String name;
+    private LocalDateTime start;
+    private LocalDateTime end;
+    private VenueResponseDto venue;
+    private LocalDateTime salesStart;
+    private LocalDateTime salesEnd;
+    private EventStatusEnum status;
+    private List<UpdateTicketTypeResponseDto> ticketTypes = new ArrayList<>();
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
+```
+
+#### Conversion Methods
+
+```java
+public interface EventService {
+    // Existing methods...
+
+    UpdateTicketTypeRequest convertFromDto(UpdateTicketTypeRequestDto dto);
+    UpdateEventRequest convertFromDto(UpdateEventRequestDto dto);
+    UpdateTicketTypeResponseDto convertToUpdateTicketTypeResponseDto(TicketType ticketType);
+    UpdateEventResponseDto convertToUpdateEventResponseDto(Event event);
+}
+```
+
+```java
+@Override
+public UpdateTicketTypeRequest convertFromDto(UpdateTicketTypeRequestDto dto) {
+    UpdateTicketTypeRequest request = new UpdateTicketTypeRequest();
+    request.setId(dto.getId());
+    request.setName(dto.getName());
+    request.setPrice(dto.getPrice());
+    request.setDescription(dto.getDescription());
+    request.setTotalAvailable(dto.getTotalAvailable());
+    return request;
+}
+
+@Override
+public UpdateEventRequest convertFromDto(UpdateEventRequestDto dto) {
+    UpdateEventRequest request = new UpdateEventRequest();
+    request.setId(dto.getId());
+    request.setName(dto.getName());
+    request.setStart(dto.getStart());
+    request.setEnd(dto.getEnd());
+    request.setVenueId(dto.getVenueId());
+    request.setSalesStart(dto.getSalesStart());
+    request.setSalesEnd(dto.getSalesEnd());
+    request.setStatus(dto.getStatus());
+    request.setTicketTypes(dto.getTicketTypes().stream()
+            .map(this::convertFromDto)
+            .toList());
+    return request;
+}
+
+@Override
+public UpdateTicketTypeResponseDto convertToUpdateTicketTypeResponseDto(TicketType ticketType) {
+    UpdateTicketTypeResponseDto dto = new UpdateTicketTypeResponseDto();
+    dto.setId(ticketType.getDomainId());
+    dto.setName(ticketType.getName());
+    dto.setPrice(ticketType.getPrice());
+    dto.setDescription(ticketType.getDescription());
+    dto.setTotalAvailable(ticketType.getTotalAvailable());
+    dto.setCreatedAt(ticketType.getCreatedAt());
+    dto.setUpdatedAt(ticketType.getUpdatedAt());
+    return dto;
+}
+
+@Override
+public UpdateEventResponseDto convertToUpdateEventResponseDto(Event event) {
+    UpdateEventResponseDto dto = new UpdateEventResponseDto();
+    dto.setId(event.getDomainId());
+    dto.setName(event.getName());
+    dto.setStart(event.getStart());
+    dto.setEnd(event.getEnd());
+    dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+    dto.setSalesStart(event.getSalesStart());
+    dto.setSalesEnd(event.getSalesEnd());
+    dto.setStatus(event.getStatus());
+    dto.setTicketTypes(event.getTicketTypes().stream()
+            .map(this::convertToUpdateTicketTypeResponseDto)
+            .toList());
+    dto.setCreatedAt(event.getCreatedAt());
+    dto.setUpdatedAt(event.getUpdatedAt());
+    return dto;
+}
+```
+
+Notice `convertFromDto(UpdateTicketTypeRequestDto dto)` sets `request.setId(dto.getId())` directly -- no `domainId` translation needed here. `UpdateTicketTypeRequestDto.id` is already a `domainId` value coming *in* from the frontend, going to another plain `UUID` field on `UpdateTicketTypeRequest`, no entity involved on either side. The `getDomainId()` translation is only needed going the other direction, from an entity out to a response DTO.
 
 #### Summary
 
-- Created DTOs required for event updating
-- Updated the `EventMapper` to handle the new event update classes
+- Defined `UpdateTicketTypeResponseDto` and `UpdateEventResponseDto`, closing a gap that was always implied but never written out
+- Added `convertFromDto`/`convertToUpdateEventResponseDto`/`convertToUpdateTicketTypeResponseDto` to `EventService`
 
 ### Event Controller
 
@@ -5139,14 +5288,14 @@ public ResponseEntity<UpdateEventResponseDto> updateEvent(
         @AuthenticationPrincipal Jwt jwt,
         @PathVariable UUID eventId,
         @Valid @RequestBody UpdateEventRequestDto updateEventRequestDto){
-    UpdateEventRequest updateEventRequest = eventMapper.fromDto(updateEventRequestDto);
+    UpdateEventRequest updateEventRequest = eventService.convertFromDto(updateEventRequestDto);
     UUID userId = parseUserId(jwt);
 
     Event updatedEvent = eventService.updateEventForOrganizer(
             userId, eventId, updateEventRequest
     );
 
-    UpdateEventResponseDto updateEventResponseDto = eventMapper.toUpdateEventResponseDto(updatedEvent);
+    UpdateEventResponseDto updateEventResponseDto = eventService.convertToUpdateEventResponseDto(updatedEvent);
 
     return ResponseEntity.ok(updateEventResponseDto);
 }
@@ -5168,7 +5317,7 @@ Let's walk through the process of updating an event through the user interface a
 
 First, we need to launch our application and navigate to the UI:
 
-- Run `mvn clean compile` to ensure no issues with MapStruct or Lombok
+- Run `mvn clean compile` to ensure no issues with Lombok
 - Start the Spring Boot application
 - Navigate to the organizer's landing page
 - Log in with organizer credentials
@@ -5365,7 +5514,7 @@ The `findByStatus` method follows Spring Data JPA's method naming convention, wh
 - Added the `listPublishedEvents` method to the `EventService` interface
 - Implemented the `listPublishedEvents` method in the `EventServiceImpl` class
 
-### Dtos Mappers
+### Dtos And Conversion Methods
 
 In this lesson, we'll implement the DTOs and mappers needed for displaying published events on the attendee landing page.
 
@@ -5388,26 +5537,33 @@ public class ListPublishedEventResponseDto {
 
 This DTO includes only the fields needed for the event cards on the landing page: the event's ID, name, start and end times, and venue.
 
-#### Adding the Mapper Method
-
-Now we'll add a method to our `EventMapper` interface to convert `Event` entities to our new DTO:
+#### Add a Conversion Method
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface EventMapper {
+public interface EventService {
     // ... existing methods ...
 
-    @Mapping(target = "id", source = "domainId")
-    ListPublishedEventResponseDto toListPublishedEventResponseDto(Event event);
+    ListPublishedEventResponseDto convertToListPublishedEventResponseDto(Event event);
 }
 ```
 
-The MapStruct library will automatically generate the implementation for `venue`, `name`, `start`, and `end` because our DTO field names match the `Event` entity's field names -- `id` is the one field that needs the explicit `@Mapping`, since it comes from `domainId`.
+```java
+@Override
+public ListPublishedEventResponseDto convertToListPublishedEventResponseDto(Event event) {
+    ListPublishedEventResponseDto dto = new ListPublishedEventResponseDto();
+    dto.setId(event.getDomainId());
+    dto.setName(event.getName());
+    dto.setStart(event.getStart());
+    dto.setEnd(event.getEnd());
+    dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+    return dto;
+}
+```
 
 #### Summary
 
 - Created the `ListPublishedEventResponseDto` class
-- Added the `toListPublishedEventResponseDto` method to the `EventMapper` interface
+- Added `convertToListPublishedEventResponseDto` to `EventService`
 
 ### List Published Event Endpoint
 
@@ -5424,13 +5580,12 @@ Let's create a dedicated controller for published events, keeping it separate fr
 public class PublishedEventController {
 
     private final EventService eventService;
-    private final EventMapper eventMapper;
 
     @GetMapping
     public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(Pageable pageable) {
         // Map the events to DTOs and return them in the response
         return ResponseEntity.ok(eventService.listPublishedEvents(pageable)
-            .map(eventMapper::toListPublishedEventResponseDto));
+            .map(eventService::convertToListPublishedEventResponseDto));
     }
 }
 ```
@@ -5596,7 +5751,7 @@ public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(
   }
 
   return ResponseEntity.ok(
-      events.map(eventMapper::toListPublishedEventResponseDto)
+      events.map(eventService::convertToListPublishedEventResponseDto)
   );
 }
 ```
@@ -5725,7 +5880,7 @@ This method explicitly filters by both domain ID and status.
 - Added the `getPublishedEvent` method to the `EventService` interface
 - Implemented the `getPublishedEvent` method in the `EventServiceImpl` class
 
-### Dtos Mappers
+### Dtos And Conversion Methods
 
 In this lesson, we'll implement the DTOs and mappers needed for the get published event endpoint in the presentation layer.
 
@@ -5761,29 +5916,47 @@ public class GetPublishedEventDetailsTicketTypesResponseDto {
 }
 ```
 
-#### Implementing the Mappers
-
-We need to add methods to our `EventMapper` interface to convert between our domain objects and DTOs:
+#### Conversion Methods
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface EventMapper {
+public interface EventService {
     // ... existing methods ...
 
-    @Mapping(target = "id", source = "domainId")
-    GetPublishedEventDetailsTicketTypesResponseDto toGetPublishedEventDetailsTicketTypesResponseDto(TicketType ticketType);
-
-    @Mapping(target = "id", source = "domainId")
-    GetPublishedEventDetailsResponseDto toGetPublishedEventDetailsResponseDto(Event event);
+    GetPublishedEventDetailsTicketTypesResponseDto convertToGetPublishedEventDetailsTicketTypesResponseDto(TicketType ticketType);
+    GetPublishedEventDetailsResponseDto convertToGetPublishedEventDetailsResponseDto(Event event);
 }
 ```
 
-The `@Mapper` annotation tells MapStruct to generate the implementation of these methods.
+```java
+@Override
+public GetPublishedEventDetailsTicketTypesResponseDto convertToGetPublishedEventDetailsTicketTypesResponseDto(TicketType ticketType) {
+    GetPublishedEventDetailsTicketTypesResponseDto dto = new GetPublishedEventDetailsTicketTypesResponseDto();
+    dto.setId(ticketType.getDomainId());
+    dto.setName(ticketType.getName());
+    dto.setPrice(ticketType.getPrice());
+    dto.setDescription(ticketType.getDescription());
+    return dto;
+}
+
+@Override
+public GetPublishedEventDetailsResponseDto convertToGetPublishedEventDetailsResponseDto(Event event) {
+    GetPublishedEventDetailsResponseDto dto = new GetPublishedEventDetailsResponseDto();
+    dto.setId(event.getDomainId());
+    dto.setName(event.getName());
+    dto.setStart(event.getStart());
+    dto.setEnd(event.getEnd());
+    dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+    dto.setTicketTypes(event.getTicketTypes().stream()
+            .map(this::convertToGetPublishedEventDetailsTicketTypesResponseDto)
+            .toList());
+    return dto;
+}
+```
 
 #### Summary
 
 - Added the `GetPublishedEventDetailsResponseDto` and `GetPublishedEventDetailsTicketTypesResponseDto` DTO classes
-- Added the `toGetPublishedEventDetailsResponseDto` and `toGetPublishedEventDetailsTicketTypesResponseDto` mapper methods
+- Added `convertToGetPublishedEventDetailsResponseDto` and `convertToGetPublishedEventDetailsTicketTypesResponseDto` to `EventService`
 
 ### Get Published Event Endpoint
 
@@ -5799,7 +5972,7 @@ public ResponseEntity<GetPublishedEventDetailsResponseDto> getPublishedEventDeta
     @PathVariable UUID eventId
 ) {
     return eventService.getPublishedEvent(eventId)
-        .map(eventMapper::toGetPublishedEventDetailsResponseDto)
+        .map(eventService::convertToGetPublishedEventDetailsResponseDto)
         .map(ResponseEntity::ok)
         .orElse(ResponseEntity.notFound().build());
 }
@@ -5810,7 +5983,7 @@ Let's break down what this code does:
 - The `@GetMapping` annotation with a path variable defines the URL pattern for this endpoint
 - The method takes an `eventId` parameter that is extracted from the URL path
 - It calls the `eventService.getPublishedEvent()` method to fetch the event details
-- The result is mapped to our DTO using the `eventMapper`
+- The result is mapped to our DTO using `EventService.convertToGetPublishedEventDetailsResponseDto`
 - If an event is found, it returns a 200 OK response with the event details
 - If no event is found, it returns a 404 Not Found response
 
@@ -6553,7 +6726,7 @@ The implementation is straightforward - it simply delegates to the repository me
 - Added the `findByPurchaserDomainId` method to `TicketRepository`
 - Implemented the `TicketService` with `listTicketsForUser` method
 
-### Get Ticket Dto Mapper
+### Get Ticket Dto Conversion
 
 In this lesson we'll implement the DTOs and mappers that we need for the list tickets endpoint.
 
@@ -6587,34 +6760,43 @@ public class ListTicketTicketTypeResponseDto {
 }
 ```
 
-#### Implementing the Ticket Mapper
+#### Conversion Methods
 
-Now we'll create a mapper to convert between our entities and DTOs.
-
-The `TicketMapper` interface uses MapStruct to handle the conversion:
+No MapStruct here either -- two methods on `TicketService`/`TicketServiceImpl`:
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface TicketMapper {
+public interface TicketService {
+  Page<Ticket> listTicketsForUser(UUID userId, Pageable pageable);
 
-  @Mapping(target = "id", source = "domainId")
-  ListTicketTicketTypeResponseDto toListTicketTicketTypeResponseDto(TicketType ticketType);
-
-  @Mapping(target = "id", source = "domainId")
-  ListTicketResponseDto toListTicketResponseDto(Ticket ticket);
-
+  ListTicketTicketTypeResponseDto convertToListTicketTicketTypeResponseDto(TicketType ticketType);
+  ListTicketResponseDto convertToListTicketResponseDto(Ticket ticket);
 }
 ```
 
-The mapper includes two methods:
+```java
+@Override
+public ListTicketTicketTypeResponseDto convertToListTicketTicketTypeResponseDto(TicketType ticketType) {
+  ListTicketTicketTypeResponseDto dto = new ListTicketTicketTypeResponseDto();
+  dto.setId(ticketType.getDomainId());
+  dto.setName(ticketType.getName());
+  dto.setPrice(ticketType.getPrice());
+  return dto;
+}
 
-- `toListTicketTicketTypeResponseDto` converts a `TicketType` entity to its DTO representation
-- `toListTicketResponseDto` converts a `Ticket` entity to its DTO representation
+@Override
+public ListTicketResponseDto convertToListTicketResponseDto(Ticket ticket) {
+  ListTicketResponseDto dto = new ListTicketResponseDto();
+  dto.setId(ticket.getDomainId());
+  dto.setStatus(ticket.getStatus());
+  dto.setTicketType(convertToListTicketTicketTypeResponseDto(ticket.getTicketType()));
+  return dto;
+}
+```
 
 #### Summary
 
 - Created `ListTicketResponseDto` and `ListTicketTicketTypeResponseDto` classes
-- Created `TicketMapper` with mapper methods
+- Added `convertToListTicketResponseDto`/`convertToListTicketTicketTypeResponseDto` to `TicketService`
 
 ### Get Ticket Endpoint
 
@@ -6633,7 +6815,6 @@ Let's create a new `TicketController` class with the `@RestController` annotatio
 public class TicketController {
 
   private final TicketService ticketService;
-  private final TicketMapper ticketMapper;
 
   @GetMapping
   public Page<ListTicketResponseDto> listTickets(
@@ -6643,7 +6824,7 @@ public class TicketController {
     return ticketService.listTicketsForUser(
         parseUserId(jwt),
         pageable
-    ).map(ticketMapper::toListTicketResponseDto);
+    ).map(ticketService::convertToListTicketResponseDto);
   }
 
 }
@@ -6734,7 +6915,7 @@ public Optional<Ticket> getTicketForUser(UUID userId, UUID ticketId) {
 - Added the `findByDomainIdAndPurchaserDomainId` method to `TicketRepository`
 - Implemented the `getTicketForUser` method in `TicketService`
 
-### Get Ticket Dto Mapper
+### Get Ticket Dto Conversion
 
 In this lesson, we'll implement the DTOs and mappers that we need to implement the get ticket endpoint.
 
@@ -6760,34 +6941,38 @@ public class GetTicketResponseDto {
 }
 ```
 
-#### Implementing the Ticket Mapper
-
-The ticket mapper is responsible for converting between our entities and DTOs.
-
-We'll add a new method to map a ticket entity to our response DTO:
+#### Add a Conversion Method
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface TicketMapper {
-  @Mapping(target = "id", source = "ticket.domainId")
-  @Mapping(target = "price", source = "ticket.ticketType.price")
-  @Mapping(target = "description", source = "ticket.ticketType.description")
-  @Mapping(target = "eventName", source = "ticket.ticketType.event.name")
-  @Mapping(target = "eventVenueName", source = "ticket.ticketType.event.venue.name")
-  @Mapping(target = "eventStart", source = "ticket.ticketType.event.start")
-  @Mapping(target = "eventEnd", source = "ticket.ticketType.event.end")
-  GetTicketResponseDto toGetTicketResponseDto(Ticket ticket);
+public interface TicketService {
+  // ... existing methods ...
+
+  GetTicketResponseDto convertToGetTicketResponseDto(Ticket ticket);
 }
 ```
 
-The `@Mapping` annotations tell MapStruct how to navigate the relationships between our entities to get the right information. Since we only need the venue's name here (this DTO is deliberately flattened), we go one level deeper -- `event.venue.name` -- rather than nesting a full `VenueResponseDto`.
+```java
+@Override
+public GetTicketResponseDto convertToGetTicketResponseDto(Ticket ticket) {
+  GetTicketResponseDto dto = new GetTicketResponseDto();
+  dto.setId(ticket.getDomainId());
+  dto.setStatus(ticket.getStatus());
+  dto.setPrice(ticket.getTicketType().getPrice());
+  dto.setDescription(ticket.getTicketType().getDescription());
+  dto.setEventName(ticket.getTicketType().getEvent().getName());
+  dto.setEventVenueName(ticket.getTicketType().getEvent().getVenue().getName());
+  dto.setEventStart(ticket.getTicketType().getEvent().getStart());
+  dto.setEventEnd(ticket.getTicketType().getEvent().getEnd());
+  return dto;
+}
+```
 
-We can verify our mapper is working by running a clean and compile, which will generate the actual implementation code.
+This is the clearest illustration yet of the trade-off we're making. MapStruct's `@Mapping(source = "ticket.ticketType.event.venue.name")` navigated four relationships deep in a single annotation; by hand, that's four `.get...()` calls chained together, spelled out explicitly. It's more to type and more to read, but it's also just... Java -- there's nothing generated to go check, and a `NullPointerException` here points at this exact line, not at a mapper implementation class you never wrote.
 
 #### Summary
 
 - Created the `GetTicketResponseDto` class
-- Added the `toGetTicketResponseDto` method to `TicketMapper`
+- Added `convertToGetTicketResponseDto` to `TicketService`
 
 ### Get Ticket Endpoint
 
@@ -6807,7 +6992,7 @@ public ResponseEntity<GetTicketResponseDto> getTicket(
 ) {
     return ticketService
         .getTicketForUser(parseUserId(jwt), ticketId)
-        .map(ticketMapper::toGetTicketResponseDto)
+        .map(ticketService::convertToGetTicketResponseDto)
         .map(ResponseEntity::ok)
         .orElse(ResponseEntity.notFound().build());
 }
@@ -7054,7 +7239,7 @@ The implementation includes these key features:
 
 - Implemented the ticket validation service layer functionality
 
-### Validate Ticket Dto Mapper
+### Validate Ticket Dto Conversion
 
 In this lesson, we're going to create the DTOs and mappers that we need in order to implement our validate ticket endpoint.
 
@@ -7096,30 +7281,33 @@ This class contains:
 - A `ticketId` field to identify the validated ticket
 - A `status` field using `TicketValidationStatusEnum` to indicate the validation result
 
-#### Implementing the Mapper
-
-The `TicketValidationMapper` interface handles the conversion between domain objects and DTOs.
+#### Add a Conversion Method
 
 ```java
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface TicketValidationMapper {
+public interface TicketValidationService {
+  TicketValidation validateTicketByQrCode(UUID qrCodeId);
+  TicketValidation validateTicketManually(UUID ticketId);
 
-  @Mapping(target = "ticketId", source = "ticket.domainId")
-  TicketValidationResponseDto toTicketValidationResponseDto(TicketValidation ticketValidation);
-
+  TicketValidationResponseDto convertToTicketValidationResponseDto(TicketValidation ticketValidation);
 }
 ```
 
-The mapper has a single method that:
+```java
+@Override
+public TicketValidationResponseDto convertToTicketValidationResponseDto(TicketValidation ticketValidation) {
+  TicketValidationResponseDto dto = new TicketValidationResponseDto();
+  dto.setTicketId(ticketValidation.getTicket().getDomainId());
+  dto.setStatus(ticketValidation.getStatus());
+  return dto;
+}
+```
 
-- Takes a `TicketValidation` domain object as input
-- Maps it to a `TicketValidationResponseDto`
-- Uses `@Mapping` to specify that the `ticketId` field should come from `ticket.domainId` -- if we'd left this as `ticket.id`, MapStruct would fail to compile, since there's no automatic conversion from `Ticket`'s `Long` primary key to the DTO's `UUID` field
+Note `dto.setTicketId(ticketValidation.getTicket().getDomainId())`, not `.getId()` -- `Ticket`'s internal `Long` primary key has no business ever reaching a response, and there's no compiler here to catch the difference the way MapStruct would have. Writing it out by hand means that check now lives entirely in code review and testing, not the build.
 
 #### Summary
 
 - Added `TicketValidationRequestDto` and `TicketValidationResponseDto` DTO classes
-- Added the mapping method `toTicketValidationResponseDto` to `TicketValidationMapper`
+- Added `convertToTicketValidationResponseDto` to `TicketValidationService`
 
 ### Validate Ticket Endpoint
 
@@ -7138,7 +7326,6 @@ First, we'll create a new class called `TicketValidationController` with the req
 public class TicketValidationController {
 
   private final TicketValidationService ticketValidationService;
-  private final TicketValidationMapper ticketValidationMapper;
 
   @PostMapping
   public ResponseEntity<TicketValidationResponseDto> validateTicket(
@@ -7155,7 +7342,7 @@ public class TicketValidationController {
       );
     }
     return ResponseEntity.ok(
-        ticketValidationMapper.toTicketValidationResponseDto(ticketValidation)
+        ticketValidationService.convertToTicketValidationResponseDto(ticketValidation)
     );
   }
 }
