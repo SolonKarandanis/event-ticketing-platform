@@ -286,6 +286,8 @@ public class EventServiceImpl implements EventService {
         dto.setCountry(venue.getCountry());
         dto.setLatitude(venue.getLatitude());
         dto.setLongitude(venue.getLongitude());
+        dto.setCapacity(venue.getCapacity());
+        dto.setAccessibilityInfo(venue.getAccessibilityInfo());
         return dto;
     }
 
