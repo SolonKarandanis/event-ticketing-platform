@@ -7,6 +7,7 @@ import com.etp.ticketservice.domain.entity.TicketValidation;
 import com.etp.ticketservice.domain.enums.QrCodeStatusEnum;
 import com.etp.ticketservice.domain.enums.TicketValidationMethod;
 import com.etp.ticketservice.domain.enums.TicketValidationStatusEnum;
+import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.QrCodeNotFoundException;
 import com.etp.ticketservice.domain.exception.TicketNotFoundException;
 import com.etp.ticketservice.domain.repository.QrCodeRepository;
@@ -30,9 +31,7 @@ public class TicketValidationServiceImpl implements TicketValidationService {
     @Override
     public TicketValidation validateTicketByQrCode(UUID qrCodeId) {
         QrCode qrCode = qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)
-                .orElseThrow(() -> new QrCodeNotFoundException(
-                        String.format("QR Code with ID %s was not found", qrCodeId)
-                ));
+                .orElseThrow(() -> new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, qrCodeId));
 
         Ticket ticket = qrCode.getTicket();
 
@@ -42,7 +41,7 @@ public class TicketValidationServiceImpl implements TicketValidationService {
     @Override
     public TicketValidation validateTicketManually(UUID ticketId) {
         Ticket ticket = ticketRepository.findByDomainId(ticketId)
-                .orElseThrow(TicketNotFoundException::new);
+                .orElseThrow(() -> new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
         return validateTicket(ticket, TicketValidationMethod.MANUAL);
     }
 

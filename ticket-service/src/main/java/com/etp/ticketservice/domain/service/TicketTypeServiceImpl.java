@@ -4,6 +4,7 @@ import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.entity.TicketType;
 import com.etp.ticketservice.domain.entity.User;
 import com.etp.ticketservice.domain.enums.TicketStatusEnum;
+import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.TicketTypeNotFoundException;
 import com.etp.ticketservice.domain.exception.TicketsSoldOutException;
 import com.etp.ticketservice.domain.exception.UserNotFoundException;
@@ -28,16 +29,12 @@ public class TicketTypeServiceImpl implements TicketTypeService {
     @Transactional
     public Ticket purchaseTicket(UUID userId, UUID ticketTypeId) {
         User user = userRepository.findByDomainId(userId)
-                .orElseThrow(() -> new UserNotFoundException(
-                        String.format("User with ID %s was not found", userId)
-                ));
+                .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, userId));
 
         // Pessimistic lock -- prevents two concurrent purchases from both reading the same
         // pre-purchase availability count and overselling this ticket type.
         TicketType ticketType = ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)
-                .orElseThrow(() -> new TicketTypeNotFoundException(
-                        String.format("Ticket type with ID %s was not found", ticketTypeId)
-                ));
+                .orElseThrow(() -> new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketTypeId));
 
         // ticketType.getId() here is the resolved entity's internal sequential id, used
         // purely as an internal join key against tickets.ticket_type_id.
@@ -45,7 +42,7 @@ public class TicketTypeServiceImpl implements TicketTypeService {
         Integer totalAvailable = ticketType.getTotalAvailable();
 
         if (purchasedTickets + 1 > totalAvailable) {
-            throw new TicketsSoldOutException();
+            throw new TicketsSoldOutException(ErrorCode.TICKET_SOLD_OUT, ticketTypeId);
         }
 
         Ticket ticket = new Ticket();

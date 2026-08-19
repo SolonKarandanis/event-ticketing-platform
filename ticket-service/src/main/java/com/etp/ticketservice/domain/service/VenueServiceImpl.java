@@ -4,6 +4,7 @@ import com.etp.ticketservice.domain.dto.request.CreateVenueRequestDto;
 import com.etp.ticketservice.domain.dto.request.UpdateVenueRequestDto;
 import com.etp.ticketservice.domain.dto.response.VenueResponseDto;
 import com.etp.ticketservice.domain.entity.Venue;
+import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.VenueNotFoundException;
 import com.etp.ticketservice.domain.exception.VenueUpdateException;
 import com.etp.ticketservice.domain.model.CreateVenueRequest;
@@ -47,17 +48,15 @@ public class VenueServiceImpl implements VenueService {
     @Transactional
     public Venue updateVenue(UUID id, UpdateVenueRequest request) {
         if (null == request.getId()) {
-            throw new VenueUpdateException("Venue ID cannot be null");
+            throw new VenueUpdateException(ErrorCode.VENUE_ID_REQUIRED);
         }
 
         if (!id.equals(request.getId())) {
-            throw new VenueUpdateException("Cannot update the ID of a venue");
+            throw new VenueUpdateException(ErrorCode.VENUE_ID_MISMATCH, id);
         }
 
         Venue existingVenue = venueRepository.findByDomainId(id)
-                .orElseThrow(() -> new VenueNotFoundException(
-                        String.format("Venue with ID '%s' not found", id))
-                );
+                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, id));
 
         existingVenue.setName(request.getName());
         existingVenue.setAddressLine1(request.getAddressLine1());

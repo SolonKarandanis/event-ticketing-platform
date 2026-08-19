@@ -1,25 +1,15 @@
 package com.etp.ticketservice.domain.exception;
 
 public class QrCodeGenerationException extends EventTicketException {
-
-    public QrCodeGenerationException() {
-        super();
+    public QrCodeGenerationException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public QrCodeGenerationException(String message) {
-        super(message);
+    public QrCodeGenerationException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public QrCodeGenerationException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public QrCodeGenerationException(Throwable cause) {
-        super(cause);
-    }
-
-    public QrCodeGenerationException(String message, Throwable cause, boolean enableSuppression,
-            boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public QrCodeGenerationException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }

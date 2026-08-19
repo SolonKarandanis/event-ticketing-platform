@@ -3,6 +3,7 @@ package com.etp.ticketservice.domain.service;
 import com.etp.ticketservice.domain.entity.QrCode;
 import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.enums.QrCodeStatusEnum;
+import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.QrCodeGenerationException;
 import com.etp.ticketservice.domain.exception.QrCodeNotFoundException;
 import com.etp.ticketservice.domain.repository.QrCodeRepository;
@@ -46,20 +47,20 @@ public class QrCodeServiceImpl implements QrCodeService {
 
             return qrCodeRepository.saveAndFlush(qrCode);
         } catch (IOException | WriterException ex) {
-            throw new QrCodeGenerationException("Failed to generate QR Code", ex);
+            throw new QrCodeGenerationException(ErrorCode.QR_CODE_GENERATION_FAILED, ex);
         }
     }
 
     @Override
     public byte[] getQrCodeImageForUserAndTicket(UUID userId, UUID ticketId) {
         QrCode qrCode = qrCodeRepository.findByTicketDomainIdAndTicketPurchaserDomainId(ticketId, userId)
-                .orElseThrow(QrCodeNotFoundException::new);
+                .orElseThrow(() -> new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, ticketId));
 
         try {
             return Base64.getDecoder().decode(qrCode.getValue());
         } catch (IllegalArgumentException ex) {
             log.error("Invalid base64 QR Code for ticket ID: {}", ticketId, ex);
-            throw new QrCodeNotFoundException();
+            throw new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, ticketId);
         }
     }
 

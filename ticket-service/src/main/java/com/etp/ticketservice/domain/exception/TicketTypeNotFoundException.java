@@ -1,22 +1,15 @@
 package com.etp.ticketservice.domain.exception;
 
 public class TicketTypeNotFoundException extends EventTicketException {
-    public TicketTypeNotFoundException() {
+    public TicketTypeNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public TicketTypeNotFoundException(String message) {
-        super(message);
+    public TicketTypeNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public TicketTypeNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public TicketTypeNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public TicketTypeNotFoundException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public TicketTypeNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }

@@ -1,23 +1,15 @@
 package com.etp.ticketservice.domain.exception;
 
 public class VenueNotFoundException extends EventTicketException {
-    public VenueNotFoundException() {
+    public VenueNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public VenueNotFoundException(String message) {
-        super(message);
+    public VenueNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public VenueNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public VenueNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public VenueNotFoundException(String message, Throwable cause,
-            boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public VenueNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }

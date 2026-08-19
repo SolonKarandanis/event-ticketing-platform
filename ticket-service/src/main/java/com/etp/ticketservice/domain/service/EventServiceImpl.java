@@ -21,6 +21,7 @@ import com.etp.ticketservice.domain.entity.TicketType;
 import com.etp.ticketservice.domain.entity.User;
 import com.etp.ticketservice.domain.entity.Venue;
 import com.etp.ticketservice.domain.enums.EventStatusEnum;
+import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.EventNotFoundException;
 import com.etp.ticketservice.domain.exception.EventUpdateException;
 import com.etp.ticketservice.domain.exception.TicketTypeNotFoundException;
@@ -60,14 +61,10 @@ public class EventServiceImpl implements EventService {
     @Transactional
     public Event createEvent(UUID organizerId, CreateEventRequest event) {
         User organizer = userRepository.findByDomainId(organizerId)
-                .orElseThrow(() -> new UserNotFoundException(
-                        String.format("User with ID '%s' not found", organizerId))
-                );
+                .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, organizerId));
 
         Venue venue = venueRepository.findByDomainId(event.getVenueId())
-                .orElseThrow(() -> new VenueNotFoundException(
-                        String.format("Venue with ID '%s' not found", event.getVenueId()))
-                );
+                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
         Event eventToCreate = new Event();
         eventToCreate.setDomainId(UUID.randomUUID());
@@ -120,23 +117,19 @@ public class EventServiceImpl implements EventService {
     @Transactional
     public Event updateEventForOrganizer(UUID organizerId, UUID id, UpdateEventRequest event) {
         if (null == event.getId()) {
-            throw new EventUpdateException("Event ID cannot be null");
+            throw new EventUpdateException(ErrorCode.EVENT_ID_REQUIRED);
         }
 
         if (!id.equals(event.getId())) {
-            throw new EventUpdateException("Cannot update the ID of an event");
+            throw new EventUpdateException(ErrorCode.EVENT_ID_MISMATCH, id);
         }
 
         Event existingEvent = eventRepository
                 .findByDomainIdAndOrganizerDomainId(id, organizerId)
-                .orElseThrow(() -> new EventNotFoundException(
-                        String.format("Event with ID '%s' does not exist", id))
-                );
+                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
         Venue venue = venueRepository.findByDomainId(event.getVenueId())
-                .orElseThrow(() -> new VenueNotFoundException(
-                        String.format("Venue with ID '%s' not found", event.getVenueId()))
-                );
+                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
         existingEvent.setName(event.getName());
         existingEvent.setStart(event.getStart());
@@ -179,9 +172,7 @@ public class EventServiceImpl implements EventService {
                 existingTicketType.setDescription(ticketType.getDescription());
                 existingTicketType.setTotalAvailable(ticketType.getTotalAvailable());
             } else {
-                throw new TicketTypeNotFoundException(String.format(
-                        "Ticket type with ID '%s' does not exist", ticketType.getId()
-                ));
+                throw new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketType.getId());
             }
         }
 

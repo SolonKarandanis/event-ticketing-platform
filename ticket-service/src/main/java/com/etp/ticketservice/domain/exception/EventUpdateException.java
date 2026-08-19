@@ -1,22 +1,15 @@
 package com.etp.ticketservice.domain.exception;
 
 public class EventUpdateException extends EventTicketException {
-    public EventUpdateException() {
+    public EventUpdateException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public EventUpdateException(String message) {
-        super(message);
+    public EventUpdateException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public EventUpdateException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public EventUpdateException(Throwable cause) {
-        super(cause);
-    }
-
-    public EventUpdateException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public EventUpdateException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }

@@ -1,22 +1,15 @@
 package com.etp.ticketservice.domain.exception;
 
 public class TicketsSoldOutException extends EventTicketException {
-    public TicketsSoldOutException() {
+    public TicketsSoldOutException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public TicketsSoldOutException(String message) {
-        super(message);
+    public TicketsSoldOutException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public TicketsSoldOutException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public TicketsSoldOutException(Throwable cause) {
-        super(cause);
-    }
-
-    public TicketsSoldOutException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public TicketsSoldOutException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }

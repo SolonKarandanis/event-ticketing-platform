@@ -1,22 +1,15 @@
 package com.etp.ticketservice.domain.exception;
 
 public class QrCodeNotFoundException extends EventTicketException {
-    public QrCodeNotFoundException() {
+    public QrCodeNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public QrCodeNotFoundException(String message) {
-        super(message);
+    public QrCodeNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public QrCodeNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public QrCodeNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public QrCodeNotFoundException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public QrCodeNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }
