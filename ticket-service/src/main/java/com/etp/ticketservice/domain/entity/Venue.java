@@ -19,9 +19,9 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -84,7 +84,7 @@ public class Venue {
 
     @OneToMany(mappedBy = "venue")
     @Builder.Default
-    private List<Event> events = new ArrayList<>();
+    private Set<Event> events = new LinkedHashSet<>();
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
@@ -93,6 +93,16 @@ public class Venue {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public void addEvent(Event event) {
+        this.events.add(event);
+        event.setVenue(this);
+    }
+
+    public void removeEvent(Event event) {
+        this.events.remove(event);
+        event.setVenue(null);
+    }
 
     @Override
     public boolean equals(Object o) {

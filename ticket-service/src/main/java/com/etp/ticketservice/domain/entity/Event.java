@@ -27,9 +27,9 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -89,15 +89,15 @@ public class Event {
 
     @ManyToMany(mappedBy = "attendingEvents")
     @Builder.Default
-    private List<User> attendees = new ArrayList<>();
+    private Set<User> attendees = new LinkedHashSet<>();
 
     @ManyToMany(mappedBy = "staffingEvents")
     @Builder.Default
-    private List<User> staff = new ArrayList<>();
+    private Set<User> staff = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private List<TicketType> ticketTypes = new ArrayList<>();
+    private Set<TicketType> ticketTypes = new LinkedHashSet<>();
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
@@ -106,6 +106,16 @@ public class Event {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public void addTicketType(TicketType ticketType) {
+        this.ticketTypes.add(ticketType);
+        ticketType.setEvent(this);
+    }
+
+    public void removeTicketType(TicketType ticketType) {
+        this.ticketTypes.remove(ticketType);
+        ticketType.setEvent(null);
+    }
 
     @Override
     public boolean equals(Object o) {

@@ -23,9 +23,9 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -74,7 +74,7 @@ public class TicketType {
 
     @OneToMany(mappedBy = "ticketType", cascade = CascadeType.ALL)
     @Builder.Default
-    private List<Ticket> tickets = new ArrayList<>();
+    private Set<Ticket> tickets = new LinkedHashSet<>();
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
@@ -83,6 +83,16 @@ public class TicketType {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public void addTicket(Ticket ticket) {
+        this.tickets.add(ticket);
+        ticket.setTicketType(this);
+    }
+
+    public void removeTicket(Ticket ticket) {
+        this.tickets.remove(ticket);
+        ticket.setTicketType(null);
+    }
 
     @Override
     public boolean equals(Object o) {

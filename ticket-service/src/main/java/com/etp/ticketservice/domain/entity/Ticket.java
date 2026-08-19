@@ -26,9 +26,9 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -73,11 +73,11 @@ public class Ticket {
 
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
     @Builder.Default
-    private List<TicketValidation> validations = new ArrayList<>();
+    private Set<TicketValidation> validations = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
     @Builder.Default
-    private List<QrCode> qrCodes = new ArrayList<>();
+    private Set<QrCode> qrCodes = new LinkedHashSet<>();
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
@@ -86,6 +86,26 @@ public class Ticket {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public void addValidation(TicketValidation validation) {
+        this.validations.add(validation);
+        validation.setTicket(this);
+    }
+
+    public void removeValidation(TicketValidation validation) {
+        this.validations.remove(validation);
+        validation.setTicket(null);
+    }
+
+    public void addQrCode(QrCode qrCode) {
+        this.qrCodes.add(qrCode);
+        qrCode.setTicket(this);
+    }
+
+    public void removeQrCode(QrCode qrCode) {
+        this.qrCodes.remove(qrCode);
+        qrCode.setTicket(null);
+    }
 
     @Override
     public boolean equals(Object o) {

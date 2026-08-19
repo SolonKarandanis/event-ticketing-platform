@@ -23,9 +23,9 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -64,7 +64,7 @@ public class User {
 
     @OneToMany(mappedBy = "organizer", cascade = CascadeType.ALL)
     @Builder.Default
-    private List<Event> organizedEvents = new ArrayList<>();
+    private Set<Event> organizedEvents = new LinkedHashSet<>();
 
     @ManyToMany
     @JoinTable(
@@ -73,7 +73,7 @@ public class User {
             inverseJoinColumns = @JoinColumn(name = "event_id")
     )
     @Builder.Default
-    private List<Event> attendingEvents = new ArrayList<>();
+    private Set<Event> attendingEvents = new LinkedHashSet<>();
 
     @ManyToMany
     @JoinTable(
@@ -82,7 +82,7 @@ public class User {
             inverseJoinColumns = @JoinColumn(name = "event_id")
     )
     @Builder.Default
-    private List<Event> staffingEvents = new ArrayList<>();
+    private Set<Event> staffingEvents = new LinkedHashSet<>();
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
@@ -91,6 +91,36 @@ public class User {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    public void addEventOrganized(Event event){
+        this.organizedEvents.add(event);
+        event.setOrganizer(this);
+    }
+
+    public void removeEventOrganized(Event event){
+        this.organizedEvents.remove(event);
+        event.setOrganizer(null);
+    }
+
+    public void addAttendingEvent(Event event) {
+        this.attendingEvents.add(event);
+        event.getAttendees().add(this);
+    }
+
+    public void removeAttendingEvent(Event event) {
+        this.attendingEvents.remove(event);
+        event.getAttendees().remove(this);
+    }
+
+    public void addStaffingEvent(Event event) {
+        this.staffingEvents.add(event);
+        event.getStaff().add(this);
+    }
+
+    public void removeStaffingEvent(Event event) {
+        this.staffingEvents.remove(event);
+        event.getStaff().remove(this);
+    }
 
     @Override
     public boolean equals(Object o) {
