@@ -1564,6 +1564,7 @@ spring.jpa.hibernate.ddl-auto=validate
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.open-in-view=false
 ```
 
 The database connection properties tell Spring Boot:
@@ -1571,6 +1572,8 @@ The database connection properties tell Spring Boot:
 - Where to find the database (`localhost:5432`)
 - Which database to use (`postgres`)
 - The login credentials
+
+`spring.jpa.open-in-view=false` is worth calling out on its own. Spring Boot's default (`true`) keeps a Hibernate session open for the entire HTTP request, which papers over a common mistake -- touching a lazy `@ManyToOne`/`@OneToMany` after the transaction that loaded the entity has already closed -- at the cost of holding a database connection for the whole request and hiding N+1 queries that would otherwise be obvious. We're turning it off deliberately: every place a lazy association needs to be available outside its original transaction, we'll fetch it explicitly (with `JOIN FETCH` or an equivalent), rather than relying on the session staying open by accident. We'll hit this directly once pagination and lazy collections meet each other, in "List Event Service".
 
 The JPA configuration enables:
 
@@ -1743,6 +1746,12 @@ We're setting an explicit `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` rather
 
 Every validation and error message we write from here on is going to be a hardcoded English string -- `"Event name is required"`, `"Venue not found"`, and so on -- unless we route them through a message source instead. Let's set that up now, before we start writing the DTOs and exception handlers that will use it.
 
+We're also about to lean heavily on Bean Validation annotations (`@NotBlank`, `@NotNull`, `@PositiveOrZero`) across every request DTO in this build, starting with `CreateEventRequestDto` in the next major section -- that needs `spring-boot-starter-validation` on the classpath:
+
+```gradle
+implementation 'org.springframework.boot:spring-boot-starter-validation'
+```
+
 #### Add the Message Properties
 
 Let's create `src/main/resources/application_messages_en.properties`:
@@ -1763,12 +1772,13 @@ error.unknown=An unknown error occurred
 error.user.not-found=User not found
 error.venue.not-found=Venue not found
 error.event.not-found=Event not found
-error.event.update-failed=Unable to update event
 error.ticket-type.not-found=Ticket type not found
 error.qr-code.generation-failed=Unable to generate QR Code
 error.constraint-violation=A constraint violation occurred
 error.validation-failed=Validation error occurred
 ```
+
+This is a starting set, covering what we need for the very first DTOs and exceptions -- it grows throughout the build as we add more validation rules (`venue.*` once `Venue` exists as its own entity) and more `ErrorCode` values (see "Error Codes"; each one needs a matching `messageKey` entry here, e.g. `error.event.id-required`/`error.event.id-mismatch`, `error.ticket.not-found`, `error.ticket.sold-out`, `error.qr-code.not-found`). We won't call out every single addition to this file going forward -- treat each new `ErrorCode` constant or `@NotBlank`/`@NotNull` message key later in the build as implying a corresponding line here.
 
 Adding a language is just adding another file with the same keys -- `application_messages_el.properties` for Greek, `application_messages_fr.properties` for French, and so on. Nothing in the Java code changes when a language gets added.
 
@@ -2925,6 +2935,209 @@ Notice how we've excluded the `organizer`, `attendees`, `staff`, `ticketTypes`, 
 
 - Used our IDE to generate `equals` and `hashCode` methods for each entity class
 
+### Relationship Collections: Set, Not List
+
+Every `@OneToMany`/`@ManyToMany` collection we've written so far -- `Event.ticketTypes`, `User.organizedEvents`, `Venue.events`, and the rest -- is typed as `List<...>`. Before moving on to migrations, let's fix that: every one of them becomes a `Set`, backed by `LinkedHashSet`.
+
+#### Why Not List
+
+A JPA `@OneToMany`/`@ManyToMany` collection isn't an ordered sequence with duplicates the way a general-purpose `List` implies -- it's a set of associated rows, and Hibernate already treats it that way internally (a `PersistentBag` for `List`, a `PersistentSet` for `Set`). Using `List` invites two real problems down the line:
+
+- Combining more than one `@OneToMany`/`@ManyToMany` fetch join on the same query (something we'll want for avoiding N+1 queries) throws `MultipleBagFetchException` when the collections are `List`s -- Hibernate can't figure out which row belongs to which bag once two of them are joined in the same result set. `Set`s don't have this problem.
+- A `List`-backed bag has no natural uniqueness check, so the same association could end up added twice by accident with no error, silently double-counting.
+
+`LinkedHashSet` specifically (over plain `HashSet`) keeps insertion order -- so `event.getTicketTypes()` comes back in the order ticket types were added, rather than an unspecified order that can vary between runs.
+
+#### Update Every Relationship Field
+
+Every entity with a `@OneToMany`/`@ManyToMany` field needs the same three changes: swap `List<X>` for `Set<X>`, swap `new ArrayList<>()` for `new LinkedHashSet<>()`, and swap the `ArrayList`/`List` imports for `LinkedHashSet`/`Set`.
+
+```java
+// User
+@OneToMany(mappedBy = "organizer", cascade = CascadeType.ALL)
+@Builder.Default
+private Set<Event> organizedEvents = new LinkedHashSet<>();
+
+@ManyToMany
+@JoinTable(
+        name = "user_attending_events",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "event_id")
+)
+@Builder.Default
+private Set<Event> attendingEvents = new LinkedHashSet<>();
+
+@ManyToMany
+@JoinTable(
+        name = "user_staffing_events",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "event_id")
+)
+@Builder.Default
+private Set<Event> staffingEvents = new LinkedHashSet<>();
+```
+
+```java
+// Event
+@ManyToMany(mappedBy = "attendingEvents")
+@Builder.Default
+private Set<User> attendees = new LinkedHashSet<>();
+
+@ManyToMany(mappedBy = "staffingEvents")
+@Builder.Default
+private Set<User> staff = new LinkedHashSet<>();
+
+@OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+@Builder.Default
+private Set<TicketType> ticketTypes = new LinkedHashSet<>();
+```
+
+```java
+// Venue
+@OneToMany(mappedBy = "venue")
+@Builder.Default
+private Set<Event> events = new LinkedHashSet<>();
+```
+
+```java
+// TicketType
+@OneToMany(mappedBy = "ticketType", cascade = CascadeType.ALL)
+@Builder.Default
+private Set<Ticket> tickets = new LinkedHashSet<>();
+```
+
+```java
+// Ticket
+@OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
+@Builder.Default
+private Set<TicketValidation> validations = new LinkedHashSet<>();
+
+@OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
+@Builder.Default
+private Set<QrCode> qrCodes = new LinkedHashSet<>();
+```
+
+Nothing about `equals`/`hashCode` changes -- these fields were already excluded from both, so switching their type doesn't touch either method.
+
+#### Summary
+
+- Every `@OneToMany`/`@ManyToMany` collection field is now `Set<X>` backed by `LinkedHashSet`, not `List<X>`/`ArrayList`
+- Avoids `MultipleBagFetchException` when we later combine fetch joins, and rules out accidental duplicate associations
+- `LinkedHashSet` keeps insertion order, so this isn't a behavior change from the reader's perspective -- just a safer underlying type
+
+### Bidirectional Relationship Helpers
+
+Every relationship above is bidirectional -- `Event.ticketTypes` and `TicketType.event` are two sides of the same association. Setting only one side (e.g. `ticketType.setEvent(event)` without also adding `ticketType` to `event.getTicketTypes()`) leaves the in-memory object graph inconsistent: Hibernate will still persist the foreign key correctly, but any code in the same transaction that reads `event.getTicketTypes()` afterward won't see the new ticket type until the entity is reloaded from the database. Let's add a small `addX`/`removeX` method pair to the owning side of each relationship, so setting up (or tearing down) an association always keeps both sides in sync in one call.
+
+#### The Pattern
+
+Each pair does the same two things: mutate the collection on `this`, and set (or clear) the back-reference on the other side.
+
+```java
+// User
+public void addEventOrganized(Event event){
+    this.organizedEvents.add(event);
+    event.setOrganizer(this);
+}
+
+public void removeEventOrganized(Event event){
+    this.organizedEvents.remove(event);
+    event.setOrganizer(null);
+}
+
+public void addAttendingEvent(Event event) {
+    this.attendingEvents.add(event);
+    event.getAttendees().add(this);
+}
+
+public void removeAttendingEvent(Event event) {
+    this.attendingEvents.remove(event);
+    event.getAttendees().remove(this);
+}
+
+public void addStaffingEvent(Event event) {
+    this.staffingEvents.add(event);
+    event.getStaff().add(this);
+}
+
+public void removeStaffingEvent(Event event) {
+    this.staffingEvents.remove(event);
+    event.getStaff().remove(this);
+}
+```
+
+```java
+// Event
+public void addTicketType(TicketType ticketType) {
+    this.ticketTypes.add(ticketType);
+    ticketType.setEvent(this);
+}
+
+public void removeTicketType(TicketType ticketType) {
+    this.ticketTypes.remove(ticketType);
+    ticketType.setEvent(null);
+}
+```
+
+```java
+// Venue
+public void addEvent(Event event) {
+    this.events.add(event);
+    event.setVenue(this);
+}
+
+public void removeEvent(Event event) {
+    this.events.remove(event);
+    event.setVenue(null);
+}
+```
+
+```java
+// TicketType
+public void addTicket(Ticket ticket) {
+    this.tickets.add(ticket);
+    ticket.setTicketType(this);
+}
+
+public void removeTicket(Ticket ticket) {
+    this.tickets.remove(ticket);
+    ticket.setTicketType(null);
+}
+```
+
+```java
+// Ticket
+public void addValidation(TicketValidation validation) {
+    this.validations.add(validation);
+    validation.setTicket(this);
+}
+
+public void removeValidation(TicketValidation validation) {
+    this.validations.remove(validation);
+    validation.setTicket(null);
+}
+
+public void addQrCode(QrCode qrCode) {
+    this.qrCodes.add(qrCode);
+    qrCode.setTicket(this);
+}
+
+public void removeQrCode(QrCode qrCode) {
+    this.qrCodes.remove(qrCode);
+    qrCode.setTicket(null);
+}
+```
+
+We put each pair on the "one" side of a `@OneToMany` (`Event` owns `addTicketType`, not `TicketType`), and for the two `@ManyToMany` join-table relationships (`attendingEvents`/`staffingEvents`) we put both pairs on `User` rather than splitting them across `User` and `Event` -- either side could reasonably own them, but having one canonical place to look avoids the two sides drifting out of sync with each other.
+
+From here on, every place in the service layer that establishes or removes one of these relationships uses these methods instead of calling `setXxx`/`getXxx().add(...)` directly -- we'll update `EventServiceImpl`, `TicketTypeServiceImpl`, `QrCodeServiceImpl`, and `TicketValidationServiceImpl` to use them as we revisit each lesson below.
+
+#### Summary
+
+- Added `addX`/`removeX` method pairs for every bidirectional relationship, keeping both sides of the association in sync in one call
+- Placed each pair on the "one"/parent side of `@OneToMany` relationships, and on `User` for the two `@ManyToMany` join-table relationships
+- The service layer will use these instead of raw `setXxx`/collection `.add()` calls going forward
+
 ### Create the Baseline Liquibase Migration
 
 Now that the domain model is settled -- seven entities, their sequences, and their relationships -- let's write the first real Liquibase changeset: a baseline that creates the whole schema in one go.
@@ -3519,68 +3732,96 @@ This design separates the concerns of user identification from event data, makin
 - Implemented the `CreateEventRequest` class
 - Created the `EventService` interface with `createEvent` method
 
-### User Not Found Exception
+### Error Codes
 
-In this lesson, we'll implement an exception that is thrown when a user is not found in our system.
+Every domain exception we're about to write needs two things once it reaches a client: an HTTP status, and a message. Rather than let each exception carry a hand-typed English sentence (inconsistent, not localizable, and impossible to search for by error type), we'll give every domain exception a structured `ErrorCode` instead -- a single enum constant that carries both.
 
-This will help us handle error cases in a clean and organized way.
-
-#### Understanding Custom Exceptions
-
-Custom exceptions help us handle application-specific error cases in a way that makes sense for our domain.
-
-When creating custom exceptions, it's helpful to have a base exception class that all other exceptions extend.
-
-Let's create our base exception class:
+#### The ErrorCode Enum
 
 ```java
-public class EventTicketException extends RuntimeException {
-    public EventTicketException() {
+public enum ErrorCode {
+    USER_NOT_FOUND("error.user.not-found", HttpStatus.BAD_REQUEST),
+    VENUE_NOT_FOUND("error.venue.not-found", HttpStatus.BAD_REQUEST),
+    VENUE_ID_REQUIRED("error.venue.id-required", HttpStatus.BAD_REQUEST),
+    VENUE_ID_MISMATCH("error.venue.id-mismatch", HttpStatus.BAD_REQUEST),
+    EVENT_NOT_FOUND("error.event.not-found", HttpStatus.BAD_REQUEST),
+    EVENT_ID_REQUIRED("error.event.id-required", HttpStatus.BAD_REQUEST),
+    EVENT_ID_MISMATCH("error.event.id-mismatch", HttpStatus.BAD_REQUEST),
+    TICKET_TYPE_NOT_FOUND("error.ticket-type.not-found", HttpStatus.BAD_REQUEST),
+    TICKET_NOT_FOUND("error.ticket.not-found", HttpStatus.BAD_REQUEST),
+    TICKET_SOLD_OUT("error.ticket.sold-out", HttpStatus.CONFLICT),
+    QR_CODE_GENERATION_FAILED("error.qr-code.generation-failed", HttpStatus.INTERNAL_SERVER_ERROR),
+    QR_CODE_NOT_FOUND("error.qr-code.not-found", HttpStatus.BAD_REQUEST);
+
+    private final String messageKey;
+    private final HttpStatus httpStatus;
+
+    ErrorCode(String messageKey, HttpStatus httpStatus) {
+        this.messageKey = messageKey;
+        this.httpStatus = httpStatus;
     }
 
-    public EventTicketException(String message) {
-        super(message);
+    public String getMessageKey() {
+        return messageKey;
     }
 
-    public EventTicketException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public EventTicketException(Throwable cause) {
-        super(cause);
-    }
-
-    public EventTicketException(String message, Throwable cause,
-            boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public HttpStatus getHttpStatus() {
+        return httpStatus;
     }
 }
 ```
 
+Every constant is a complete, self-contained piece of information: which `application_messages_en.properties` key resolves the client-facing message, and which HTTP status the response should carry. `TICKET_SOLD_OUT` gets `409 Conflict` instead of the `400 Bad Request` everything else uses, since running out of tickets is a different kind of failure than "the thing you asked for doesn't exist." Notice `EVENT_ID_REQUIRED` and `EVENT_ID_MISMATCH` (and their `VENUE_` equivalents) are two separate codes, not one shared "event update failed" -- a client should be able to tell "you didn't send an ID" apart from "the ID in the body doesn't match the ID in the URL," and one shared code can't express that.
+
+We're listing all twelve constants up front rather than growing the enum lesson by lesson, the same way `EventStatusEnum` and the other enums were defined complete before anything used them -- some of these (`TICKET_SOLD_OUT`, `QR_CODE_NOT_FOUND`, and so on) won't have a corresponding exception until later lessons, but the full set is easier to reason about in one place than scattered across a dozen small additions.
+
+#### Understanding Custom Exceptions
+
+Custom exceptions help us handle application-specific error cases in a way that makes sense for our domain. When creating custom exceptions, it's helpful to have a base exception class that all other exceptions extend -- and now that we have `ErrorCode`, every exception in that hierarchy can require one.
+
+```java
+public class EventTicketException extends RuntimeException {
+    private final ErrorCode errorCode;
+
+    public EventTicketException(ErrorCode errorCode) {
+        super(errorCode.name());
+        this.errorCode = errorCode;
+    }
+
+    public EventTicketException(ErrorCode errorCode, Object detail) {
+        super(errorCode.name() + ": " + detail);
+        this.errorCode = errorCode;
+    }
+
+    public EventTicketException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode.name(), cause);
+        this.errorCode = errorCode;
+    }
+
+    public ErrorCode getErrorCode() {
+        return errorCode;
+    }
+}
+```
+
+Three constructors cover every case we'll need: a bare code for exceptions with no useful extra context, a code plus a `detail` (almost always the ID that couldn't be resolved) for `.getMessage()` to include, and a code plus a `cause` for wrapping a lower-level exception. None of them take a free-typed `String message` -- the whole point is that there's no hand-written sentence left to keep in sync with anything. `.getMessage()` is derived entirely from the code (and the detail, when there is one), which is exactly enough to make server-side logs searchable by error type without duplicating the client-facing text that `ErrorCode.getMessageKey()` already owns.
+
 #### Creating the User Not Found Exception
 
-Now that we have our base exception, we can create our specific exception for when a user is not found:
+Every subclass repeats the same three constructors, just delegating straight to `super(...)`:
 
 ```java
 public class UserNotFoundException extends EventTicketException {
-    public UserNotFoundException() {
+    public UserNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public UserNotFoundException(String message) {
-        super(message);
+    public UserNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public UserNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public UserNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public UserNotFoundException(String message, Throwable cause,
-            boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public UserNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }
 ```
@@ -3591,24 +3832,16 @@ Creating an event also requires resolving a `venueId` to an existing `Venue`, so
 
 ```java
 public class VenueNotFoundException extends EventTicketException {
-    public VenueNotFoundException() {
+    public VenueNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public VenueNotFoundException(String message) {
-        super(message);
+    public VenueNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public VenueNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public VenueNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public VenueNotFoundException(String message, Throwable cause,
-            boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public VenueNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }
 ```
@@ -3623,7 +3856,8 @@ This approach, recommended by Robert C. Martin in "Clean Code", helps maintain t
 
 #### Summary
 
-- Created a `EventTicketException` parent custom exception
+- Created the `ErrorCode` enum, pairing every domain error with its message key and HTTP status up front
+- Created a `EventTicketException` parent custom exception that requires an `ErrorCode` on every construction path, with no free-typed message
 - Created the `UserNotFoundException` to represent the invalid state when a specified user does not exist
 - Created the `VenueNotFoundException` to represent the invalid state when a specified venue does not exist
 
@@ -3647,15 +3881,11 @@ public class EventServiceImpl implements EventService {
     public Event createEvent(UUID organizerId, CreateEventRequest event) {
         // Find the organizer or throw an exception if not found
         User organizer = userRepository.findByDomainId(organizerId)
-                .orElseThrow(() -> new UserNotFoundException(
-                        String.format("User with ID '%s' not found", organizerId))
-                );
+                .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, organizerId));
 
         // Find the venue or throw an exception if not found
         Venue venue = venueRepository.findByDomainId(event.getVenueId())
-                .orElseThrow(() -> new VenueNotFoundException(
-                        String.format("Venue with ID '%s' not found", event.getVenueId()))
-                );
+                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
         // Create ticket types
         List<TicketType> ticketTypesToCreate = event.getTicketTypes().stream().map(
@@ -4073,34 +4303,27 @@ Notice `violation.getMessage()` isn't calling `resolve()` -- it doesn't need to.
     }
 ```
 
+Both `UserNotFoundException` and `VenueNotFoundException` extend `EventTicketException` and were constructed with an `ErrorCode` (see "Error Codes"), so instead of a handler per exception class, one handler covers all of them -- and every `EventTicketException` subclass we add from here on, automatically:
+
 ```java
-@ExceptionHandler(UserNotFoundException.class)
-public ResponseEntity<ErrorDto> handleUserNotFoundException(UserNotFoundException ex) {
-    log.error("Caught UserNotFoundException", ex);
+@ExceptionHandler(EventTicketException.class)
+public ResponseEntity<ErrorDto> handleEventTicketException(EventTicketException ex) {
+    log.error("Caught {}", ex.getClass().getSimpleName(), ex);
     ErrorDto errorDto = new ErrorDto();
-    errorDto.setError(resolve("error.user.not-found"));
-    return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
+    errorDto.setError(resolve(ex.getErrorCode().getMessageKey()));
+    return new ResponseEntity<>(errorDto, ex.getErrorCode().getHttpStatus());
 }
 ```
 
-```java
-@ExceptionHandler(VenueNotFoundException.class)
-public ResponseEntity<ErrorDto> handleVenueNotFoundException(VenueNotFoundException ex) {
-    log.error("Caught VenueNotFoundException", ex);
-    ErrorDto errorDto = new ErrorDto();
-    errorDto.setError(resolve("error.venue.not-found"));
-    return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
-}
-```
-
-Unlike the validation handlers above, these two don't have a `{code}` anywhere for Bean Validation to auto-resolve -- the literal string was always just us, so we call `resolve()` (the helper we defined alongside `messageSource` earlier in this class) ourselves.
+There's no `resolve("error.user.not-found")`/`resolve("error.venue.not-found")` literal here at all -- the message key comes from `ex.getErrorCode().getMessageKey()`, and even the HTTP status comes from the code (`ex.getErrorCode().getHttpStatus()`) rather than being hardcoded per handler. `Exception`, `ConstraintViolationException`, and `MethodArgumentNotValidException` stay as their own handlers above, since none of those are `EventTicketException`s -- they're thrown by the JVM/Spring/Bean Validation themselves, not by our own code, so there's no `ErrorCode` to read off them.
 
 #### Summary
 
 - Created the `ErrorDto` class
 - Created the `GlobalExceptionHandler` class, injected with `MessageSource`
-- Handler methods resolve their own literal messages via `resolve(code)`; validation-derived messages are already resolved by the time we see them
-- All errors and now returned in the expected format
+- One `@ExceptionHandler(EventTicketException.class)` covers every current and future domain exception, reading its status and message key from `ex.getErrorCode()`
+- `Exception`/`ConstraintViolationException`/`MethodArgumentNotValidException` keep their own handlers, since they're framework-thrown, not ours
+- All errors are now returned in the expected format
 
 ### Ui Testing
 
@@ -4172,51 +4395,48 @@ After creating an event, you can verify its creation in several ways:
 
 When checking adminer we see that the ticket types's `event_id` field is null in the database.
 
-We fix this by ensuring we set the event object on the `TicketType` class when we create them in the event service:
+The direct cause is the missing `ticketTypeToCreate.setEvent(eventToCreate)` call -- but rather than just adding that one line, let's fix it with the `addTicketType`/`addEvent`/`addEventOrganized` helpers from "Bidirectional Relationship Helpers": they set both sides of each relationship in one call, so this exact bug (setting a collection without setting the matching back-reference, or vice versa) isn't something you have to remember to get right by hand at every call site going forward.
 
 ```java
 @Override
+@Transactional
 public Event createEvent(UUID organizerId, CreateEventRequest event) {
     User organizer = userRepository.findByDomainId(organizerId)
-            .orElseThrow(() -> new UserNotFoundException(
-                    String.format("User with ID '%s' not found", organizerId))
-            );
+            .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, organizerId));
 
     Venue venue = venueRepository.findByDomainId(event.getVenueId())
-            .orElseThrow(() -> new VenueNotFoundException(
-                    String.format("Venue with ID '%s' not found", event.getVenueId()))
-            );
+            .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
-    // eventToCreate needs to be moved up here
     Event eventToCreate = new Event();
     eventToCreate.setDomainId(UUID.randomUUID());
-
-    List<TicketType> ticketTypesToCreate = event.getTicketTypes().stream().map(
-            ticketType -> {
-                TicketType ticketTypeToCreate = new TicketType();
-                ticketTypeToCreate.setDomainId(UUID.randomUUID());
-                ticketTypeToCreate.setName(ticketType.getName());
-                ticketTypeToCreate.setPrice(ticketType.getPrice());
-                ticketTypeToCreate.setDescription(ticketType.getDescription());
-                ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
-                // 2. The next line needs to be added
-                ticketTypeToCreate.setEvent(eventToCreate);
-                return ticketTypeToCreate;
-            }).toList();
-
     eventToCreate.setName(event.getName());
     eventToCreate.setStart(event.getStart());
     eventToCreate.setEnd(event.getEnd());
-    eventToCreate.setVenue(venue);
     eventToCreate.setSalesStart(event.getSalesStart());
     eventToCreate.setSalesEnd(event.getSalesEnd());
     eventToCreate.setStatus(event.getStatus());
-    eventToCreate.setOrganizer(organizer);
-    eventToCreate.setTicketTypes(ticketTypesToCreate);
+
+    venue.addEvent(eventToCreate);
+    organizer.addEventOrganized(eventToCreate);
+
+    event.getTicketTypes().forEach(ticketType -> {
+        TicketType ticketTypeToCreate = new TicketType();
+        ticketTypeToCreate.setDomainId(UUID.randomUUID());
+        ticketTypeToCreate.setName(ticketType.getName());
+        ticketTypeToCreate.setPrice(ticketType.getPrice());
+        ticketTypeToCreate.setDescription(ticketType.getDescription());
+        ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
+        eventToCreate.addTicketType(ticketTypeToCreate);
+    });
 
     return eventRepository.save(eventToCreate);
 }
 ```
+
+Two things changed beyond the bug fix itself:
+
+- `venue.addEvent(eventToCreate)` and `organizer.addEventOrganized(eventToCreate)` touch `venue.getEvents()`/`organizer.getOrganizedEvents()` -- both lazy collections. Since `venue`/`organizer` were each loaded by their own repository call (each with its own short-lived, auto-committed transaction), they'd already be detached by the time this method touched those collections without an enclosing transaction of its own -- so this method now needs `@Transactional`, keeping one session open for its whole body.
+- Building `ticketTypesToCreate` as a separate `List` and calling `eventToCreate.setTicketTypes(...)` at the end doesn't fit the helper-method pattern -- `addTicketType` needs `eventToCreate` to already exist so it can set the back-reference, so ticket types are now added one at a time via `forEach` instead of collected into a list first.
 
 #### Summary
 
@@ -4243,7 +4463,7 @@ Spring Data JPA can generate a query just from a method name (`findByOrganizerDo
 // In EventRepository interface
 public interface EventRepository extends JpaRepository<Event, Long> {
 
-    @Query("SELECT e FROM Event e WHERE e.organizer.domainId = :organizerDomainId")
+    @Query("SELECT e FROM Event e LEFT JOIN FETCH e.venue WHERE e.organizer.domainId = :organizerDomainId")
     Page<Event> findByOrganizerDomainId(@Param("organizerDomainId") UUID organizerDomainId, Pageable pageable);
 }
 ```
@@ -4253,28 +4473,55 @@ The query:
 - Selects `Event` entities (`e`)
 - Filters by the organizer's `domainId`, navigating from `Event` into the `organizer` relationship and then into its `domainId` field
 - Returns results in pages -- Spring Data JPA handles pagination automatically because the method takes a `Pageable` and returns a `Page<Event>`, no `LIMIT`/`OFFSET` needed in the JPQL itself
+- `LEFT JOIN FETCH e.venue` loads each event's venue in the same query, instead of leaving it as a lazy `@ManyToOne` proxy -- more on why below
 
 Note this is `Long` now, not `UUID` -- that's the JPA `@Id` type. We only ever have the organizer's `domainId` on hand (from the JWT), never their internal `id`, so the query needs to reach into the relationship rather than filtering on `Event`'s own primary key.
 
-#### Implement the Service Layer
+#### Avoiding LazyInitializationException
+
+`ListEventResponseDto` needs both `event.getVenue()` and `event.getTicketTypes()`, and the controller does the entity-to-DTO conversion *after* this service method returns:
 
 ```java
-// Method in EventService interface
-Page<Event> listEventsForOrganizer(UUID organizerId, Pageable pageable);
+Page<Event> events = eventService.listEventsForOrganizer(userId, pageable);
+return ResponseEntity.ok(events.map(eventService::convertToListEventResponseDto));
+```
 
-// Implementation in EventServiceImpl
+With `spring.jpa.open-in-view=false`, the Hibernate session backing `findByOrganizerDomainId` closes the moment this method returns. `venue` and `ticketTypes` are both lazy by default, so if either were left un-fetched, the controller's later `event.getVenue()`/`event.getTicketTypes()` calls would throw `LazyInitializationException` against an already-detached entity.
+
+`venue` is straightforward -- it's a `@ManyToOne`, so `LEFT JOIN FETCH e.venue` above loads it in the same query, and pagination is unaffected: a to-one fetch join can't multiply result rows the way a to-many one can.
+
+`ticketTypes` is the harder case, because it's exactly the kind of `@OneToMany` that *would* multiply rows -- and fetch-joining a collection together with a `Pageable` forces Hibernate to abandon `LIMIT`/`OFFSET` at the SQL level and paginate in memory instead, silently fetching every matching row before slicing out a page. So instead of a fetch join, `ticketTypes` gets hydrated in a second, unpaged query, once we already have this page's event IDs:
+
+```java
+// Second method on EventRepository, used only by listEventsForOrganizer
+@Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.ticketTypes WHERE e.id IN :ids")
+List<Event> findByIdInWithTicketTypes(@Param("ids") Collection<Long> ids);
+```
+
+```java
 @Override
+@Transactional(readOnly = true)
 public Page<Event> listEventsForOrganizer(UUID organizerId, Pageable pageable) {
-    // Use the repository to find events by organizer ID with pagination
-    return eventRepository.findByOrganizerDomainId(organizerId, pageable);
+    Page<Event> page = eventRepository.findByOrganizerDomainId(organizerId, pageable);
+
+    List<Long> eventIds = page.getContent().stream().map(Event::getId).toList();
+    if (!eventIds.isEmpty()) {
+        eventRepository.findByIdInWithTicketTypes(eventIds);
+    }
+
+    return page;
 }
 ```
+
+This works because both queries run inside the same `@Transactional(readOnly = true)` method, sharing one Hibernate persistence context. Hibernate recognizes the `Event` rows returned by the second query as the *same* managed instances already sitting in `page.getContent()` (same entity, same `id`), so fetch-joining `ticketTypes` there populates the collection directly on those objects -- no separate list to merge back in. `SELECT DISTINCT` matters here too: without it, an event with three ticket types would come back as three duplicate `Event` rows from the join, one per ticket type.
+
+The `@Transactional(readOnly = true)` isn't just good practice here -- it's what keeps both queries in the same session, which the second query's fetch join depends on.
 
 #### Summary
 
 - Added the `listEventsForOrganizer` method to the `EventService` interface
-- Added the `findByOrganizerDomainId` method to the `EventRepository` interface
-- Implemented `listEventsForOrganizer` method in the `EventServiceImpl` class
+- Added `findByOrganizerDomainId` (fetch-joining `venue`) and `findByIdInWithTicketTypes` (fetch-joining `ticketTypes`, unpaged) to the `EventRepository` interface
+- Implemented `listEventsForOrganizer` as a two-step, same-transaction "paginate, then hydrate collections" pattern -- required because `spring.jpa.open-in-view=false` means nothing outside this method can safely touch a lazy association on the entities it returns
 
 ### Dtos And Conversion Methods
 
@@ -4513,7 +4760,7 @@ Let's add a new method to our `EventRepository` interface:
 public interface EventRepository extends JpaRepository<Event, Long> {
     // Existing methods...
 
-    @Query("SELECT e FROM Event e WHERE e.domainId = :domainId AND e.organizer.domainId = :organizerDomainId")
+    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes WHERE e.domainId = :domainId AND e.organizer.domainId = :organizerDomainId")
     Optional<Event> findByDomainIdAndOrganizerDomainId(@Param("domainId") UUID domainId, @Param("organizerDomainId") UUID organizerDomainId);
 }
 ```
@@ -4522,6 +4769,8 @@ This repository method combines two search criteria:
 
 - The event's `domainId`
 - The organizer's `domainId`, navigated through the `organizer` relationship, to ensure users can only access their own events
+
+Unlike `listEventsForOrganizer`, this method returns a single `Optional<Event>`, not a `Page`, so there's no pagination to conflict with fetch-joining `ticketTypes` -- both `venue` and `ticketTypes` are safe to fetch join directly in one query. `SELECT DISTINCT` is still required, though: without it, an event with more than one ticket type comes back as multiple duplicate rows, and Spring Data would throw `NonUniqueResultException` trying to collapse them into a single `Optional`.
 
 #### Update the Service Layer
 
@@ -4546,6 +4795,7 @@ public class EventServiceImpl implements EventService {
     // Existing methods...
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Event> getEventForOrganizer(UUID organizerId, UUID id) {
         // Pass the parameters to the repository method
         return eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId);
@@ -4855,69 +5105,48 @@ Let's create three custom exceptions that extend our base `EventTicketException`
 
 ```java
 public class EventNotFoundException extends EventTicketException {
-    public EventNotFoundException() {
+    public EventNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public EventNotFoundException(String message) {
-        super(message);
+    public EventNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public EventNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public EventNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public EventNotFoundException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public EventNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }
 ```
 
 ```java
 public class TicketTypeNotFoundException extends EventTicketException {
-    public TicketTypeNotFoundException() {
+    public TicketTypeNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public TicketTypeNotFoundException(String message) {
-        super(message);
+    public TicketTypeNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public TicketTypeNotFoundException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public TicketTypeNotFoundException(Throwable cause) {
-        super(cause);
-    }
-
-    public TicketTypeNotFoundException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public TicketTypeNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }
 ```
 
 ```java
 public class EventUpdateException extends EventTicketException {
-    public EventUpdateException() {
+    public EventUpdateException(ErrorCode errorCode) {
+        super(errorCode);
     }
 
-    public EventUpdateException(String message) {
-        super(message);
+    public EventUpdateException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
     }
 
-    public EventUpdateException(String message, Throwable cause) {
-        super(message, cause);
-    }
-
-    public EventUpdateException(Throwable cause) {
-        super(cause);
-    }
-
-    public EventUpdateException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public EventUpdateException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
     }
 }
 ```
@@ -4926,53 +5155,18 @@ Each exception serves a specific purpose:
 
 - `EventNotFoundException` - When a requested event doesn't exist
 - `TicketTypeNotFoundException` - When a referenced ticket type can't be found
-- `EventUpdateException` - For general update-related errors
+- `EventUpdateException` - For validation failures during an update -- note `EVENT_ID_REQUIRED` and `EVENT_ID_MISMATCH` are two distinct `ErrorCode` values, not one shared "update failed" code, so the client can tell which specific problem occurred
 
 #### Exception Handler
 
-We'll add these exceptions to our global exception handler to ensure consistent error responses:
-
-```java
-@RestControllerAdvice
-@Slf4j
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(EventUpdateException.class)
-    public ResponseEntity<ErrorDto> handleEventUpdateException(EventUpdateException ex) {
-        log.error("Caught EventUpdateException", ex);
-        ErrorDto errorDto = new ErrorDto();
-        errorDto.setError(resolve("error.event.update-failed"));
-        return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(TicketTypeNotFoundException.class)
-    public ResponseEntity<ErrorDto> handleTicketTypeNotFoundException(TicketTypeNotFoundException ex) {
-        log.error("Caught TicketTypeNotFoundException", ex);
-        ErrorDto errorDto = new ErrorDto();
-        errorDto.setError(resolve("error.ticket-type.not-found"));
-        return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
-    }
-
-    @ExceptionHandler(EventNotFoundException.class)
-    public ResponseEntity<ErrorDto> handleEventNotFoundException(EventNotFoundException ex) {
-        log.error("Caught EventNotFoundException", ex);
-        ErrorDto errorDto = new ErrorDto();
-        errorDto.setError(resolve("error.event.not-found"));
-        return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
-    }
-
-    // Other handler methods
-}
-```
-
-All these exceptions return HTTP 400 Bad Request responses, as they represent client-side errors.
+Unlike earlier lessons, there's no `GlobalExceptionHandler` update to make here. It has a single `@ExceptionHandler(EventTicketException.class)` method (see "Global Exception Handler") that reads its HTTP status and message straight from `ex.getErrorCode()` -- so any new subclass of `EventTicketException`, as long as it's constructed with an `ErrorCode`, is already handled the moment it's thrown. That's the whole point of routing every domain exception through `ErrorCode` instead of a hardcoded string: adding a new failure case is now just a new enum constant and a new message key, not a new handler method too.
 
 #### Summary
 
 - Added the `EventNotFoundException` exception
 - Added the `EventUpdateException` exception
 - Added the `TicketTypeNotFoundException` exception
-- Updated the `GlobalExceptionHandler` to handle the new exceptions
+- No `GlobalExceptionHandler` changes needed -- its single `EventTicketException` handler already covers these
 
 ### Update Event Service
 
@@ -4987,79 +5181,74 @@ Let's implement the `updateEventForOrganizer` method in our service:
 ```java
 @Override
 @Transactional
-  public Event updateEventForOrganizer(UUID organizerId, UUID id, UpdateEventRequest event) {
-      if(null == event.getId()) {
-          throw new EventUpdateException("Event ID cannot be null");
-      }
+public Event updateEventForOrganizer(UUID organizerId, UUID id, UpdateEventRequest event) {
+    if (null == event.getId()) {
+        throw new EventUpdateException(ErrorCode.EVENT_ID_REQUIRED);
+    }
 
-      if(!id.equals(event.getId())) {
-          throw new EventUpdateException("Cannot update the ID of an event");
-      }
+    if (!id.equals(event.getId())) {
+        throw new EventUpdateException(ErrorCode.EVENT_ID_MISMATCH, id);
+    }
 
-      Event existingEvent = eventRepository
-              .findByDomainIdAndOrganizerDomainId(id, organizerId)
-              .orElseThrow(() -> new EventNotFoundException(
-                      String.format("Event with ID '%s' does not exist", id))
-              );
+    Event existingEvent = eventRepository
+            .findByDomainIdAndOrganizerDomainId(id, organizerId)
+            .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
-      Venue venue = venueRepository.findByDomainId(event.getVenueId())
-              .orElseThrow(() -> new VenueNotFoundException(
-                      String.format("Venue with ID '%s' not found", event.getVenueId()))
-              );
+    Venue venue = venueRepository.findByDomainId(event.getVenueId())
+            .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
-      existingEvent.setName(event.getName());
-      existingEvent.setStart(event.getStart());
-      existingEvent.setEnd(event.getEnd());
-      existingEvent.setVenue(venue);
-      existingEvent.setSalesStart(event.getSalesStart());
-      existingEvent.setSalesEnd(event.getSalesEnd());
-      existingEvent.setStatus(event.getStatus());
+    existingEvent.setName(event.getName());
+    existingEvent.setStart(event.getStart());
+    existingEvent.setEnd(event.getEnd());
+    venue.addEvent(existingEvent);
+    existingEvent.setSalesStart(event.getSalesStart());
+    existingEvent.setSalesEnd(event.getSalesEnd());
+    existingEvent.setStatus(event.getStatus());
 
-      // UpdateTicketTypeRequest.id is the ticket type's domainId, not its internal id
-      Set<UUID> requestTicketTypeDomainIds = event.getTicketTypes()
-              .stream()
-              .map(UpdateTicketTypeRequest::getId)
-              .filter(Objects::nonNull)
-              .collect(Collectors.toSet());
+    // UpdateTicketTypeRequest.id is the ticket type's domainId, not its internal id
+    Set<UUID> requestTicketTypeDomainIds = event.getTicketTypes()
+            .stream()
+            .map(UpdateTicketTypeRequest::getId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
 
-      existingEvent.getTicketTypes().removeIf(existingTicketType ->
-              !requestTicketTypeDomainIds.contains(existingTicketType.getDomainId())
-      );
+    Set<TicketType> ticketTypesToRemove = existingEvent.getTicketTypes().stream()
+            .filter(existingTicketType -> !requestTicketTypeDomainIds.contains(existingTicketType.getDomainId()))
+            .collect(Collectors.toSet());
+    ticketTypesToRemove.forEach(existingEvent::removeTicketType);
 
-      Map<UUID, TicketType> existingTicketTypesIndex = existingEvent.getTicketTypes().stream()
-              .collect(Collectors.toMap(TicketType::getDomainId, Function.identity()));
+    Map<UUID, TicketType> existingTicketTypesIndex = existingEvent.getTicketTypes().stream()
+            .collect(Collectors.toMap(TicketType::getDomainId, Function.identity()));
 
-      for(UpdateTicketTypeRequest ticketType : event.getTicketTypes()) {
-          if(null == ticketType.getId()) {
-              // Create
-              TicketType ticketTypeToCreate = new TicketType();
-              ticketTypeToCreate.setDomainId(UUID.randomUUID());
-              ticketTypeToCreate.setName(ticketType.getName());
-              ticketTypeToCreate.setPrice(ticketType.getPrice());
-              ticketTypeToCreate.setDescription(ticketType.getDescription());
-              ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
-              ticketTypeToCreate.setEvent(existingEvent);
-              existingEvent.getTicketTypes().add(ticketTypeToCreate);
+    for (UpdateTicketTypeRequest ticketType : event.getTicketTypes()) {
+        if (null == ticketType.getId()) {
+            // Create
+            TicketType ticketTypeToCreate = new TicketType();
+            ticketTypeToCreate.setDomainId(UUID.randomUUID());
+            ticketTypeToCreate.setName(ticketType.getName());
+            ticketTypeToCreate.setPrice(ticketType.getPrice());
+            ticketTypeToCreate.setDescription(ticketType.getDescription());
+            ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
+            existingEvent.addTicketType(ticketTypeToCreate);
+        } else if (existingTicketTypesIndex.containsKey(ticketType.getId())) {
+            // Update
+            TicketType existingTicketType = existingTicketTypesIndex.get(ticketType.getId());
+            existingTicketType.setName(ticketType.getName());
+            existingTicketType.setPrice(ticketType.getPrice());
+            existingTicketType.setDescription(ticketType.getDescription());
+            existingTicketType.setTotalAvailable(ticketType.getTotalAvailable());
+        } else {
+            throw new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketType.getId());
+        }
+    }
 
-          } else if(existingTicketTypesIndex.containsKey(ticketType.getId())) {
-              // Update
-              TicketType existingTicketType = existingTicketTypesIndex.get(ticketType.getId());
-              existingTicketType.setName(ticketType.getName());
-              existingTicketType.setPrice(ticketType.getPrice());
-              existingTicketType.setDescription(ticketType.getDescription());
-              existingTicketType.setTotalAvailable(ticketType.getTotalAvailable());
-          } else {
-              throw new TicketTypeNotFoundException(String.format(
-                      "Ticket type with ID '%s' does not exist", ticketType.getId()
-              ));
-          }
-      }
-
-      return eventRepository.save(existingEvent);
-  }
+    return eventRepository.save(existingEvent);
+}
 ```
 
 Note that `ticketType.getId()` throughout this method refers to `UpdateTicketTypeRequest.id`, which -- like every other DTO-facing ID -- is really the ticket type's `domainId`. We match it against `existingTicketType.getDomainId()`, never `existingTicketType.getId()` (the internal sequential key). New ticket types get a fresh `domainId` the same way new events do.
+
+Two changes from the raw-`Set`-mutation version you might expect: `existingEvent.getTicketTypes().removeIf(...)` is now `existingEvent.getTicketTypes().stream().filter(...).collect(...)` followed by `ticketTypesToRemove.forEach(existingEvent::removeTicketType)` -- collecting into a separate `Set` first avoids mutating `existingEvent.getTicketTypes()` while we're still iterating a view of it, and routing the removal through `removeTicketType` also nulls out each removed `TicketType`'s back-reference to the event, not just dropping it from the collection. And `venue.addEvent(existingEvent)` replaces `existingEvent.setVenue(venue)` for the same reason it did in `createEvent`.
 
 #### Handle Orphaned Types
 
@@ -5078,7 +5267,8 @@ public class Event {
     // ...
 
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<TicketType> ticketTypes = new ArrayList<>();
+    @Builder.Default
+    private Set<TicketType> ticketTypes = new LinkedHashSet<>();
 
     //...
 }
@@ -5485,6 +5675,7 @@ Next, we'll implement the method in our `EventServiceImpl` class:
 
 ```java
 @Override
+@Transactional(readOnly = true)
 public Page<Event> listPublishedEvents(Pageable pageable) {
     // Use the repository to find events with PUBLISHED status
     return eventRepository.findByStatus(EventStatusEnum.PUBLISHED, pageable);
@@ -5500,13 +5691,14 @@ To support our service layer, we need to add a method to our `EventRepository` i
 public interface EventRepository extends JpaRepository<Event, Long> {
     // ... existing methods ...
 
-    // Find events by their status (e.g., PUBLISHED)
-    @Query("SELECT e FROM Event e WHERE e.status = :status")
+    // Find events by their status (e.g., PUBLISHED), fetch-joining venue -- safe with
+    // Pageable since it's a @ManyToOne, not a collection (see List Event Service)
+    @Query("SELECT e FROM Event e LEFT JOIN FETCH e.venue WHERE e.status = :status")
     Page<Event> findByStatus(@Param("status") EventStatusEnum status, Pageable pageable);
 }
 ```
 
-The `findByStatus` method follows Spring Data JPA's method naming convention, which automatically generates the correct query based on the method name.
+`ListPublishedEventResponseDto` only needs `venue`, not `ticketTypes`, so a single `LEFT JOIN FETCH` is enough here -- no need for the two-step pattern `listEventsForOrganizer` uses.
 
 #### Summary
 
@@ -5710,20 +5902,25 @@ This query:
 
 #### Service Layer Implementation
 
-The service layer implementation connects the repository query to our application:
+The service layer implementation connects the repository query to our application, but there's one more thing to handle: `ListPublishedEventResponseDto` needs `event.getVenue()`, and this is a native query -- JPQL's `JOIN FETCH` syntax isn't available here, so `venue` would otherwise stay a lazy proxy that throws `LazyInitializationException` once this method returns and the session closes. We force it to load while the session is still open instead:
 
 ```java
 @Override
+@Transactional(readOnly = true)
 public Page<Event> searchPublishedEvents(String query, Pageable pageable) {
-    return eventRepository.searchEvents(query, pageable);
+    Page<Event> page = eventRepository.searchEvents(query, pageable);
+    page.getContent().forEach(event -> Hibernate.initialize(event.getVenue()));
+    return page;
 }
 ```
+
+`Hibernate.initialize(...)` is the standard escape hatch for exactly this case: it forces an uninitialized lazy proxy to load right now, inside the current session, rather than waiting for the first real property access. It costs one extra query per distinct venue in this page (there's no way to batch it into the native query itself), but for a page of search results that's a small, bounded cost -- and it's the only option left once `JOIN FETCH` isn't on the table.
 
 #### Summary
 
 - Added the `searchEvents` custom query to the `EventRepository` interface
 - Added the `searchPublishedEvents` method to the `EventService` interface
-- Implemented the `searchPublishedEvents` method in the `EventServiceImpl` class
+- Implemented `searchPublishedEvents`, using `Hibernate.initialize(...)` to force-load each result's `venue` since the native query can't `JOIN FETCH` it
 
 ### Search Controller Updates
 
@@ -5854,6 +6051,7 @@ In the implementation class, we'll use our repository to find events that match 
 
 ```java
 @Override
+@Transactional(readOnly = true)
 public Optional<Event> getPublishedEvent(UUID id) {
     // Only return events that are both published and match the domain ID
     return eventRepository.findByDomainIdAndStatus(id, EventStatusEnum.PUBLISHED);
@@ -5867,12 +6065,12 @@ To support this functionality, we need to add a custom query method to our repos
 ```java
 public interface EventRepository extends JpaRepository<Event, Long> {
     // Other methods...
-    @Query("SELECT e FROM Event e WHERE e.domainId = :domainId AND e.status = :status")
+    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes WHERE e.domainId = :domainId AND e.status = :status")
     Optional<Event> findByDomainIdAndStatus(@Param("domainId") UUID domainId, @Param("status") EventStatusEnum status);
 }
 ```
 
-This method explicitly filters by both domain ID and status.
+This method explicitly filters by both domain ID and status. `GetPublishedEventDetailsResponseDto` needs both `venue` and `ticketTypes`, and since this returns a single `Optional<Event>` rather than a `Page`, both are safe to fetch join directly -- same as `getEventForOrganizer` earlier.
 
 #### Summary
 
@@ -6177,43 +6375,22 @@ However, it's worth noting that this solution may need to be revised as the syst
 We've implemented a dedicated exception type for QR code generation failures:
 
 ```java
-
 public class QrCodeGenerationException extends EventTicketException {
+    public QrCodeGenerationException(ErrorCode errorCode) {
+        super(errorCode);
+    }
 
-  public QrCodeGenerationException() {
-    super();
-  }
+    public QrCodeGenerationException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
+    }
 
-  public QrCodeGenerationException(String message) {
-    super(message);
-  }
-
-  public QrCodeGenerationException(String message, Throwable cause) {
-    super(message, cause);
-  }
-
-  public QrCodeGenerationException(Throwable cause) {
-    super(cause);
-  }
-
-  public QrCodeGenerationException(String message, Throwable cause, boolean enableSuppression,
-      boolean writableStackTrace) {
-    super(message, cause, enableSuppression, writableStackTrace);
-  }
+    public QrCodeGenerationException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
+    }
 }
 ```
 
-```java
-@ExceptionHandler(QrCodeGenerationException.class)
-public ResponseEntity<ErrorDto> handleQrCodeGenerationException(QrCodeGenerationException ex) {
-    log.error("Caught QrCodeGenerationException", ex);
-    ErrorDto errorDto = new ErrorDto();
-    errorDto.setError(resolve("error.qr-code.generation-failed"));
-    return new ResponseEntity<>(errorDto, HttpStatus.INTERNAL_SERVER_ERROR);
-}
-```
-
-This provides clear error messages to clients while using the appropriate 500 status code, since QR code generation failures are server-side issues.
+No `GlobalExceptionHandler` update needed -- `QR_CODE_GENERATION_FAILED` (see "Error Codes") is already mapped to `HttpStatus.INTERNAL_SERVER_ERROR`, and the single `EventTicketException` handler picks that status up automatically. 500 is the right code here since QR code generation failures are server-side issues, not something the client did wrong.
 
 #### Service Interface
 
@@ -6240,18 +6417,12 @@ In this lesson, we'll implement the QR code generation functionality in our tick
 
 To generate QR codes, we need to add the ZXing library dependencies to our project:
 
-```xml
-<dependency>
-  <groupId>com.google.zxing</groupId>
-  <artifactId>core</artifactId>
-  <version>3.5.1</version>
-</dependency>
-<dependency>
-  <groupId>com.google.zxing</groupId>
-  <artifactId>javase</artifactId>
-  <version>3.5.1</version>
-</dependency>
+```gradle
+implementation 'com.google.zxing:core:3.5.1'
+implementation 'com.google.zxing:javase:3.5.1'
 ```
+
+`core` is the actual encode/decode engine (`QRCodeWriter`, used below). `javase` is a small Java SE integration layer on top of it -- specifically `MatrixToImageWriter`, which converts ZXing's `BitMatrix` output into a `java.awt.image.BufferedImage` so it can be written out as a PNG via `ImageIO`. Both are needed for the flow below to compile.
 
 #### Creating the QR Code Writer Bean
 
@@ -6293,11 +6464,11 @@ public class QrCodeServiceImpl implements QrCodeService {
             qrCode.setDomainId(uniqueId);
             qrCode.setStatus(QrCodeStatusEnum.ACTIVE);
             qrCode.setValue(qrCodeImage);
-            qrCode.setTicket(ticket);
+            ticket.addQrCode(qrCode);
 
             return qrCodeRepository.saveAndFlush(qrCode);
         } catch(IOException | WriterException ex) {
-            throw new QrCodeGenerationException("Failed to generate QR Code", ex);
+            throw new QrCodeGenerationException(ErrorCode.QR_CODE_GENERATION_FAILED, ex);
         }
     }
 
@@ -6322,6 +6493,8 @@ public class QrCodeServiceImpl implements QrCodeService {
     }
 }
 ```
+
+`ticket.addQrCode(qrCode)` (see "Bidirectional Relationship Helpers") replaces a plain `qrCode.setTicket(ticket)` -- it also adds `qrCode` to `ticket.getQrCodes()`, so the in-memory `ticket` object stays consistent with what just got persisted, in case anything later in the same transaction reads its QR codes back.
 
 #### Summary
 
@@ -6357,15 +6530,11 @@ public class TicketTypeServiceImpl implements TicketTypeService {
     public Ticket purchaseTicket(UUID userId, UUID ticketTypeId) {
         // Look up the user
         User user = userRepository.findByDomainId(userId)
-            .orElseThrow(() -> new UserNotFoundException(
-                String.format("User with ID %s was not found", userId)
-            ));
+            .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, userId));
 
         // Get ticket type with pessimistic lock
         TicketType ticketType = ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)
-            .orElseThrow(() -> new TicketTypeNotFoundException(
-                String.format("Ticket type with ID %s was not found", ticketTypeId)
-            ));
+            .orElseThrow(() -> new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketTypeId));
 
         // Check ticket availability -- ticketType.getId() here is the resolved entity's
         // internal sequential id, used purely as an internal join key against tickets.ticket_type_id
@@ -6373,15 +6542,15 @@ public class TicketTypeServiceImpl implements TicketTypeService {
         Integer totalAvailable = ticketType.getTotalAvailable();
 
         if(purchasedTickets + 1 > totalAvailable) {
-            throw new TicketsSoldOutException();
+            throw new TicketsSoldOutException(ErrorCode.TICKET_SOLD_OUT, ticketTypeId);
         }
 
         // Create new ticket
         Ticket ticket = new Ticket();
         ticket.setDomainId(UUID.randomUUID());
         ticket.setStatus(TicketStatusEnum.PURCHASED);
-        ticket.setTicketType(ticketType);
         ticket.setPurchaser(user);
+        ticketType.addTicket(ticket);
 
         // Save and generate QR code
         Ticket savedTicket = ticketRepository.save(ticket);
@@ -6391,6 +6560,28 @@ public class TicketTypeServiceImpl implements TicketTypeService {
     }
 }
 ```
+
+`ticketType.addTicket(ticket)` (see "Bidirectional Relationship Helpers") replaces `ticket.setTicketType(ticketType)` -- there's no matching helper needed for `ticket.setPurchaser(user)` though, since `User` has no back-reference collection to `Ticket` (no `purchasedTickets` field), so that stays a plain setter.
+
+`TicketsSoldOutException` also now needs its `ErrorCode`-based constructors, matching every other exception in the hierarchy:
+
+```java
+public class TicketsSoldOutException extends EventTicketException {
+    public TicketsSoldOutException(ErrorCode errorCode) {
+        super(errorCode);
+    }
+
+    public TicketsSoldOutException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
+    }
+
+    public TicketsSoldOutException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
+    }
+}
+```
+
+Note this is the first time we're throwing it -- unlike `UserNotFoundException`/`TicketTypeNotFoundException`, it wasn't defined back in "Error Codes"'s exception lessons, so this is its introduction. It maps to `ErrorCode.TICKET_SOLD_OUT`, which resolves to `409 Conflict` rather than the `400 Bad Request` everything else here uses -- running out of tickets is a different kind of failure than "the thing you asked for doesn't exist."
 
 #### Handling Concurrent Access
 
@@ -6552,6 +6743,26 @@ Among these claims is the `realm_access` claim which contains the roles assigned
 
 When we decode a JWT at jwt.io, we can see claims like `ROLE_ORGANIZER`, `ROLE_ATTENDEE`, and `ROLE_STAFF` under the `realm_access.roles` section.
 
+#### The Role Enum
+
+Before writing the converter, let's give these three roles a proper type instead of passing bare `"ORGANIZER"`/`"STAFF"` strings around everywhere they're checked:
+
+```java
+public enum Role {
+    ORGANIZER,
+    ATTENDEE,
+    STAFF;
+
+    public static final String AUTHORITY_PREFIX = "ROLE_";
+
+    public String getAuthority() {
+        return AUTHORITY_PREFIX + name();
+    }
+}
+```
+
+The enum constant names match Spring Security's `hasRole(...)` convention (which adds the `ROLE_` prefix itself), while `getAuthority()` returns the full, Keycloak-facing authority string (`ROLE_ORGANIZER`) for anywhere we need that instead. `AUTHORITY_PREFIX` being `public static final` means the JWT converter below can reference it directly, rather than repeating the literal `"ROLE_"` string a second time.
+
 #### Implementing Role Extraction
 
 To extract roles from the JWT, we need to create a custom converter that transforms the JWT into Spring Security's internal representation.
@@ -6579,7 +6790,7 @@ public class JwtAuthenticationConverter implements Converter<Jwt, JwtAuthenticat
     List<String> roles = (List<String>)realmAccess.get("roles");
 
     return roles.stream()
-        .filter(role -> role.startsWith("ROLE_"))
+        .filter(role -> role.startsWith(Role.AUTHORITY_PREFIX))
         .map(SimpleGrantedAuthority::new)
         .collect(Collectors.toList());
   }
@@ -6625,6 +6836,7 @@ The key change is adding the `jwtAuthenticationConverter` to the JWT configurati
 
 #### Summary
 
+- Added the `Role` enum, giving `ORGANIZER`/`ATTENDEE`/`STAFF` a proper type instead of bare strings
 - Added a custom JWT converter to extract a user's roles
 - Updated `SecurityConfig` to use the JWT converter
 
@@ -6644,14 +6856,20 @@ Here's how we implement this in the `SecurityConfig` class:
 .authorizeHttpRequests(authorize ->
     authorize
         .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**").permitAll()
-        .requestMatchers("/api/v1/events").hasRole("ORGANIZER")
+        // Ticket purchase lives under /api/v1/events/** but is an attendee action, not
+        // organizer management -- it must be matched before the broader rule below, or
+        // that rule (evaluated first-match-wins) would catch it and lock it to organizers.
+        .requestMatchers(HttpMethod.POST, "/api/v1/events/*/ticket-types/*/tickets").authenticated()
+        .requestMatchers("/api/v1/events/**").hasRole(Role.ORGANIZER.name())
         // Catch all rule
         .anyRequest().authenticated())
 ```
 
-The `.hasRole("ORGANIZER")` method is used to restrict access to users with the organizer role.
+The `.hasRole(Role.ORGANIZER.name())` method is used to restrict access to users with the organizer role -- `Role.ORGANIZER.name()` is just `"ORGANIZER"`, but going through the enum means there's one place, not a scattered handful of string literals, that defines what the valid role names are.
 
 When using `hasRole()`, Spring Security automatically adds the `ROLE_` prefix to the role name, so we don't need to include it in our configuration.
+
+Note this is `/api/v1/events/**` with a wildcard, not the bare `/api/v1/events` path -- without it, only the exact list/create path (`POST`/`GET /api/v1/events`) would be organizer-only, and `GET`/`PUT`/`DELETE /api/v1/events/{eventId}` would fall through to the generic `.anyRequest().authenticated()` rule at the bottom, letting *any* authenticated user (not just the organizer who owns the event) reach them. The service layer's own `organizerId` checks (`getEventForOrganizer`, `updateEventForOrganizer`, `deleteEventForOrganizer` all filter by the caller's domain ID) still stop a different organizer from reading or modifying someone else's event, but an attendee account shouldn't be able to reach those endpoints at all.
 
 #### Testing Role-Based Access
 
@@ -6679,11 +6897,13 @@ We'll add a method called `findByPurchaserDomainId` that takes two parameters:
 
 ```java
 // In TicketRepository interface
-@Query("SELECT t FROM Ticket t WHERE t.purchaser.domainId = :purchaserDomainId")
+@Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType WHERE t.purchaser.domainId = :purchaserDomainId")
 Page<Ticket> findByPurchaserDomainId(@Param("purchaserDomainId") UUID purchaserDomainId, Pageable pageable);
 ```
 
 `userId` here comes from the JWT subject, which is the purchaser's `domainId` -- so the query needs to navigate from `Ticket` into the `purchaser` relationship and filter on its `domainId`, not `Ticket`'s own internal `id`.
+
+`ListTicketResponseDto` needs `ticket.getTicketType()`, and just like `Event.venue`, `Ticket.ticketType` is a `@ManyToOne` -- fetch-joining it is safe together with `Pageable`, for the same reason `venue` was safe to fetch join in "List Event Service": a to-one join can't multiply result rows the way a to-many one can.
 
 This method will return a page of tickets, which allows for pagination of results.
 
@@ -6713,6 +6933,7 @@ public class TicketServiceImpl implements TicketService {
   private final TicketRepository ticketRepository;
 
   @Override
+  @Transactional(readOnly = true)
   public Page<Ticket> listTicketsForUser(UUID userId, Pageable pageable) {
     return ticketRepository.findByPurchaserDomainId(userId, pageable);
   }
@@ -6893,9 +7114,15 @@ This ensures tickets can only be retrieved by their rightful owners.
 
 ```java
 // In TicketRepository interface
-@Query("SELECT t FROM Ticket t WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
+@Query("SELECT t FROM Ticket t " +
+        "LEFT JOIN FETCH t.ticketType tt " +
+        "LEFT JOIN FETCH tt.event e " +
+        "LEFT JOIN FETCH e.venue " +
+        "WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
 Optional<Ticket> findByDomainIdAndPurchaserDomainId(@Param("domainId") UUID domainId, @Param("purchaserDomainId") UUID purchaserDomainId);
 ```
+
+`GetTicketResponseDto` (below) walks `ticket -> ticketType -> event -> venue` -- three hops, all `@ManyToOne`. Chaining `LEFT JOIN FETCH` across all three loads the whole chain in one query; since every hop is to-one, none of them can multiply result rows, so unlike the `ticketTypes` case in "List Event Service", there's no `DISTINCT` needed and no two-step pattern required here either.
 
 #### Implementing the Service Layer
 
@@ -6905,6 +7132,7 @@ This method will act as a pass-through to the repository, maintaining the same r
 
 ```java
 @Override
+@Transactional(readOnly = true)
 public Optional<Ticket> getTicketForUser(UUID userId, UUID ticketId) {
   return ticketRepository.findByDomainIdAndPurchaserDomainId(ticketId, userId);
 }
@@ -7036,13 +7264,13 @@ Next, we'll implement the method in our QR code service to retrieve the QR code 
 @Override
 public byte[] getQrCodeImageForUserAndTicket(UUID userId, UUID ticketId) {
     QrCode qrCode = qrCodeRepository.findByTicketDomainIdAndTicketPurchaserDomainId(ticketId, userId)
-        .orElseThrow(QrCodeNotFoundException::new);
+        .orElseThrow(() -> new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, ticketId));
 
     try {
       return Base64.getDecoder().decode(qrCode.getValue());
-     catch(IllegalArgumentException ex) {
+    } catch(IllegalArgumentException ex) {
       log.error("Invalid base64 QR Code for ticket ID: {}", ticketId, ex);
-      throw new QrCodeNotFoundException();
+      throw new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, ticketId);
     }
 }
 ```
@@ -7157,6 +7385,44 @@ public interface TicketValidationService {
 }
 ```
 
+#### Two More Exceptions
+
+Both lookups below can fail, and neither exception has been defined yet -- both follow the same `ErrorCode`-based pattern as every other exception in the hierarchy:
+
+```java
+public class QrCodeNotFoundException extends EventTicketException {
+    public QrCodeNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
+    }
+
+    public QrCodeNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
+    }
+
+    public QrCodeNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
+    }
+}
+```
+
+```java
+public class TicketNotFoundException extends EventTicketException {
+    public TicketNotFoundException(ErrorCode errorCode) {
+        super(errorCode);
+    }
+
+    public TicketNotFoundException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
+    }
+
+    public TicketNotFoundException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
+    }
+}
+```
+
+They map to `ErrorCode.QR_CODE_NOT_FOUND` and `ErrorCode.TICKET_NOT_FOUND` respectively (see "Error Codes") -- both already `400 Bad Request`, and both already covered by `GlobalExceptionHandler`'s single `EventTicketException` handler with no further changes needed.
+
 #### Service Implementation
 
 The implementation handles the business logic for ticket validation:
@@ -7174,42 +7440,43 @@ public class TicketValidationServiceImpl implements TicketValidationService {
   @Override
   public TicketValidation validateTicketByQrCode(UUID qrCodeId) {
     QrCode qrCode = qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)
-        .orElseThrow(() -> new QrCodeNotFoundException(
-            String.format(
-                "QR Code with ID %s was not found", qrCodeId
-            )
-        ));
+        .orElseThrow(() -> new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, qrCodeId));
 
     Ticket ticket = qrCode.getTicket();
 
-    return validateTicket(ticket);
+    return validateTicket(ticket, TicketValidationMethod.QR_SCAN);
   }
 
-  private TicketValidation validateTicket(Ticket ticket) {
-    TicketValidation ticketValidation = new TicketValidation();
-    ticketValidation.setDomainId(UUID.randomUUID());
-    ticketValidation.setTicket(ticket);
-    ticketValidation.setValidationMethod(TicketValidationMethod.QR_SCAN);
+  @Override
+  public TicketValidation validateTicketManually(UUID ticketId) {
+    Ticket ticket = ticketRepository.findByDomainId(ticketId)
+        .orElseThrow(() -> new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
+    return validateTicket(ticket, TicketValidationMethod.MANUAL);
+  }
 
+  private TicketValidation validateTicket(Ticket ticket, TicketValidationMethod method) {
     TicketValidationStatusEnum ticketValidationStatus = ticket.getValidations().stream()
         .filter(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()))
         .findFirst()
         .map(v -> TicketValidationStatusEnum.INVALID)
         .orElse(TicketValidationStatusEnum.VALID);
 
+    TicketValidation ticketValidation = new TicketValidation();
+    ticketValidation.setDomainId(UUID.randomUUID());
+    ticketValidation.setValidationMethod(method);
     ticketValidation.setStatus(ticketValidationStatus);
+    ticket.addValidation(ticketValidation);
 
     return ticketValidationRepository.save(ticketValidation);
   }
-
-  @Override
-  public TicketValidation validateTicketManually(UUID ticketId) {
-    Ticket ticket = ticketRepository.findByDomainId(ticketId)
-        .orElseThrow(TicketNotFoundException::new);
-    return validateTicket(ticket);
-  }
 }
 ```
+
+Three things changed from a first pass at this method:
+
+- `validateTicket` now takes the `method` it was called with, instead of hardcoding `TicketValidationMethod.QR_SCAN` -- a shared private helper hardcoding one caller's value is an easy bug to introduce and an easy one to miss, since `validateTicketManually` would silently record every manual validation as a QR scan.
+- `ticket.addValidation(ticketValidation)` (see "Bidirectional Relationship Helpers") replaces `ticketValidation.setTicket(ticket)`, and moves to *after* the status is computed. `addValidation` also adds `ticketValidation` to `ticket.getValidations()` -- doing that before reading `ticket.getValidations().stream()...` to compute the status would mean the stream sees the not-yet-valid validation we're currently building, which happens to be harmless here (its `status` is still `null` at that point, so the `VALID` filter never matches it), but ordering it after removes the question entirely.
+- `qrCode.getTicket()` is a lazy `@ManyToOne` proxy, not a fully-loaded `Ticket` -- but since `validateTicket` immediately calls `ticket.getValidations()` on it (still inside this method's `@Transactional`), that access forces the proxy to initialize before the method returns, so nothing later touches an uninitialized reference outside the session.
 
 Two more `domainId`-based lookups are needed to support this: `QrCodeRepository` needs a way to find an active QR code by its `domainId` (the `qrCodeId` scanned off a ticket's QR code is its `domainId`), and `TicketRepository` needs a way to find a ticket directly by its `domainId`, for manual entry where staff type in the ticket's externally-visible ID.
 
@@ -7227,9 +7494,9 @@ Optional<Ticket> findByDomainId(@Param("domainId") UUID domainId);
 
 The implementation includes these key features:
 
-- The `validateTicketByQrCode` method looks up an active QR code and validates the associated ticket.
+- The `validateTicketByQrCode` method looks up an active QR code and validates the associated ticket, recording the method as `QR_SCAN`.
 
-- The `validateTicketManually` method looks up a ticket directly by domain ID and validates it.
+- The `validateTicketManually` method looks up a ticket directly by domain ID and validates it, recording the method as `MANUAL`.
 
 - The private `validateTicket` method contains the shared validation logic.
 
@@ -7356,10 +7623,12 @@ To ensure only staff members can validate tickets, we need to secure the endpoin
 http
     .authorizeHttpRequests(authorize ->
         authorize
-            .requestMatchers("/api/v1/ticket-validations").hasRole("STAFF")
+            .requestMatchers("/api/v1/ticket-validations").hasRole(Role.STAFF.name())
             // Catch all rule
             .anyRequest().authenticated())
 ```
+
+`/api/v1/ticket-validations` has just the one `POST` endpoint, so there's no wildcard needed here the way `/api/v1/events/**` needed one -- an exact path match already covers everything under this controller.
 
 #### Summary
 
@@ -7398,6 +7667,434 @@ To test manual validation:
 #### Summary
 
 - Tested the ticket validation functionality through the UI
+
+## Venue Management
+
+Every event so far has referenced a `Venue` by `venueId`, but nothing has ever actually created one -- the `venues` table has only ever been populated by hand, directly in the database. This section closes that gap: organizers get `create`/`update`/`list`/`get` endpoints for venues, following the same DTO-to-internal-model-to-entity pattern as everything else in this build. There's no dedicated frontend screen for venue management in this build yet, so unlike the earlier feature sections, there's no "Ui Testing" lesson here -- these endpoints are exercised directly (Postman, curl, or similar) until a UI exists for them.
+
+### Venue Design
+
+#### Internal Request Models
+
+Following the same split we used for events -- a validation-free internal model the service layer works with, separate from the validated DTO the controller receives -- `Venue` gets its own pair:
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CreateVenueRequest {
+    private String name;
+    private String addressLine1;
+    private String addressLine2;
+    private String city;
+    private String postalCode;
+    private String country;
+    private Double latitude;
+    private Double longitude;
+    private Integer capacity;
+    private String accessibilityInfo;
+}
+```
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class UpdateVenueRequest {
+    private UUID id;
+    private String name;
+    private String addressLine1;
+    private String addressLine2;
+    private String city;
+    private String postalCode;
+    private String country;
+    private Double latitude;
+    private Double longitude;
+    private Integer capacity;
+    private String accessibilityInfo;
+}
+```
+
+`UpdateVenueRequest.id` exists for the same reason `UpdateEventRequest.id` does -- so the service layer can confirm the ID in the request body matches the ID in the URL path before applying any changes.
+
+#### Service Interface
+
+```java
+public interface VenueService {
+    Venue createVenue(CreateVenueRequest request);
+
+    Venue updateVenue(UUID id, UpdateVenueRequest request);
+
+    Page<Venue> listVenues(Pageable pageable);
+
+    Optional<Venue> getVenue(UUID id);
+}
+```
+
+We're including `listVenues` and `getVenue` from the start, not just `createVenue`/`updateVenue` -- an organizer creating an event needs some way to discover existing venues to pick a `venueId` from, and there was previously no API for that at all.
+
+#### Summary
+
+- Added the `CreateVenueRequest`/`UpdateVenueRequest` internal models
+- Created the `VenueService` interface with `createVenue`, `updateVenue`, `listVenues`, and `getVenue`
+
+### Venue Exceptions
+
+Updating a venue needs the same ID-consistency guard `updateEventForOrganizer` uses -- a dedicated exception, with its own `ErrorCode`s, rather than reusing `EventUpdateException` (which would be a confusing name for a venue-related failure):
+
+```java
+public class VenueUpdateException extends EventTicketException {
+    public VenueUpdateException(ErrorCode errorCode) {
+        super(errorCode);
+    }
+
+    public VenueUpdateException(ErrorCode errorCode, Object detail) {
+        super(errorCode, detail);
+    }
+
+    public VenueUpdateException(ErrorCode errorCode, Throwable cause) {
+        super(errorCode, cause);
+    }
+}
+```
+
+`VENUE_ID_REQUIRED` and `VENUE_ID_MISMATCH` (see "Error Codes") are already defined -- this is the first lesson that actually throws them. `VenueNotFoundException` already exists too, from resolving `venueId` when creating/updating events; venue management reuses it as-is.
+
+#### Summary
+
+- Added the `VenueUpdateException` exception, mirroring `EventUpdateException`'s two-code (`VENUE_ID_REQUIRED`/`VENUE_ID_MISMATCH`) pattern
+- Reused the existing `VenueNotFoundException` for lookups by domain ID
+
+### Venue Service Implementation
+
+```java
+@Service
+@RequiredArgsConstructor
+public class VenueServiceImpl implements VenueService {
+
+    private final VenueRepository venueRepository;
+
+    @Override
+    @Transactional
+    public Venue createVenue(CreateVenueRequest request) {
+        Venue venueToCreate = new Venue();
+        venueToCreate.setDomainId(UUID.randomUUID());
+        venueToCreate.setName(request.getName());
+        venueToCreate.setAddressLine1(request.getAddressLine1());
+        venueToCreate.setAddressLine2(request.getAddressLine2());
+        venueToCreate.setCity(request.getCity());
+        venueToCreate.setPostalCode(request.getPostalCode());
+        venueToCreate.setCountry(request.getCountry());
+        venueToCreate.setLatitude(request.getLatitude());
+        venueToCreate.setLongitude(request.getLongitude());
+        venueToCreate.setCapacity(request.getCapacity());
+        venueToCreate.setAccessibilityInfo(request.getAccessibilityInfo());
+
+        return venueRepository.save(venueToCreate);
+    }
+
+    @Override
+    @Transactional
+    public Venue updateVenue(UUID id, UpdateVenueRequest request) {
+        if (null == request.getId()) {
+            throw new VenueUpdateException(ErrorCode.VENUE_ID_REQUIRED);
+        }
+
+        if (!id.equals(request.getId())) {
+            throw new VenueUpdateException(ErrorCode.VENUE_ID_MISMATCH, id);
+        }
+
+        Venue existingVenue = venueRepository.findByDomainId(id)
+                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, id));
+
+        existingVenue.setName(request.getName());
+        existingVenue.setAddressLine1(request.getAddressLine1());
+        existingVenue.setAddressLine2(request.getAddressLine2());
+        existingVenue.setCity(request.getCity());
+        existingVenue.setPostalCode(request.getPostalCode());
+        existingVenue.setCountry(request.getCountry());
+        existingVenue.setLatitude(request.getLatitude());
+        existingVenue.setLongitude(request.getLongitude());
+        existingVenue.setCapacity(request.getCapacity());
+        existingVenue.setAccessibilityInfo(request.getAccessibilityInfo());
+
+        return venueRepository.save(existingVenue);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<Venue> listVenues(Pageable pageable) {
+        return venueRepository.findAll(pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Venue> getVenue(UUID id) {
+        return venueRepository.findByDomainId(id);
+    }
+}
+```
+
+`listVenues` doesn't need a custom `@Query` -- `findAll(Pageable)` already comes from `JpaRepository`, and `Venue` has no lazy associations that `VenueResponseDto` touches (it never serializes `venue.getEvents()`), so there's no `LazyInitializationException` risk to design around here the way there was for `Event`.
+
+#### Summary
+
+- Implemented `createVenue`, `updateVenue`, `listVenues`, and `getVenue` in `VenueServiceImpl`
+- `updateVenue` follows the same ID-consistency-guard shape as `updateEventForOrganizer`
+- No repository changes needed for `listVenues`/`getVenue` -- `findAll` is inherited, and `findByDomainId` already existed
+
+### Venue Dtos And Conversion Methods
+
+#### Request DTOs
+
+Validation mirrors the entity's `nullable = false` columns -- `name`, `addressLine1`, `city`, `postalCode`, and `country` are required; `addressLine2`, `latitude`, `longitude`, `capacity`, and `accessibilityInfo` are all optional:
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class CreateVenueRequestDto {
+    @NotBlank(message = "{validation.venue.name.required}")
+    private String name;
+
+    @NotBlank(message = "{validation.venue.address-line-1.required}")
+    private String addressLine1;
+
+    private String addressLine2;
+
+    @NotBlank(message = "{validation.venue.city.required}")
+    private String city;
+
+    @NotBlank(message = "{validation.venue.postal-code.required}")
+    private String postalCode;
+
+    @NotBlank(message = "{validation.venue.country.required}")
+    private String country;
+
+    private Double latitude;
+    private Double longitude;
+
+    @PositiveOrZero(message = "{validation.venue.capacity.positive-or-zero}")
+    private Integer capacity;
+
+    private String accessibilityInfo;
+}
+```
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class UpdateVenueRequestDto {
+    @NotNull(message = "{validation.venue.id.required}")
+    private UUID id;
+
+    @NotBlank(message = "{validation.venue.name.required}")
+    private String name;
+
+    @NotBlank(message = "{validation.venue.address-line-1.required}")
+    private String addressLine1;
+
+    private String addressLine2;
+
+    @NotBlank(message = "{validation.venue.city.required}")
+    private String city;
+
+    @NotBlank(message = "{validation.venue.postal-code.required}")
+    private String postalCode;
+
+    @NotBlank(message = "{validation.venue.country.required}")
+    private String country;
+
+    private Double latitude;
+    private Double longitude;
+
+    @PositiveOrZero(message = "{validation.venue.capacity.positive-or-zero}")
+    private Integer capacity;
+
+    private String accessibilityInfo;
+}
+```
+
+#### Extending VenueResponseDto
+
+`VenueResponseDto` already exists -- it's been reused across every event-related response since "Create Event" -- but it was only ever missing two fields the entity actually has: `capacity` and `accessibilityInfo`. Now that `Venue` is a first-class managed resource in its own right, its response shape should include everything the entity carries:
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class VenueResponseDto {
+    private UUID id;
+    private String name;
+    private String addressLine1;
+    private String addressLine2;
+    private String city;
+    private String postalCode;
+    private String country;
+    private Double latitude;
+    private Double longitude;
+    private Integer capacity;
+    private String accessibilityInfo;
+}
+```
+
+Since it's the same class already embedded in `CreateEventResponseDto`, `ListEventResponseDto`, and every other event response, `EventService.convertToVenueResponseDto` needs the two new `dto.setXxx(...)` calls too, so event responses pick up the new fields on their nested `venue` object as well:
+
+```java
+// In EventServiceImpl.convertToVenueResponseDto
+dto.setCapacity(venue.getCapacity());
+dto.setAccessibilityInfo(venue.getAccessibilityInfo());
+```
+
+#### Conversion Methods
+
+```java
+public interface VenueService {
+    // Existing methods...
+
+    CreateVenueRequest convertFromDto(CreateVenueRequestDto dto);
+
+    UpdateVenueRequest convertFromDto(UpdateVenueRequestDto dto);
+
+    VenueResponseDto convertToVenueResponseDto(Venue venue);
+}
+```
+
+```java
+@Override
+public CreateVenueRequest convertFromDto(CreateVenueRequestDto dto) {
+    CreateVenueRequest request = new CreateVenueRequest();
+    request.setName(dto.getName());
+    request.setAddressLine1(dto.getAddressLine1());
+    request.setAddressLine2(dto.getAddressLine2());
+    request.setCity(dto.getCity());
+    request.setPostalCode(dto.getPostalCode());
+    request.setCountry(dto.getCountry());
+    request.setLatitude(dto.getLatitude());
+    request.setLongitude(dto.getLongitude());
+    request.setCapacity(dto.getCapacity());
+    request.setAccessibilityInfo(dto.getAccessibilityInfo());
+    return request;
+}
+
+@Override
+public UpdateVenueRequest convertFromDto(UpdateVenueRequestDto dto) {
+    UpdateVenueRequest request = new UpdateVenueRequest();
+    request.setId(dto.getId());
+    request.setName(dto.getName());
+    request.setAddressLine1(dto.getAddressLine1());
+    request.setAddressLine2(dto.getAddressLine2());
+    request.setCity(dto.getCity());
+    request.setPostalCode(dto.getPostalCode());
+    request.setCountry(dto.getCountry());
+    request.setLatitude(dto.getLatitude());
+    request.setLongitude(dto.getLongitude());
+    request.setCapacity(dto.getCapacity());
+    request.setAccessibilityInfo(dto.getAccessibilityInfo());
+    return request;
+}
+
+@Override
+public VenueResponseDto convertToVenueResponseDto(Venue venue) {
+    VenueResponseDto dto = new VenueResponseDto();
+    dto.setId(venue.getDomainId());
+    dto.setName(venue.getName());
+    dto.setAddressLine1(venue.getAddressLine1());
+    dto.setAddressLine2(venue.getAddressLine2());
+    dto.setCity(venue.getCity());
+    dto.setPostalCode(venue.getPostalCode());
+    dto.setCountry(venue.getCountry());
+    dto.setLatitude(venue.getLatitude());
+    dto.setLongitude(venue.getLongitude());
+    dto.setCapacity(venue.getCapacity());
+    dto.setAccessibilityInfo(venue.getAccessibilityInfo());
+    return dto;
+}
+```
+
+`VenueService` gets its own `convertToVenueResponseDto`, separate from `EventService`'s -- we're not reaching across services to share a conversion method, the same way `ListEventTicketTypeResponseDto` and `ListTicketTicketTypeResponseDto` each got their own `TicketType`-to-DTO method in earlier lessons rather than one shared between `EventService` and `TicketService`. A few lines of duplication per service is the trade-off this build has made consistently, in exchange for every service being usable on its own.
+
+#### Summary
+
+- Created `CreateVenueRequestDto`/`UpdateVenueRequestDto`, validated against the entity's `nullable = false` columns
+- Extended `VenueResponseDto` with `capacity`/`accessibilityInfo`, and updated `EventService.convertToVenueResponseDto` to populate them
+- Added `convertFromDto`/`convertToVenueResponseDto` to `VenueService`, kept separate from `EventService`'s own copy
+
+### Venue Controller
+
+```java
+@RestController
+@RequestMapping(path = "/api/v1/venues")
+@RequiredArgsConstructor
+public class VenueController {
+
+    private final VenueService venueService;
+
+    @PostMapping
+    public ResponseEntity<VenueResponseDto> createVenue(
+            @Valid @RequestBody CreateVenueRequestDto createVenueRequestDto) {
+        CreateVenueRequest createVenueRequest = venueService.convertFromDto(createVenueRequestDto);
+        Venue createdVenue = venueService.createVenue(createVenueRequest);
+        VenueResponseDto venueResponseDto = venueService.convertToVenueResponseDto(createdVenue);
+        return new ResponseEntity<>(venueResponseDto, HttpStatus.CREATED);
+    }
+
+    @PutMapping(path = "/{venueId}")
+    public ResponseEntity<VenueResponseDto> updateVenue(
+            @PathVariable UUID venueId,
+            @Valid @RequestBody UpdateVenueRequestDto updateVenueRequestDto) {
+        UpdateVenueRequest updateVenueRequest = venueService.convertFromDto(updateVenueRequestDto);
+        Venue updatedVenue = venueService.updateVenue(venueId, updateVenueRequest);
+        VenueResponseDto venueResponseDto = venueService.convertToVenueResponseDto(updatedVenue);
+        return ResponseEntity.ok(venueResponseDto);
+    }
+
+    @GetMapping
+    public ResponseEntity<Page<VenueResponseDto>> listVenues(Pageable pageable) {
+        Page<Venue> venues = venueService.listVenues(pageable);
+        return ResponseEntity.ok(venues.map(venueService::convertToVenueResponseDto));
+    }
+
+    @GetMapping(path = "/{venueId}")
+    public ResponseEntity<VenueResponseDto> getVenue(@PathVariable UUID venueId) {
+        return venueService.getVenue(venueId)
+                .map(venueService::convertToVenueResponseDto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+}
+```
+
+No `parseUserId`/`@AuthenticationPrincipal Jwt` anywhere in this controller -- `Venue` has no `organizer`/owner field, so unlike `EventController`, there's no per-caller filtering to do here. Access is still restricted (organizers only), but that's handled entirely at the security layer, next.
+
+#### Summary
+
+- Implemented `VenueController` with create, update, list, and get-by-id endpoints
+- No JWT-derived filtering needed, since venues aren't owned by a specific organizer
+
+### Securing Venue Endpoints
+
+Venue management is organizer-only, the same as event management:
+
+```java
+.authorizeHttpRequests(authorize ->
+    authorize
+        .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**").permitAll()
+        .requestMatchers(HttpMethod.POST, "/api/v1/events/*/ticket-types/*/tickets").authenticated()
+        .requestMatchers("/api/v1/events/**").hasRole(Role.ORGANIZER.name())
+        .requestMatchers("/api/v1/venues/**").hasRole(Role.ORGANIZER.name())
+        .requestMatchers("/api/v1/ticket-validations").hasRole(Role.STAFF.name())
+        // Catch all rule
+        .anyRequest().authenticated())
+```
+
+This is the complete `authorizeHttpRequests` block, gathering every rule introduced across the build: published events are public, ticket purchase just needs authentication (any role), events and venues are organizer-only, ticket validation is staff-only, and everything else falls through to "any authenticated user" -- which is exactly right for `/api/v1/tickets/**`, since an attendee viewing their own purchased tickets doesn't need a special role, just to be logged in.
+
+#### Summary
+
+- Added `/api/v1/venues/**` to `SecurityConfig`, restricted to `Role.ORGANIZER`
+- This is the final state of `authorizeHttpRequests`, consolidating every rule from earlier lessons in one place
 
 ## Frontend Internationalization
 
