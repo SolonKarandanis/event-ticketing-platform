@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="1-create-sequences" author="event-ticket-platform">
+        <createSequence sequenceName="users_seq" startValue="1" incrementBy="1"/>
+        <createSequence sequenceName="venues_seq" startValue="1" incrementBy="1"/>
+        <createSequence sequenceName="events_seq" startValue="1" incrementBy="1"/>
+        <createSequence sequenceName="ticket_types_seq" startValue="1" incrementBy="1"/>
+        <createSequence sequenceName="tickets_seq" startValue="1" incrementBy="1"/>
+        <createSequence sequenceName="ticket_validations_seq" startValue="1" incrementBy="1"/>
+        <createSequence sequenceName="qr_codes_seq" startValue="1" incrementBy="1"/>
+    </changeSet>
+
+    <changeSet id="2-create-users-table" author="event-ticket-platform">
+        <createTable tableName="users">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="users_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_users_domain_id"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="email" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="3-create-venues-table" author="event-ticket-platform">
+        <createTable tableName="venues">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="venues_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_venues_domain_id"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="address_line_1" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="address_line_2" type="VARCHAR(255)"/>
+            <column name="city" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="postal_code" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="country" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="latitude" type="DOUBLE"/>
+            <column name="longitude" type="DOUBLE"/>
+            <column name="capacity" type="INT"/>
+            <column name="accessibility_info" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="4-create-events-table" author="event-ticket-platform">
+        <createTable tableName="events">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="events_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_events_domain_id"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="event_start" type="TIMESTAMP"/>
+            <column name="event_end" type="TIMESTAMP"/>
+            <column name="venue_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_events_venue" references="venues(id)"/>
+            </column>
+            <column name="sales_start" type="TIMESTAMP"/>
+            <column name="sales_end" type="TIMESTAMP"/>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="organizer_id" type="BIGINT">
+                <constraints foreignKeyName="fk_events_organizer" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="5-create-ticket-types-table" author="event-ticket-platform">
+        <createTable tableName="ticket_types">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="ticket_types_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_ticket_types_domain_id"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="price" type="DOUBLE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT"/>
+            <column name="total_available" type="INT"/>
+            <column name="event_id" type="BIGINT">
+                <constraints foreignKeyName="fk_ticket_types_event" references="events(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="6-create-tickets-table" author="event-ticket-platform">
+        <createTable tableName="tickets">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="tickets_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_tickets_domain_id"/>
+            </column>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ticket_type_id" type="BIGINT">
+                <constraints foreignKeyName="fk_tickets_ticket_type" references="ticket_types(id)"/>
+            </column>
+            <column name="purchaser_id" type="BIGINT">
+                <constraints foreignKeyName="fk_tickets_purchaser" references="users(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="7-create-ticket-validations-table" author="event-ticket-platform">
+        <createTable tableName="ticket_validations">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="ticket_validations_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_ticket_validations_domain_id"/>
+            </column>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="validation_method" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ticket_id" type="BIGINT">
+                <constraints foreignKeyName="fk_ticket_validations_ticket" references="tickets(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="8-create-qr-codes-table" author="event-ticket-platform">
+        <createTable tableName="qr_codes">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="qr_codes_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_qr_codes_domain_id"/>
+            </column>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="value" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ticket_id" type="BIGINT">
+                <constraints foreignKeyName="fk_qr_codes_ticket" references="tickets(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="9-create-user-attending-events-table" author="event-ticket-platform">
+        <createTable tableName="user_attending_events">
+            <column name="user_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false" foreignKeyName="fk_user_attending_events_user" references="users(id)"/>
+            </column>
+            <column name="event_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false" foreignKeyName="fk_user_attending_events_event" references="events(id)"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="10-create-user-staffing-events-table" author="event-ticket-platform">
+        <createTable tableName="user_staffing_events">
+            <column name="user_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false" foreignKeyName="fk_user_staffing_events_user" references="users(id)"/>
+            </column>
+            <column name="event_id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false" foreignKeyName="fk_user_staffing_events_event" references="events(id)"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>
