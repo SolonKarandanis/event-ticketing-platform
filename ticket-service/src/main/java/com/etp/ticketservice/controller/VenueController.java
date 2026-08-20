@@ -40,8 +40,7 @@ public class VenueController {
     }
 
     @PutMapping(path = "/{venueId}")
-    public ResponseEntity<VenueResponseDto> updateVenue(
-            @PathVariable UUID venueId,
+    public ResponseEntity<VenueResponseDto> updateVenue(@PathVariable UUID venueId,
             @Valid @RequestBody UpdateVenueRequestDto updateVenueRequestDto) {
         UpdateVenueRequest updateVenueRequest = venueService.convertFromDto(updateVenueRequestDto);
         Venue updatedVenue = venueService.updateVenue(venueId, updateVenueRequest);

@@ -21,8 +21,7 @@ public class TicketValidationController {
 
     @PostMapping
     public ResponseEntity<TicketValidationResponseDto> validateTicket(
-            @RequestBody TicketValidationRequestDto ticketValidationRequestDto
-    ) {
+            @RequestBody TicketValidationRequestDto ticketValidationRequestDto) {
         TicketValidationMethod method = ticketValidationRequestDto.getMethod();
         TicketValidation ticketValidation;
         if (TicketValidationMethod.MANUAL.equals(method)) {
