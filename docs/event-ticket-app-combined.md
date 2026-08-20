@@ -8504,7 +8504,10 @@ This is deliberately a flat, denormalized fact table -- one row per sale -- rath
 
 #### Record a Sale
 
+Both new files live under `src/ticket-sales/`, alongside each other -- everything about recording and reporting on sales, kept separate from `src/db/`'s connection/schema concerns and `src/rabbitmq/`'s transport concerns.
+
 ```typescript
+// src/ticket-sales/ticket-purchased.event.ts
 export interface TicketPurchasedEvent {
   ticketId: string;
   ticketTypeId: string;
@@ -8516,17 +8519,20 @@ export interface TicketPurchasedEvent {
 ```
 
 ```typescript
+// src/ticket-sales/ticket-sales.service.ts
 import { Injectable, Inject } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { DRIZZLE } from './db/drizzle.provider';
-import { ticketSales } from './db/schema';
+import { DRIZZLE } from '../db/drizzle.provider';
+import { ticketSales } from '../db/schema';
 import { TicketPurchasedEvent } from './ticket-purchased.event';
-import * as schema from './db/schema';
+import * as schema from '../db/schema';
 
 @Injectable()
 export class TicketSalesService {
-  constructor(@Inject(DRIZZLE) private readonly db: PostgresJsDatabase<typeof schema>) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: PostgresJsDatabase<typeof schema>,
+  ) {}
 
   async recordSale(event: TicketPurchasedEvent): Promise<void> {
     await this.db
@@ -8586,26 +8592,35 @@ This writes a new `.sql` file under `drizzle/` -- reviewable and committable, no
 // src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { AppModule } from './app.module';
 import { DRIZZLE } from './db/drizzle.provider';
+import * as schema from './db/schema';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const db = app.get(DRIZZLE);
+  const db = app.get<PostgresJsDatabase<typeof schema>>(DRIZZLE);
 
   await migrate(db, { migrationsFolder: './drizzle' });
 
-  await app.listen(3001);
+  await app.listen(process.env.PORT ?? 3001);
 }
+void bootstrap();
 ```
+
+Two strict-mode details: `app.get(DRIZZLE)` alone would come back typed `any`, since `DRIZZLE` is a `Symbol` token rather than a class Nest can infer a return type from -- the explicit `app.get<PostgresJsDatabase<typeof schema>>(...)` generic fixes that. And `void bootstrap()` (not just `bootstrap()`) explicitly marks the top-level floating promise as intentionally unawaited, satisfying `@typescript-eslint/no-floating-promises` -- this is what `nest new`'s own generated `main.ts` already does, and it's easy to lose when rewriting the file by hand.
 
 #### Wire Up the Consumer
 
+This one lives under `src/rabbitmq/` -- it's the only file in the project that knows `amqp-connection-manager` exists.
+
 ```typescript
+// src/rabbitmq/rabbitmq-consumer.service.ts
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as amqp from 'amqp-connection-manager';
 import { ConfirmChannel, ConsumeMessage } from 'amqplib';
-import { TicketSalesService } from './ticket-sales.service';
+import { TicketSalesService } from '../ticket-sales/ticket-sales.service';
+import { TicketPurchasedEvent } from '../ticket-sales/ticket-purchased.event';
 
 const EVENTS_EXCHANGE = 'ticket-platform.events';
 const QUEUE_NAME = 'analytics-service.ticket-events';
@@ -8627,8 +8642,10 @@ export class RabbitMqConsumerService implements OnModuleInit {
         await channel.assertQueue(QUEUE_NAME, { durable: true });
         await channel.bindQueue(QUEUE_NAME, EVENTS_EXCHANGE, 'ticket.purchased');
 
-        await channel.consume(QUEUE_NAME, (message: ConsumeMessage | null) =>
-          this.handleMessage(channel, message),
+        await channel.consume(
+          QUEUE_NAME,
+          (message: ConsumeMessage | null) =>
+            void this.handleMessage(channel, message),
         );
       },
     });
@@ -8640,7 +8657,9 @@ export class RabbitMqConsumerService implements OnModuleInit {
     }
 
     try {
-      const event = JSON.parse(message.content.toString());
+      const event = JSON.parse(
+        message.content.toString(),
+      ) as TicketPurchasedEvent;
       await this.ticketSalesService.recordSale(event);
       channel.ack(message);
     } catch (error) {
@@ -8655,6 +8674,8 @@ Both sides assert the exchange (idempotent -- whichever service starts first act
 
 `channel.nack(message, false, false)` discards a message that fails to process rather than requeueing it, which matters: a malformed message would otherwise loop forever through consume-fail-requeue. That's also a simplification -- a production setup would route failed messages to a dead-letter exchange instead of dropping them silently, so nothing gets lost without a trace. We're keeping it simple for now.
 
+Two strict-lint details worth knowing about, both flagged by `@typescript-eslint`'s type-checked rules once this is wired into `AppModule`: `channel.consume`'s callback is expected to return `void`, but `handleMessage` is `async` (so calling it returns a `Promise`) -- wrapping the call as `void this.handleMessage(...)` explicitly marks that promise as intentionally un-awaited (`@typescript-eslint/no-misused-promises`), which is safe here since `handleMessage` already catches its own errors internally and never lets a rejection escape. And `JSON.parse(...)` returns `any` by design -- it can't know the shape of what it parsed -- so `as TicketPurchasedEvent` makes that trust explicit (`@typescript-eslint/no-unsafe-assignment`) rather than letting an untyped value flow silently into `recordSale`.
+
 #### Summary
 
 - Defined the `ticketSales` table as a Drizzle schema, with a unique `ticketId` for idempotency
@@ -8662,16 +8683,23 @@ Both sides assert the exchange (idempotent -- whichever service starts first act
 - Set up Drizzle Kit migrations, applied automatically on startup
 - Implemented `RabbitMqConsumerService`, which declares and binds its own queue to `ticket-service`'s exchange
 - Failed messages are dropped rather than looped forever, with a noted follow-up (dead-lettering) we're not building yet
+- `src/ticket-sales/` and `src/rabbitmq/` join `src/db/` as the project's feature folders -- nothing lives loose at the top of `src/` beyond `app.module.ts` and `main.ts`
 
 ### Expose the Reporting API
 
-`analytics-service` doesn't get its own identity system -- it validates the same Keycloak-issued JWTs `ticket-service` does, against the same realm's JWKS endpoint.
+`analytics-service` doesn't get its own identity system -- it validates the same Keycloak-issued JWTs `ticket-service` does, against the same realm's JWKS endpoint. That JWKS URI goes in `.env` as `KEYCLOAK_JWKS_URI`, alongside `ANALYTICS_DATABASE_URL` and `RABBITMQ_URL` -- nothing in this project hardcodes another service's location.
 
 ```typescript
+// src/auth/keycloak-jwt.strategy.ts
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import * as jwksRsa from 'jwks-rsa';
+
+interface KeycloakJwtPayload {
+  sub: string;
+  realm_access?: { roles: string[] };
+}
 
 @Injectable()
 export class KeycloakJwtStrategy extends PassportStrategy(Strategy) {
@@ -8679,22 +8707,25 @@ export class KeycloakJwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       secretOrKeyProvider: jwksRsa.passportJwtSecret({
-        jwksUri: 'http://localhost:9090/realms/event-ticket-platform/protocol/openid-connect/certs',
+        jwksUri: process.env.KEYCLOAK_JWKS_URI as string,
       }),
       algorithms: ['RS256'],
     });
   }
 
-  async validate(payload: any) {
+  validate(payload: KeycloakJwtPayload) {
     const roles: string[] = payload.realm_access?.roles ?? [];
     return { userId: payload.sub, roles };
   }
 }
 ```
 
+The decoded JWT payload gets a small local `KeycloakJwtPayload` interface rather than `any` -- `passport-jwt`'s own types leave it untyped since the shape is entirely up to whoever issued the token, but we know what Keycloak puts in it, so there's no reason to give up type safety here.
+
 With that in place, a summary endpoint is a thin controller on top of the service we already wrote:
 
 ```typescript
+// src/ticket-sales/event-analytics.controller.ts
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { TicketSalesService } from './ticket-sales.service';
@@ -8713,8 +8744,69 @@ export class EventAnalyticsController {
 
 This endpoint only ever reads by `eventId` -- it never needs to resolve who the organizer's internal user record is, so there's no provisioning filter or user table to build on this side at all. Sales-over-time and organizer-level rollups follow the exact same shape: a query method on `TicketSalesService`, a route on this controller. We're not building every endpoint here -- this establishes the pattern.
 
+#### Wire Everything Into AppModule
+
+By this point `AppModule` has grown to register every provider and controller introduced across this section -- the default `AppController`/`AppService` from the initial scaffold were never doing anything for this service and can go entirely:
+
+```typescript
+// src/app.module.ts
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { PassportModule } from '@nestjs/passport';
+import { drizzleProvider } from './db/drizzle.provider';
+import { TicketSalesService } from './ticket-sales/ticket-sales.service';
+import { EventAnalyticsController } from './ticket-sales/event-analytics.controller';
+import { RabbitMqConsumerService } from './rabbitmq/rabbitmq-consumer.service';
+import { KeycloakJwtStrategy } from './auth/keycloak-jwt.strategy';
+
+@Module({
+  imports: [ConfigModule.forRoot(), PassportModule],
+  controllers: [EventAnalyticsController],
+  providers: [
+    drizzleProvider,
+    TicketSalesService,
+    RabbitMqConsumerService,
+    KeycloakJwtStrategy,
+  ],
+})
+export class AppModule {}
+```
+
+`PassportModule` needs to be imported for `AuthGuard('jwt')` to resolve the `'jwt'` strategy by name; `KeycloakJwtStrategy` registers itself under that name simply by being instantiated (that's what extending `PassportStrategy(Strategy)` does internally), so there's no separate step to tell Nest which class backs which guard string.
+
+A quick way to confirm the guard is actually doing something, before wiring up a real Keycloak login: hit the endpoint with no `Authorization` header, and with a bearer token that isn't a real JWT. Both should come back `401` -- the second case matters more than it looks, since it confirms invalid tokens are rejected outright rather than silently falling through unauthenticated.
+
 #### Summary
 
-- Added a `KeycloakJwtStrategy` validating against the same realm as `ticket-service`, no separate identity system
+- Added a `KeycloakJwtStrategy` validating against the same realm as `ticket-service`, no separate identity system -- reads its JWKS URI from `.env`, and types the decoded payload instead of using `any`
 - Exposed `GET /analytics/events/:eventId/summary` as the first reporting endpoint
+- Registered `PassportModule`, the strategy, and the controller in `AppModule`, and removed the unused default `AppController`/`AppService`
 - `analytics-service` now has no direct dependency on `ticket-service` in either direction -- RabbitMQ in, a read API out
+
+## Project Status
+
+A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
+
+### The biggest gap: no frontend yet
+
+Everything built so far is backend -- `ticket-service` (Spring Boot) and `analytics-service` (NestJS). The "Ui Testing" lessons throughout this document describe a React + TanStack Start frontend (event creation forms, the purchase flow, the QR validation screen, the published-events landing page), but that project has never been scaffolded. "Frontend Internationalization" is in the same position -- the lesson exists, but there's no frontend yet to apply it to.
+
+### `ticket-service` loose ends
+
+- No automated tests anywhere (unit or integration) -- everything's been verified manually so far, via `bootRun` plus `psql`/`curl` checks, not a test suite
+- Keycloak now has all three users (`organizer`, `attendee`, `staff`), so the purchase flow and ticket validation flow both have accounts to test with
+
+### `analytics-service` loose ends
+
+- A message has never actually been watched flowing publish → consume → DB row end-to-end -- the consumer's setup (exchange/queue/binding) is confirmed via the RabbitMQ management API, but a live message hasn't been traced through `recordSale` yet; this is expected to get exercised naturally once real purchases are flowing through `ticket-service`
+- The reporting endpoint has only been tested for rejection (`401` with no/bad token) -- not yet with a real valid Keycloak-issued token returning real summary data
+- No automated tests
+
+### Explicitly out of scope, not oversights
+
+These are called out directly in the relevant lessons as deliberate simplifications, not gaps to close by accident:
+
+- Dead-lettering failed RabbitMQ messages (currently dropped with a log line -- see "Wire Up the Consumer")
+- The transactional outbox pattern, for the narrow crash-between-commit-and-publish window (see "Two Kinds of Event, Not One")
+- Additional reporting endpoints beyond the one summary endpoint -- sales-over-time, organizer-level rollups (see "Expose the Reporting API")
+- A `notifications-service` third consumer on the `ticket-platform.events` exchange
