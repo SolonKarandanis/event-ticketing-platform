@@ -1390,26 +1390,47 @@ We've learned a lot about the application we are to build, let's use this knowle
 
 ![Architecture Design](./images/6-5-architecture-design.webp)
 
-Based on the functionality we've captured, we'll need a few components:
+The screenshot above is the very first pass at this -- just a frontend, a backend, and a database. The system has grown a lot since: a dedicated auth server, a message broker, and a whole second service. The mermaid diagram below is the one to trust going forward; treat the screenshot as a historical snapshot, not the current design.
 
-- Spring Boot app -- The backend of our application, exposing a REST API
-- React App (TanStack Start + React Query) -- The frontend of our application, which calls the REST API
-- Keycloak -- Our auth server, handling authentication and authorization
+Based on the functionality we've captured, we'll need the following components:
+
+- **React App (TanStack Start + React Query)** -- the frontend, calling `ticket-service`'s REST API directly and `analytics-service`'s reporting API directly (see "Analytics Service" later in this document) -- never proxied through one another
+- **Keycloak** -- our auth server; both `ticket-service` and `analytics-service` validate JWTs against the same realm, and neither runs its own identity system
+- **ticket-service (Spring Boot)** -- the backend for everything organizer/attendee/staff-facing: events, venues, tickets, purchases, validation
+- **ticket-service's PostgreSQL database** -- owned exclusively by `ticket-service`; nothing else reads or writes it directly
+- **RabbitMQ** -- the message broker connecting `ticket-service` to `analytics-service`. `ticket-service` publishes to a topic exchange (`ticket-platform.events`) without knowing who's listening; `analytics-service` declares and binds its own queue to it
+- **analytics-service (NestJS)** -- consumes `ticket.purchased` events off RabbitMQ and exposes a read-only reporting API; it never calls `ticket-service`, and `ticket-service` never calls it -- the only connection between them is the exchange
+- **analytics-service's own PostgreSQL database** -- separate from `ticket-service`'s, so expensive reporting/aggregate queries never compete with live purchase traffic for the same database
 
 Here's the mermaid diagram:
 
 ```mermaid
 flowchart LR
-    A[Event Ticket App</br>Frontend</br><< React + TanStack Start >>]
-    B[Event Ticket App</br>Backend</br><< Spring Boot >>]
-    C[Database</br><< PostgreSQL >>]
-    A --- B
-    B --- C
+    F[Event Ticket App</br>Frontend</br><< React + TanStack Start >>]
+    K[Keycloak</br><< Auth Server >>]
+    B[ticket-service</br><< Spring Boot >>]
+    DB1[(ticketservice DB</br><< PostgreSQL >>)]
+    MQ{{ticket-platform.events</br><< RabbitMQ Topic Exchange >>}}
+    A[analytics-service</br><< NestJS >>]
+    DB2[(analytics DB</br><< PostgreSQL >>)]
+
+    F -- REST API --> B
+    F -- reporting API --> A
+    F -. login/JWT .-> K
+    B -. validates JWT .-> K
+    A -. validates JWT .-> K
+    B --- DB1
+    A --- DB2
+    B -- publishes ticket.purchased --> MQ
+    MQ -- consumed by --> A
 ```
+
+Two things worth calling out in the diagram itself: there's no arrow anywhere between `ticket-service` and `analytics-service` directly -- the only path between them runs through the exchange, in one direction, and neither service knows the other exists beyond that. And `analytics-service` has its own database node, not a shared one with `ticket-service` -- the two services don't just run separately, they own their data separately too.
 
 #### Summary
 
-- Our architecture includes a Spring Boot backend, a React + TanStack Start frontend (using React Query), PostgreSQL database, and a Keycloak server
+- Our architecture now includes `ticket-service` (Spring Boot) and `analytics-service` (NestJS), each with its own PostgreSQL database, a React + TanStack Start frontend (using React Query) calling both services' APIs directly, a shared Keycloak auth server, and RabbitMQ connecting `ticket-service` to `analytics-service` one-way via a topic exchange
+- `ticket-service` and `analytics-service` never call each other directly -- RabbitMQ in, independent REST APIs out
 
 ## Project Setup
 
@@ -1725,8 +1746,8 @@ Let's add a RabbitMQ service to our existing `docker-compose.yml`:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: ticket-platform
-      RABBITMQ_DEFAULT_PASS: changemeinprod!
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
 ```
 
 Two ports are exposed:
@@ -1734,7 +1755,7 @@ Two ports are exposed:
 - `5672` is the AMQP port -- this is what `ticket-service` (and later, `notifications-service`) actually connects on to publish and consume messages
 - `15672` is the management UI, available at `http://localhost:15672`, where you can inspect exchanges, queues, and individual messages while developing
 
-We're setting an explicit `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` rather than relying on the image's default `guest`/`guest` account. That's not just a security habit -- RabbitMQ's `guest` user is hard-restricted to connections from `localhost` by the broker itself, and a connection from another container on the Compose network doesn't count as `localhost`, so `ticket-service` would be refused outright if we left it as-is.
+We're setting an explicit `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` rather than relying on the image's default `guest`/`guest` account -- not primarily for security (`admin`/`admin` isn't meaningfully stronger, and this is local dev only, matching the same `admin`/`admin` convenience already used for Keycloak), but because RabbitMQ's `guest` user is hard-restricted to connections from `localhost` by the broker itself. A connection from another container on the Compose network doesn't count as `localhost`, so `ticket-service` would be refused outright if we left it as `guest`/`guest`.
 
 #### Summary
 
@@ -8234,8 +8255,8 @@ Before `analytics-service` can consume anything, `ticket-service` needs to publi
 ```properties
 spring.rabbitmq.host=localhost
 spring.rabbitmq.port=5672
-spring.rabbitmq.username=ticket-platform
-spring.rabbitmq.password=changemeinprod!
+spring.rabbitmq.username=admin
+spring.rabbitmq.password=admin
 ```
 
 ```java
@@ -8251,7 +8272,7 @@ public class RabbitMqConfig {
 
     @Bean
     public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+        return new JacksonJsonMessageConverter();
     }
 
     @Bean
@@ -8264,6 +8285,19 @@ public class RabbitMqConfig {
 ```
 
 Notice we only declare the exchange here -- deliberately no queue. `ticket-service` publishes to a topic exchange and doesn't need to know or care who's listening, or how many services are. Each consumer -- `analytics-service`, and later maybe `notifications-service` too -- declares and binds its own queue.
+
+`JacksonJsonMessageConverter`, not `Jackson2JsonMessageConverter` -- Spring AMQP 4.0 deprecated the latter (the "2" existed to distinguish it from an old Jackson 1.x-based converter that's long gone) in favor of the former, which is what actually ships on the classpath at this project's Spring Boot version. Most tutorials and Stack Overflow answers still show the deprecated name.
+
+#### Two Kinds of Event, Not One
+
+It's tempting to just inject `RabbitTemplate` straight into `TicketTypeServiceImpl` and call `convertAndSend(...)` at the end of `purchaseTicket`. The problem is timing: that call happens *inside* the same `@Transactional` method that does the purchase. If RabbitMQ is briefly unreachable when it runs, the exception rolls back the whole purchase -- a downstream messaging hiccup destroying a perfectly good ticket sale is the opposite of the decoupling we wanted from pulling analytics out into its own service in the first place.
+
+Spring's own application event support fixes this cleanly, with no new infrastructure. We publish a plain in-process `ApplicationEvent` from inside `purchaseTicket`, and hand the actual RabbitMQ publish to a separate listener registered with `@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)` -- which Spring only invokes once the surrounding transaction has actually committed. Two consequences fall out of that for free:
+
+- If the purchase transaction rolls back (sold out, a constraint violation, anything), the listener never runs at all -- no message goes out for a purchase that didn't happen.
+- If RabbitMQ is unreachable, the exception happens *after* the ticket is already safely committed to the database. The purchase succeeds either way; only the message delivery fails.
+
+That second point is still not perfect delivery guarantee -- if the app crashes in the narrow window between the transaction committing and the listener's `convertAndSend` call, the message is lost with no retry. Closing that gap fully needs the transactional outbox pattern (write the event to a table in the same transaction as the ticket, have a separate poller publish it), which we're still not building. But the window we're now exposed to is much smaller than "any RabbitMQ hiccup can roll back a real purchase," which is what a direct `RabbitTemplate` call from inside the transaction would give us.
 
 #### Define the Event and Publish It
 
@@ -8279,31 +8313,53 @@ public record TicketPurchasedEvent(
 }
 ```
 
-Every field here is a `domainId` or a plain value -- never an internal sequential `id`. This message is leaving the service boundary entirely, so the same rule that governs our DTOs applies to it too.
+Every field here is a `domainId` or a plain value -- never an internal sequential `id`, and never a live entity reference. That matters even more now than it did for the message alone: the listener that eventually reads this record runs *after* the transaction (and its Hibernate session) has already closed, so if this carried the `Ticket` entity itself instead of plain values, touching any of its lazy associations from the listener would throw `LazyInitializationException`. Extracting everything into flat fields while the entity is still attached -- inside `TicketEventPublisher`, below -- sidesteps that entirely; there's nothing left in the record that could ever need a session.
+
+This same record does double duty as both the in-process Spring event and the RabbitMQ message body -- there's no separate mapping step, since the shape a downstream consumer needs (`ticket.purchased`'s payload) and the shape our own listener needs are identical.
 
 ```java
 @Service
 @RequiredArgsConstructor
 public class TicketEventPublisher {
 
-    private final RabbitTemplate rabbitTemplate;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public void publishTicketPurchased(Ticket ticket) {
-        TicketPurchasedEvent event = new TicketPurchasedEvent(
+        applicationEventPublisher.publishEvent(new TicketPurchasedEvent(
                 ticket.getDomainId(),
                 ticket.getTicketType().getDomainId(),
                 ticket.getTicketType().getEvent().getDomainId(),
                 ticket.getPurchaser().getDomainId(),
                 ticket.getTicketType().getPrice(),
                 ticket.getCreatedAt()
-        );
+        ));
+    }
+}
+```
 
+This is `TicketTypeServiceImpl`'s only touchpoint with any of this -- it still just calls `ticketEventPublisher.publishTicketPurchased(savedTicket)`, exactly as before. `TicketEventPublisher` no longer knows RabbitMQ exists at all; it hands a plain Java object to Spring's `ApplicationEventPublisher` and is done.
+
+#### Listen for the Event and Publish to RabbitMQ
+
+```java
+@Component
+@RequiredArgsConstructor
+public class RabbitMqTicketEventListener {
+
+    private final RabbitTemplate rabbitTemplate;
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTicketPurchased(TicketPurchasedEvent event) {
         rabbitTemplate.convertAndSend(RabbitMqConfig.EVENTS_EXCHANGE, "ticket.purchased", event);
     }
 }
 ```
 
+`@TransactionalEventListener` only fires this way when the event is published from inside an active transaction -- by default, if `publishEvent(...)` is ever called with no transaction in progress, the event is silently dropped rather than delivered synchronously. That's not a concern here, since `TicketEventPublisher.publishTicketPurchased` is always called from inside `purchaseTicket`'s `@Transactional` boundary, but it's worth knowing if this pattern gets reused somewhere that isn't already transactional.
+
 #### Hook It Into the Purchase Flow
+
+`purchaseTicket` itself doesn't change from how it already looked:
 
 ```java
 @Service
@@ -8331,14 +8387,15 @@ public class TicketTypeServiceImpl implements TicketTypeService {
 }
 ```
 
-One honest limitation worth flagging: this publishes inside the same `@Transactional` method that does the purchase. If RabbitMQ is briefly unreachable when `convertAndSend` runs, the exception rolls back the whole purchase -- the opposite of the decoupling we wanted. We're accepting that trade-off for now, since it's simple and RabbitMQ runs right alongside everything else in Docker Compose. The real fix, if this needs to be genuinely reliable, is the transactional outbox pattern -- write the event to a table in the same transaction as the ticket, and have a separate poller publish it. We're not building that yet.
+That's the point of routing this through `TicketEventPublisher` in the first place -- the purchase flow's only obligation is to say "a ticket was purchased," not to know or care that a `TransactionPhase.AFTER_COMMIT` listener and a topic exchange are involved downstream.
 
 #### Summary
 
 - Added `spring-boot-starter-amqp` and configured the RabbitMQ connection
 - Declared a `ticket-platform.events` topic exchange, with no queue of its own
-- Published a `TicketPurchasedEvent` -- domain IDs only -- on `ticket.purchased` after a successful purchase
-- Flagged that this isn't fully reliable yet; a transactional outbox is the production-grade fix
+- Split ticket-purchase eventing into two stages: `TicketEventPublisher` publishes an in-process `TicketPurchasedEvent` from inside the purchase transaction; `RabbitMqTicketEventListener` forwards it to RabbitMQ via `@TransactionalEventListener(phase = AFTER_COMMIT)`, only after that transaction commits
+- This means a RabbitMQ outage can no longer roll back a successful ticket purchase -- only the message delivery is at risk, not the sale itself
+- A transactional outbox is still the fully rigorous fix for the narrow crash-between-commit-and-publish window; still not building it yet
 
 ### Scaffold the NestJS Project
 
@@ -8534,7 +8591,7 @@ export class RabbitMqConsumerService implements OnModuleInit {
 
   onModuleInit() {
     const connection = amqp.connect([
-      process.env.RABBITMQ_URL ?? 'amqp://ticket-platform:changemeinprod!@localhost:5672',
+      process.env.RABBITMQ_URL ?? 'amqp://admin:admin@localhost:5672',
     ]);
 
     connection.createChannel({

@@ -40,13 +40,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -249,6 +245,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    public List<UpdateTicketTypeRequest> convertFromDtoList(List<UpdateTicketTypeRequestDto> dtoList) {
+        if (CollectionUtils.isEmpty(dtoList)) {
+            return Collections.emptyList();
+        }
+        return dtoList.stream()
+                .map(this::convertFromDto)
+                .toList();
+    }
+
+    @Override
     public UpdateEventRequest convertFromDto(UpdateEventRequestDto dto) {
         UpdateEventRequest request = new UpdateEventRequest();
         request.setId(dto.getId());
@@ -259,9 +265,7 @@ public class EventServiceImpl implements EventService {
         request.setSalesStart(dto.getSalesStart());
         request.setSalesEnd(dto.getSalesEnd());
         request.setStatus(dto.getStatus());
-        request.setTicketTypes(dto.getTicketTypes().stream()
-                .map(this::convertFromDto)
-                .toList());
+        request.setTicketTypes(convertFromDtoList(dto.getTicketTypes()));
         return request;
     }
 
@@ -294,6 +298,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    public List<CreateTicketTypeResponseDto> convertToCreateTicketTypeResponseDtoList(Set<TicketType> ticketTypeList) {
+        if (CollectionUtils.isEmpty(ticketTypeList)) {
+            return Collections.emptyList();
+        }
+        return ticketTypeList.stream()
+                .map(this::convertToCreateTicketTypeResponseDto)
+                .toList();
+    }
+
+    @Override
     public CreateEventResponseDto convertToCreateEventResponseDto(Event event) {
         CreateEventResponseDto dto = new CreateEventResponseDto();
         dto.setId(event.getDomainId());
@@ -304,9 +318,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesStart(event.getSalesStart());
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
-        dto.setTicketTypes(event.getTicketTypes().stream()
-                .map(this::convertToCreateTicketTypeResponseDto)
-                .toList());
+        dto.setTicketTypes(convertToCreateTicketTypeResponseDtoList(event.getTicketTypes()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
         return dto;
@@ -324,6 +336,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    public List<ListEventTicketTypeResponseDto> convertToListEventTicketTypeResponseDtoList(Set<TicketType> ticketTypeList) {
+        if (CollectionUtils.isEmpty(ticketTypeList)) {
+            return Collections.emptyList();
+        }
+        return ticketTypeList.stream()
+                .map(this::convertToListEventTicketTypeResponseDto)
+                .toList();
+    }
+
+    @Override
     public ListEventResponseDto convertToListEventResponseDto(Event event) {
         ListEventResponseDto dto = new ListEventResponseDto();
         dto.setId(event.getDomainId());
@@ -334,9 +356,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesStart(event.getSalesStart());
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
-        dto.setTicketTypes(event.getTicketTypes().stream()
-                .map(this::convertToListEventTicketTypeResponseDto)
-                .toList());
+        dto.setTicketTypes(convertToListEventTicketTypeResponseDtoList(event.getTicketTypes()));
         return dto;
     }
 
@@ -354,6 +374,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    public List<GetEventDetailsTicketTypesResponseDto> convertToGetEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList) {
+        if (CollectionUtils.isEmpty(ticketTypeList)) {
+            return Collections.emptyList();
+        }
+        return ticketTypeList.stream()
+                .map(this::convertToGetEventDetailsTicketTypesResponseDto)
+                .toList();
+    }
+
+    @Override
     public GetEventDetailsResponseDto convertToGetEventDetailsResponseDto(Event event) {
         GetEventDetailsResponseDto dto = new GetEventDetailsResponseDto();
         dto.setId(event.getDomainId());
@@ -364,9 +394,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesStart(event.getSalesStart());
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
-        dto.setTicketTypes(event.getTicketTypes().stream()
-                .map(this::convertToGetEventDetailsTicketTypesResponseDto)
-                .toList());
+        dto.setTicketTypes(convertToGetEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
         return dto;
@@ -386,6 +414,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    public List<UpdateTicketTypeResponseDto> convertToUpdateTicketTypeResponseDtoList(Set<TicketType> ticketTypeList) {
+        if (CollectionUtils.isEmpty(ticketTypeList)) {
+            return Collections.emptyList();
+        }
+        return ticketTypeList.stream()
+                .map(this::convertToUpdateTicketTypeResponseDto)
+                .toList();
+    }
+
+    @Override
     public UpdateEventResponseDto convertToUpdateEventResponseDto(Event event) {
         UpdateEventResponseDto dto = new UpdateEventResponseDto();
         dto.setId(event.getDomainId());
@@ -396,9 +434,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesStart(event.getSalesStart());
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
-        dto.setTicketTypes(event.getTicketTypes().stream()
-                .map(this::convertToUpdateTicketTypeResponseDto)
-                .toList());
+        dto.setTicketTypes(convertToUpdateTicketTypeResponseDtoList(event.getTicketTypes()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
         return dto;
@@ -426,6 +462,16 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    public List<GetPublishedEventDetailsTicketTypesResponseDto> convertToGetPublishedEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList) {
+        if (CollectionUtils.isEmpty(ticketTypeList)) {
+            return Collections.emptyList();
+        }
+        return ticketTypeList.stream()
+                .map(this::convertToGetPublishedEventDetailsTicketTypesResponseDto)
+                .toList();
+    }
+
+    @Override
     public GetPublishedEventDetailsResponseDto convertToGetPublishedEventDetailsResponseDto(Event event) {
         GetPublishedEventDetailsResponseDto dto = new GetPublishedEventDetailsResponseDto();
         dto.setId(event.getDomainId());
@@ -433,9 +479,7 @@ public class EventServiceImpl implements EventService {
         dto.setStart(event.getStart());
         dto.setEnd(event.getEnd());
         dto.setVenue(convertToVenueResponseDto(event.getVenue()));
-        dto.setTicketTypes(event.getTicketTypes().stream()
-                .map(this::convertToGetPublishedEventDetailsTicketTypesResponseDto)
-                .toList());
+        dto.setTicketTypes(convertToGetPublishedEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
         return dto;
     }
 }

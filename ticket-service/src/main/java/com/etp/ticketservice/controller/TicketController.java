@@ -28,10 +28,7 @@ public class TicketController {
     private final QrCodeService qrCodeService;
 
     @GetMapping
-    public Page<ListTicketResponseDto> listTickets(
-            @AuthenticationPrincipal Jwt jwt,
-            Pageable pageable
-    ) {
+    public Page<ListTicketResponseDto> listTickets(@AuthenticationPrincipal Jwt jwt, Pageable pageable) {
         return ticketService.listTicketsForUser(
                 parseUserId(jwt),
                 pageable
@@ -39,10 +36,7 @@ public class TicketController {
     }
 
     @GetMapping(path = "/{ticketId}")
-    public ResponseEntity<GetTicketResponseDto> getTicket(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID ticketId
-    ) {
+    public ResponseEntity<GetTicketResponseDto> getTicket(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId) {
         return ticketService
                 .getTicketForUser(parseUserId(jwt), ticketId)
                 .map(ticketService::convertToGetTicketResponseDto)
@@ -51,10 +45,7 @@ public class TicketController {
     }
 
     @GetMapping(path = "/{ticketId}/qr-codes")
-    public ResponseEntity<byte[]> getTicketQrCode(
-            @AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID ticketId
-    ) {
+    public ResponseEntity<byte[]> getTicketQrCode(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId) {
         byte[] qrCodeImage = qrCodeService.getQrCodeImageForUserAndTicket(
                 parseUserId(jwt),
                 ticketId

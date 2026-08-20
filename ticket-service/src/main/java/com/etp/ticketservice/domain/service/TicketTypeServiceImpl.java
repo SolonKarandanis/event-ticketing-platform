@@ -24,6 +24,7 @@ public class TicketTypeServiceImpl implements TicketTypeService {
     private final TicketTypeRepository ticketTypeRepository;
     private final TicketRepository ticketRepository;
     private final QrCodeService qrCodeService;
+    private final TicketEventPublisher ticketEventPublisher;
 
     @Override
     @Transactional
@@ -53,7 +54,10 @@ public class TicketTypeServiceImpl implements TicketTypeService {
 
         Ticket savedTicket = ticketRepository.save(ticket);
         qrCodeService.generateQrCode(savedTicket);
+        savedTicket = ticketRepository.save(savedTicket);
 
-        return ticketRepository.save(savedTicket);
+        ticketEventPublisher.publishTicketPurchased(savedTicket);
+
+        return savedTicket;
     }
 }

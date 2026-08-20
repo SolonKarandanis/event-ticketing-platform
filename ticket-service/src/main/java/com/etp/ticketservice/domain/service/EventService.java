@@ -26,7 +26,9 @@ import com.etp.ticketservice.domain.model.UpdateTicketTypeRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public interface EventService {
@@ -52,29 +54,41 @@ public interface EventService {
 
     UpdateTicketTypeRequest convertFromDto(UpdateTicketTypeRequestDto dto);
 
+    List<UpdateTicketTypeRequest> convertFromDtoList(List<UpdateTicketTypeRequestDto> dtoList);
+
     UpdateEventRequest convertFromDto(UpdateEventRequestDto dto);
 
     VenueResponseDto convertToVenueResponseDto(Venue venue);
 
     CreateTicketTypeResponseDto convertToCreateTicketTypeResponseDto(TicketType ticketType);
 
+    List<CreateTicketTypeResponseDto> convertToCreateTicketTypeResponseDtoList(Set<TicketType> ticketTypeList);
+
     CreateEventResponseDto convertToCreateEventResponseDto(Event event);
 
     ListEventTicketTypeResponseDto convertToListEventTicketTypeResponseDto(TicketType ticketType);
+
+    List<ListEventTicketTypeResponseDto> convertToListEventTicketTypeResponseDtoList(Set<TicketType> ticketTypeList);
 
     ListEventResponseDto convertToListEventResponseDto(Event event);
 
     GetEventDetailsTicketTypesResponseDto convertToGetEventDetailsTicketTypesResponseDto(TicketType ticketType);
 
+    List<GetEventDetailsTicketTypesResponseDto> convertToGetEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList);
+
     GetEventDetailsResponseDto convertToGetEventDetailsResponseDto(Event event);
 
     UpdateTicketTypeResponseDto convertToUpdateTicketTypeResponseDto(TicketType ticketType);
+
+    List<UpdateTicketTypeResponseDto> convertToUpdateTicketTypeResponseDtoList(Set<TicketType> ticketTypeList);
 
     UpdateEventResponseDto convertToUpdateEventResponseDto(Event event);
 
     ListPublishedEventResponseDto convertToListPublishedEventResponseDto(Event event);
 
     GetPublishedEventDetailsTicketTypesResponseDto convertToGetPublishedEventDetailsTicketTypesResponseDto(TicketType ticketType);
+
+    List<GetPublishedEventDetailsTicketTypesResponseDto> convertToGetPublishedEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList);
 
     GetPublishedEventDetailsResponseDto convertToGetPublishedEventDetailsResponseDto(Event event);
 }
