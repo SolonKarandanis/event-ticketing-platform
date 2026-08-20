@@ -1,12 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { drizzleProvider } from './db/drizzle.provider';
+import { TicketSalesService } from './ticket-sales/ticket-sales.service';
+import { RabbitMqConsumerService } from './rabbitmq/rabbitmq-consumer.service';
 
 @Module({
   imports: [ConfigModule.forRoot()],
-  controllers: [AppController],
-  providers: [AppService, drizzleProvider],
+  providers: [drizzleProvider, TicketSalesService, RabbitMqConsumerService],
 })
 export class AppModule {}

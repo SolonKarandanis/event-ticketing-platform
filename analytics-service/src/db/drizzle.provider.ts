@@ -6,5 +6,6 @@ export const DRIZZLE = Symbol('DRIZZLE');
 
 export const drizzleProvider = {
   provide: DRIZZLE,
-  useFactory: () => drizzle(postgres(process.env.ANALYTICS_DATABASE_URL as string), { schema }),
+  useFactory: () =>
+    drizzle(postgres(process.env.ANALYTICS_DATABASE_URL as string), { schema }),
 };

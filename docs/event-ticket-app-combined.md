@@ -8400,7 +8400,7 @@ That's the point of routing this through `TicketEventPublisher` in the first pla
 ### Scaffold the NestJS Project
 
 ```bash
-nest new analytics-service
+nest new analytics-service --strict
 cd analytics-service
 npm install drizzle-orm postgres
 npm install -D drizzle-kit
@@ -8409,6 +8409,8 @@ npm install amqp-connection-manager amqplib
 npm install @nestjs/passport passport passport-jwt jwks-rsa
 npm install -D @types/passport-jwt
 ```
+
+`--strict` enables TypeScript's strict mode, matching the level of rigor we've held `ticket-service` to throughout -- it has one small consequence worth knowing about upfront: `process.env.SOMETHING` is typed as `string | undefined`, not `string`, so anywhere we pass an env var straight into something expecting a `string` (the Drizzle connection factory, below), it needs an explicit `as string`.
 
 We're using Drizzle rather than TypeORM or Prisma. It's SQL-first -- the query builder reads like the SQL it generates, which suits this service's actual workload (inserts and `COUNT`/`SUM` aggregates) better than a heavier ORM abstraction would. There's no decorator or reflection layer either: the schema definition alone is the source of the TypeScript types, and every query comes back properly typed, with no manual casting needed. `amqp-connection-manager` and `amqplib` give us direct control over exchange and queue declarations, rather than relying on NestJS's built-in RMQ microservice transport, which doesn't cleanly support binding a queue to an exchange someone else declared.
 
@@ -8429,10 +8431,12 @@ A separate container on a separate host port (`5433`, since `5432` is already ta
 
 #### Connect Drizzle to the Database
 
+Everything database- and schema-related lives under its own `src/db/` folder, rather than scattered at the top of `src/` -- `drizzle.provider.ts` and `schema.ts` (next lesson) both go there.
+
 Unlike TypeORM, there's no module to register -- Drizzle's client is just a value, provided to Nest's DI container like any other:
 
 ```typescript
-// drizzle.provider.ts
+// src/db/drizzle.provider.ts
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from './schema';
@@ -8441,25 +8445,45 @@ export const DRIZZLE = Symbol('DRIZZLE');
 
 export const drizzleProvider = {
   provide: DRIZZLE,
-  useFactory: () => drizzle(postgres(process.env.ANALYTICS_DATABASE_URL), { schema }),
+  useFactory: () => drizzle(postgres(process.env.ANALYTICS_DATABASE_URL as string), { schema }),
 };
 ```
 
-Register it once, in `AppModule`'s `providers` array, and any service can inject it with `@Inject(DRIZZLE)`.
+That `as string` is the strict-mode consequence flagged above -- `process.env.ANALYTICS_DATABASE_URL` is `string | undefined` as far as the compiler knows, even though we know it'll be set at runtime.
+
+For it to actually *be* set at runtime, something needs to load `.env` into `process.env` -- that's what the `@nestjs/config` dependency installed earlier is for. Register `ConfigModule.forRoot()` alongside the Drizzle provider in `AppModule`:
+
+```typescript
+// src/app.module.ts
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { drizzleProvider } from './db/drizzle.provider';
+
+@Module({
+  imports: [ConfigModule.forRoot()],
+  controllers: [AppController],
+  providers: [AppService, drizzleProvider],
+})
+export class AppModule {}
+```
+
+`ConfigModule.forRoot()` with no arguments reads `.env` from the project root by default -- put `ANALYTICS_DATABASE_URL` (and `RABBITMQ_URL`, needed a couple of lessons from now) there. With the provider registered, any service can inject the Drizzle client with `@Inject(DRIZZLE)`.
 
 #### Summary
 
-- Scaffolded a new NestJS project, `analytics-service`
+- Scaffolded a new NestJS project, `analytics-service`, with TypeScript strict mode enabled
 - Added Drizzle, RabbitMQ client, and JWT auth dependencies
 - Added a dedicated `analytics-db` Postgres container, isolated from `ticket-service`'s database
-- Registered the Drizzle client as a plain DI provider, `DRIZZLE`
+- Registered `ConfigModule.forRoot()` so `.env` actually populates `process.env`, and registered the Drizzle client as a plain DI provider, `DRIZZLE`, both in `AppModule`
 
 ### Consume Ticket Purchase Events
 
 #### The Sales Fact Table
 
 ```typescript
-// schema.ts
+// src/db/schema.ts
 import { pgTable, bigserial, uuid, doublePrecision, timestamp } from 'drizzle-orm/pg-core';
 
 export const ticketSales = pgTable('ticket_sales', {
@@ -8495,10 +8519,10 @@ export interface TicketPurchasedEvent {
 import { Injectable, Inject } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { DRIZZLE } from './drizzle.provider';
-import { ticketSales } from './schema';
+import { DRIZZLE } from './db/drizzle.provider';
+import { ticketSales } from './db/schema';
 import { TicketPurchasedEvent } from './ticket-purchased.event';
-import * as schema from './schema';
+import * as schema from './db/schema';
 
 @Injectable()
 export class TicketSalesService {
@@ -8543,7 +8567,7 @@ Same principle as `ticket-service`'s move to Liquibase -- we don't want the sche
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
-  schema: './src/schema.ts',
+  schema: './src/db/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
@@ -8559,8 +8583,11 @@ npx drizzle-kit generate
 This writes a new `.sql` file under `drizzle/` -- reviewable and committable, not a black box. To apply pending migrations automatically on startup, the same way Liquibase runs when `ticket-service` boots:
 
 ```typescript
-// main.ts
+// src/main.ts
+import { NestFactory } from '@nestjs/core';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { AppModule } from './app.module';
+import { DRIZZLE } from './db/drizzle.provider';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

@@ -1,4 +1,10 @@
-import { pgTable, bigserial, uuid, doublePrecision, timestamp } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  bigserial,
+  uuid,
+  doublePrecision,
+  timestamp,
+} from 'drizzle-orm/pg-core';
 
 export const ticketSales = pgTable('ticket_sales', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
@@ -8,7 +14,9 @@ export const ticketSales = pgTable('ticket_sales', {
   purchaserId: uuid('purchaser_id').notNull(),
   price: doublePrecision('price').notNull(),
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull(),
-  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 export type TicketSale = typeof ticketSales.$inferSelect;
