@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
+import { Link, Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { getRoleHomeRoute, getRoles } from '#/features/auth/roles'
 import { ROLE_ORGANIZER } from '#/features/auth/types'
 
@@ -26,5 +26,26 @@ export const Route = createFileRoute('/_organizer')({
       throw redirect({ to: getRoleHomeRoute(roles) })
     }
   },
-  component: () => <Outlet />,
+  component: OrganizerLayout,
 })
+
+function OrganizerLayout() {
+  return (
+    <>
+      <nav className="page-wrap flex gap-4 px-4 pt-6 text-sm font-semibold">
+        <Link to="/dashboard" className="nav-link" activeProps={{ className: 'nav-link is-active' }}>
+          Dashboard
+        </Link>
+        <Link
+          to="/venues"
+          className="nav-link"
+          activeProps={{ className: 'nav-link is-active' }}
+          activeOptions={{ exact: false }}
+        >
+          Venues
+        </Link>
+      </nav>
+      <Outlet />
+    </>
+  )
+}

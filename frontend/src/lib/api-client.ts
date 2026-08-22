@@ -38,3 +38,28 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
 
   return fetch(input, { ...init, headers: retryHeaders })
 }
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+// ticket-service's GlobalExceptionHandler always responds with { error: string } (already
+// localized server-side via Accept-Language) on 4xx/5xx -- this is the one place that shape
+// gets parsed, so every feature's api.ts gets a real, localized message instead of a bare
+// status code.
+export async function parseJsonOrThrow<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null)
+    const message =
+      body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+        ? body.error
+        : `Request failed with status ${response.status}`
+    throw new ApiError(response.status, message)
+  }
+  return await response.json() as Promise<T>
+}

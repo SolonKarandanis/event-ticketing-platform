@@ -8338,7 +8338,49 @@ export function getRoles(user: User | null | undefined): string[] {
 
 Decoding the access token's own payload directly sidesteps the ID-token-mapper question entirely -- frontend and backend now agree on where roles live because they're reading the identical claim off the identical token, not because both happen to be configured the same way today.
 
-Each layout currently has one placeholder screen underneath it -- `/dashboard` for organizers, `/browse` for attendees, `/scan` for staff -- just enough to confirm the guard actually works. The real screens for each of these are separate pieces of future work.
+### Keep the App's Role Model Out of `oidc.ts`
+
+`decodeJwtPayload()`, `getRoles()`, and the `ROLE_ORGANIZER`/`ROLE_ATTENDEE`/`ROLE_STAFF` constants all lived in `src/lib/oidc.ts` at first, right next to the `UserManager` -- convenient while it was the only file that touched tokens at all, but the file was quietly becoming two different things wearing one name. Only `getUserManager()` and `decodeJwtPayload()` are actually generic OIDC/JWT mechanics; "which roles exist" and "which route is home for which role" aren't OIDC concepts at all -- they're this app's own identity model, built on top of a generic JWT decode the same way any feature builds on `apiFetch()`. Once that was obvious, the split was mechanical:
+
+```typescript
+// src/lib/oidc.ts -- generic OIDC mechanics only, nothing app-specific
+export function decodeJwtPayload(token: string): Record<string, unknown> {
+  /* unchanged */
+}
+```
+
+```typescript
+// src/features/auth/types.ts -- this app's identity model: what roles exist, which URL each owns
+export const ROLE_ORGANIZER = 'ROLE_ORGANIZER';
+export const ROLE_ATTENDEE = 'ROLE_ATTENDEE';
+export const ROLE_STAFF = 'ROLE_STAFF';
+
+// Literal union, not a bare string -- TanStack Router's navigate()/redirect() are typed
+// against known route paths, so this has to match one of them exactly to type-check.
+export type RoleHomeRoute = '/dashboard' | '/browse' | '/scan' | '/';
+```
+
+```typescript
+// src/features/auth/roles.ts -- the functions that connect the two
+import type { User } from 'oidc-client-ts';
+import { decodeJwtPayload } from '#/lib/oidc';
+import { ROLE_ATTENDEE, ROLE_ORGANIZER, ROLE_STAFF, type RoleHomeRoute } from './types';
+
+export function getRoles(user: User | null | undefined): string[] {
+  /* same body as before, just moved */
+}
+
+export function getRoleHomeRoute(roles: string[]): RoleHomeRoute {
+  if (roles.includes(ROLE_ORGANIZER)) return '/dashboard';
+  if (roles.includes(ROLE_ATTENDEE)) return '/browse';
+  if (roles.includes(ROLE_STAFF)) return '/scan';
+  return '/';
+}
+```
+
+Every call site -- `__root.tsx`'s `onSigninCallback`, and all three `_organizer.tsx`/`_attendee.tsx`/`_staff.tsx` guards -- now imports the functions from `#/features/auth/roles` and the constants/type from `#/features/auth/types`, instead of `#/lib/oidc`. `oidc.ts` is left holding exactly what its name promises: the `UserManager` and one generic token-decoding helper, nothing that knows this app has three roles.
+
+Each layout currently has one placeholder screen underneath it -- `/dashboard` for organizers, `/browse` for attendees, `/scan` for staff -- just enough to confirm the guard actually works. The real screens for each of these are separate pieces of future work (see "Frontend Venue Management" below for the first one).
 
 ### Sign In, Sign Out, and Session Recovery
 
@@ -8405,6 +8447,7 @@ A 401 gets one retry after a silent token refresh before giving up and sending t
 - Installed `react-oidc-context` + `oidc-client-ts`; the `UserManager` is hand-constructed in `src/lib/oidc.ts` rather than left to `react-oidc-context` to build implicitly, so route guards outside React can reach the same instance
 - Both `userStore` and `stateStore` end up `sessionStorage`-backed, after two different in-memory attempts each broke on contact with a real browser round-trip: a shared in-memory store broke login (`signinRedirect()`'s full-page navigation wipes JS memory before the handshake state can be read back), and keeping just `userStore` in-memory afterwards broke reload (`signinSilent()`'s refresh-token path needs an existing refresh token already in storage, which a real reload wipes just as completely)
 - `getRoles()` decodes the access token's own JWT payload rather than reading `user.profile.realm_access` -- this realm's role mapper only ever puts that claim on the access token, matching how `ticket-service`'s `JwtAuthenticationConverter` already reads the exact same claim off the exact same token
+- Split the app's own role model out of `oidc.ts` afterward: `oidc.ts` now holds only `getUserManager()` and the generic `decodeJwtPayload()`; the `ROLE_*` constants and `RoleHomeRoute` type moved to `src/features/auth/types.ts`, and `getRoles()`/`getRoleHomeRoute()` moved to `src/features/auth/roles.ts` -- roles aren't an OIDC concept, they're this app's own identity model
 - Refresh-token-only silent renewal, plus a `signinSilent()` bootstrap call as an extra proactive refresh on top of what `sessionStorage` already recovers on its own
 - `AuthProvider` wraps the whole app and auto-detects the OIDC callback itself; `onSigninCallback` just decides where to send the user afterward
 - The router's context carries an `auth.getUser()` accessor, and `UserManager`'s load/unload events call `router.invalidate()` so guards react the instant login/logout happens
@@ -8412,6 +8455,136 @@ A 401 gets one retry after a silent token refresh before giving up and sending t
 - No custom sign-up/login pages -- both redirect straight to Keycloak's hosted screens
 - Added `src/lib/api-client.ts`'s `apiFetch()` wrapper: attaches `Authorization`, handles a 401 with one silent-refresh retry before falling back to a full sign-in redirect
 - Verified live so far: logging in as `skaran` (organizer) redirects to Keycloak, back through `/callback`, and lands on `/dashboard`. The sign-out fix and the reload fix are both in and match the diagnosed root cause in each case, but neither had been re-confirmed against a live click-through as of this writing -- along with the `attendee`/`staff` logins and the role-mismatch bounce, still open to independently confirm
+
+## Frontend Venue Management
+
+With auth and routing working, the first real screen (not a placeholder) is the organizer's Venues section -- per the resolved design in [Venue management screens design](https://github.com/SolonKarandanis/event-ticketing-platform/issues/7): a dedicated "Venues" area under the organizer dashboard (list, create, edit), not an inline quick-add inside the future event form. It was picked first, ahead of the event form itself, for an ordering reason that has nothing to do with the map: `ticket-service`'s `Event` entity has a required `venue` foreign key, so there's no way to build a working "Create Event" screen until there's at least one venue to attach it to.
+
+### Install React Hook Form, Zod, and shadcn's Form Primitives
+
+The map's locked stack always called for React Hook Form + Zod, but neither had actually been installed yet -- nothing needed them until now:
+
+```bash
+npm install react-hook-form zod @hookform/resolvers
+```
+
+Plain `npm install zod` here pulls zod's current major version, which broke the install: `@hookform/resolvers` optionally depends on `@typeschema/zod`, which peer-depends on `zod@^3.23.8` -- a version range the newer major doesn't satisfy. The fix was pinning zod to the 3.x line explicitly (`npm install react-hook-form "zod@^3.24.1" @hookform/resolvers`) rather than forcing the install with `--legacy-peer-deps`, since the actual problem was a real version mismatch, not npm being overly strict.
+
+The `shadcn` add-on from "Scaffold the Project" earlier only ever set up `components.json` and the CSS variable theme -- it never actually generated any component files, since nothing had needed one yet either. First real use:
+
+```bash
+npx shadcn@latest add button input label textarea table form
+```
+
+This is a plain HTTP fetch against shadcn's registry, not a git clone -- unlike `shadcn init -t start`, which needed git's sparse-checkout support (see "Scaffold the Project"'s workaround), `add` has no such git-version dependency and worked without issue.
+
+### Venue Types, API Client, and Query Hooks
+
+`src/features/venues/types.ts` mirrors `VenueResponseDto`/`CreateVenueRequestDto`/`UpdateVenueRequestDto` field-for-field, same as every other feature's `types.ts`. `src/features/venues/api.ts` adds the four calls against `/api/v1/venues`:
+
+```typescript
+// src/features/venues/api.ts
+const BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/venues`;
+
+export async function listVenues(): Promise<Venue[]> {
+  const response = await apiFetch(`${BASE_URL}?size=100`);
+  const page = await parseJsonOrThrow<{ content: Venue[] }>(response);
+  return page.content;
+}
+// getVenue, createVenue, updateVenue follow the same apiFetch + parseJsonOrThrow shape
+```
+
+`listVenues()` reads `?size=100` and just returns `.content`, ignoring the rest of Spring Data's `Page` envelope -- issue #7's design has no pagination controls (a plain table), so a generous page size stands in for "list everything" rather than building pagination UI nothing asked for yet.
+
+This is also the first feature to actually need error messages from the backend, which surfaced a gap: `apiFetch()` returns a raw `Response` and leaves error handling to the caller, but every feature calling it was going to need the exact same "parse the body, throw something useful" logic. Rather than write that once inside `venues/api.ts` and duplicate it at the next feature, it went into `api-client.ts` next to `apiFetch()` itself:
+
+```typescript
+// src/lib/api-client.ts
+export class ApiError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
+export async function parseJsonOrThrow<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+    const message = body && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
+      ? body.error
+      : `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, message);
+  }
+  return response.json() as Promise<T>;
+}
+```
+
+This leans on something already true on the backend: `GlobalExceptionHandler` (see "Global Exception Handler" earlier) always responds with `{ error: string }` on 4xx/5xx, already localized server-side via whatever `Accept-Language` `apiFetch()` sent. `parseJsonOrThrow()` is the one place that shape gets parsed, so a validation failure like a blank venue name surfaces as a real, readable message in the form instead of a generic "request failed."
+
+`src/features/venues/hooks.ts` wraps all four calls in named React Query hooks (`useVenues`, `useVenue`, `useCreateVenue`, `useUpdateVenue`), with both mutations invalidating the `['venues']` query key on success so the list picks up a create or edit immediately.
+
+### The Venue Form
+
+One `VenueForm` component (`src/features/venues/components/VenueForm.tsx`) serves both the create and edit routes, matching issue #7's single-page-all-fields design (Name, Address Line 1, Address Line 2, City, Postal Code, Country, Capacity, Latitude, Longitude, Accessibility Info). The numeric fields (`capacity`, `latitude`, `longitude`) are kept as plain strings in the form's Zod schema, not numbers:
+
+```typescript
+const venueFormSchema = z.object({
+  // ...
+  capacity: z.string().trim().refine((v) => v === '' || /^\d+$/.test(v), 'Must be a whole number'),
+  latitude: z.string().trim().refine((v) => v === '' || /^-?\d+(\.\d+)?$/.test(v), 'Must be a number'),
+  // ...
+});
+```
+
+Native inputs always hand back strings, and all three of these fields are optional per issue #7 (no map picker, since PostGIS is out of scope for now -- see "Not yet specified" on the map). `z.coerce.number().optional()` looks like the obvious fit, but `Number('')` is `0`, not `NaN` -- an empty optional field would silently coerce to a real zero. Validating the string shape with a regex and converting to a number only when building the actual request (in `formValuesToRequest`, right before `createVenue`/`updateVenue`) sidesteps that entirely, at the cost of one small conversion function instead of fighting zod's coercion around an empty string.
+
+### Routes and Reachability
+
+Three routes under the organizer layout, all pulling from the shared `VenueForm`:
+
+- `/venues` -- the list, a `shadcn` `Table` (Name, City, Capacity, Edit)
+- `/venues/new` -- create
+- `/venues/$venueId` -- edit, prefilling the form from `useVenue(venueId)`
+
+None of this was reachable before now -- the three role layouts had no navigation between their own pages at all, since each only ever had one placeholder screen. `_organizer.tsx`'s layout component grew a small two-link nav (Dashboard, Venues) above its `<Outlet />` so the new section is actually clickable, not just reachable by typing the URL.
+
+### A Missing CORS Configuration
+
+Clicking through the Venues screens for the first time surfaced one more real bug, and it wasn't in the frontend at all: every request from the browser to `ticket-service` failed as a CORS error, `Access-Control-Allow-Origin` missing entirely. `ticket-service`'s `SecurityConfig` (see "Spring Security Configuration" earlier) had never configured CORS in any form, because nothing had ever needed it to -- every "Ui Testing" lesson throughout this document verifies its endpoint with `curl` or Postman, and CORS is a browser-enforced mechanism that simply doesn't apply to those clients. The Venues screen is the first real browser `fetch()` this API has ever received, so it's also the first time the gap was reachable at all.
+
+The fix registers a `CorsConfigurationSource` and wires it into the filter chain ahead of the existing authorization rules:
+
+```java
+// src/main/java/com/etp/ticketservice/config/SecurityConfig.java
+http
+    .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+    .authorizeHttpRequests(authorize -> /* unchanged */ )
+    // ...
+
+private CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration configuration = new CorsConfiguration();
+    configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+    configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept-Language"));
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
+}
+```
+
+Registering a `CorsConfigurationSource` this way also gets the `OPTIONS` preflight handled for free: Spring Security auto-permits preflight requests once CORS is configured through `.cors(...)`, ahead of the `authorizeHttpRequests` rules -- there's no need for a separate `permitAll()` matcher just for `OPTIONS`, which would otherwise have needed its own carve-out since preflight requests never carry the `Authorization` header the rest of this config requires. The allowed origin is hardcoded to `http://localhost:3000` rather than pulled from a property, matching the map's "no deployment plan -- local dev only" scope; this is the only origin that exists right now.
+
+This applies to `/**`, not just `/api/v1/venues/**` -- every future frontend feature calling `ticket-service` from the browser would have hit the exact same error on its first real request otherwise.
+
+#### Summary
+
+- Installed `react-hook-form`, `zod` (pinned to the 3.x line for `@hookform/resolvers` compatibility), and `@hookform/resolvers`
+- Added the first real shadcn components (`button`, `input`, `label`, `textarea`, `table`, `form`) via `npx shadcn add` -- a plain registry fetch, unlike `init -t start`'s git-sparse-checkout requirement
+- Built out `src/features/venues/` (`types.ts`, `api.ts`, `hooks.ts`, `components/VenueForm.tsx`) following the same feature-folder shape as every other entity
+- Added `ApiError`/`parseJsonOrThrow` to the shared `api-client.ts` so every feature gets real, localized error messages from `GlobalExceptionHandler`'s `{ error: string }` responses, instead of each `api.ts` parsing that shape itself
+- One `VenueForm` component serves both create and edit; numeric fields stay strings through validation and only convert to numbers when building the wire request, avoiding `zod`'s number-coercion behavior on empty optional inputs
+- Three routes (`/venues`, `/venues/new`, `/venues/$venueId`) plus a small Dashboard/Venues nav in the organizer layout, since nothing before this was reachable except by typing a URL directly
+- Venues was built before the event creation form (issue #6), even though the map lists the event form first, because `Event` has a required venue foreign key on the backend -- there was nothing for an event form's venue picker to pick from otherwise
+- Found and fixed a real gap in `ticket-service`, not the frontend: `SecurityConfig` had no CORS configuration at all, since every prior "Ui Testing" lesson verified endpoints with `curl`/Postman rather than a browser -- added a `CorsConfigurationSource` for `http://localhost:3000` covering `/**`, which also fixes it for every future frontend feature, not just venues
+- Verified via `tsc --noEmit`, `npm run build` (client + SSR), and `npm run lint`, all clean -- and confirmed live: create, list, and edit all work end-to-end against the running `ticket-service` in the browser
 
 ## Frontend Internationalization
 
@@ -9076,22 +9249,26 @@ A quick way to confirm the guard is actually doing something, before wiring up a
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
 
-### Frontend: scaffolded and authenticated, no real screens yet
+### Frontend: authenticated, one real feature (Venues) built, everything else still a placeholder
 
-`frontend/` now exists -- see "Frontend Project Setup" and "Frontend Authentication" above. It's a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (in-memory tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every future feature will call into.
+`frontend/` now exists -- see "Frontend Project Setup" and "Frontend Authentication" above. It's a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (session-storage-backed tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every feature calls into.
 
-What it doesn't have yet: any of the actual screens the "Ui Testing" lessons throughout this document describe (event creation forms, the purchase flow, the QR validation screen, the published-events landing page, venue management, the reports dashboard). Each of the three role layouts currently renders one placeholder page (`/dashboard`, `/browse`, `/scan`) whose only job is proving the auth/routing shell works -- none of them are real yet. "Frontend Internationalization" is applied (the `apiFetch()` wrapper already forwards `Accept-Language`), but there's no actual UI text anywhere yet to translate.
+"Frontend Venue Management" above is the first real screen area, not a placeholder: the organizer's Venues list, create, and edit pages, backed by real `react-hook-form` + `zod` forms and `ticket-service`'s actual `/api/v1/venues` endpoints. It was built ahead of the event creation form on the map because `Event` has a required venue foreign key -- there had to be somewhere for an event form's venue picker to point at.
+
+Everything else the "Ui Testing" lessons throughout this document describe is still not built: the event creation form, the purchase flow, the QR validation screen, the published-events landing page, the reports dashboard. The attendee (`/browse`) and staff (`/scan`) role layouts, and the organizer's own `/dashboard`, still render one placeholder page each whose only job is proving the auth/routing shell works. "Frontend Internationalization" is applied at the transport level (`apiFetch()` already forwards `Accept-Language`), but there's no actual UI text anywhere yet to translate.
 
 ### `frontend` loose ends
 
 - No automated tests, matching the rest of this project's all-manual-verification pattern
 - The full login round-trip (redirect to Keycloak, log in, land on the right role's home, get bounced from a mismatched route, reload without a forced re-login) was verified manually rather than by an automated browser check -- no headless-browser tooling was wired into this build
-- `react-hook-form`, `zod`, and `i18next`'s actual translation files aren't installed/added yet -- they land alongside whichever feature first needs them, not speculatively ahead of time
+- The Venues screens (list/create/edit) are confirmed working live in the browser against the running `ticket-service`, on top of a clean `tsc --noEmit`/`npm run build`/`npm run lint`
+- `react-hook-form` and `zod` are now installed (see "Frontend Venue Management"); `i18next` and its translation files still aren't -- they land alongside whichever feature first needs them, not speculatively ahead of time
 
 ### `ticket-service` loose ends
 
 - No automated tests anywhere (unit or integration) -- everything's been verified manually so far, via `bootRun` plus `psql`/`curl` checks, not a test suite
 - Keycloak now has all three users (`organizer`, `attendee`, `staff`), so the purchase flow and ticket validation flow both have accounts to test with
+- CORS was never configured until the frontend's Venues screen needed it (see "A Missing CORS Configuration") -- `SecurityConfig` now allows `http://localhost:3000` across `/**`; this was previously invisible because every endpoint had only ever been tested with `curl`/Postman, neither of which is subject to CORS
 
 ### `analytics-service` loose ends
 

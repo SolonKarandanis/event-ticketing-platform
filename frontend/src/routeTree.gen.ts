@@ -19,6 +19,9 @@ import { Route as AttendeeBrowseRouteImport } from './routes/_attendee/browse'
 import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dashboard'
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
+import { Route as OrganizerVenuesIndexRouteImport } from './routes/_organizer/venues/index'
+import { Route as OrganizerVenuesVenueIdRouteImport } from './routes/_organizer/venues/$venueId'
+import { Route as OrganizerVenuesNewRouteImport } from './routes/_organizer/venues/new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -67,6 +70,21 @@ const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   path: '/demo/tanstack-query',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrganizerVenuesIndexRoute = OrganizerVenuesIndexRouteImport.update({
+  id: '/venues/',
+  path: '/venues/',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const OrganizerVenuesVenueIdRoute = OrganizerVenuesVenueIdRouteImport.update({
+  id: '/venues/$venueId',
+  path: '/venues/$venueId',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const OrganizerVenuesNewRoute = OrganizerVenuesNewRouteImport.update({
+  id: '/venues/new',
+  path: '/venues/new',
+  getParentRoute: () => OrganizerRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -76,6 +94,9 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
+  '/venues/new': typeof OrganizerVenuesNewRoute
+  '/venues/': typeof OrganizerVenuesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -85,6 +106,9 @@ export interface FileRoutesByTo {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
+  '/venues/new': typeof OrganizerVenuesNewRoute
+  '/venues': typeof OrganizerVenuesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +122,9 @@ export interface FileRoutesById {
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/_organizer/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
+  '/_organizer/venues/new': typeof OrganizerVenuesNewRoute
+  '/_organizer/venues/': typeof OrganizerVenuesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -109,6 +136,9 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/demo/tanstack-query'
+    | '/venues/$venueId'
+    | '/venues/new'
+    | '/venues/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -118,6 +148,9 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/demo/tanstack-query'
+    | '/venues/$venueId'
+    | '/venues/new'
+    | '/venues'
   id:
     | '__root__'
     | '/'
@@ -130,6 +163,9 @@ export interface FileRouteTypes {
     | '/_organizer/dashboard'
     | '/_staff/scan'
     | '/demo/tanstack-query'
+    | '/_organizer/venues/$venueId'
+    | '/_organizer/venues/new'
+    | '/_organizer/venues/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -214,6 +250,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoTanstackQueryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_organizer/venues/': {
+      id: '/_organizer/venues/'
+      path: '/venues'
+      fullPath: '/venues/'
+      preLoaderRoute: typeof OrganizerVenuesIndexRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/_organizer/venues/$venueId': {
+      id: '/_organizer/venues/$venueId'
+      path: '/venues/$venueId'
+      fullPath: '/venues/$venueId'
+      preLoaderRoute: typeof OrganizerVenuesVenueIdRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/_organizer/venues/new': {
+      id: '/_organizer/venues/new'
+      path: '/venues/new'
+      fullPath: '/venues/new'
+      preLoaderRoute: typeof OrganizerVenuesNewRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
   }
 }
 
@@ -231,10 +288,16 @@ const AttendeeRouteWithChildren = AttendeeRoute._addFileChildren(
 
 interface OrganizerRouteChildren {
   OrganizerDashboardRoute: typeof OrganizerDashboardRoute
+  OrganizerVenuesVenueIdRoute: typeof OrganizerVenuesVenueIdRoute
+  OrganizerVenuesNewRoute: typeof OrganizerVenuesNewRoute
+  OrganizerVenuesIndexRoute: typeof OrganizerVenuesIndexRoute
 }
 
 const OrganizerRouteChildren: OrganizerRouteChildren = {
   OrganizerDashboardRoute: OrganizerDashboardRoute,
+  OrganizerVenuesVenueIdRoute: OrganizerVenuesVenueIdRoute,
+  OrganizerVenuesNewRoute: OrganizerVenuesNewRoute,
+  OrganizerVenuesIndexRoute: OrganizerVenuesIndexRoute,
 }
 
 const OrganizerRouteWithChildren = OrganizerRoute._addFileChildren(

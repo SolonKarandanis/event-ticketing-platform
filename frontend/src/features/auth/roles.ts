@@ -1,6 +1,7 @@
 import type { User } from 'oidc-client-ts'
 import { decodeJwtPayload } from '#/lib/oidc'
-import { ROLE_ATTENDEE, ROLE_ORGANIZER, ROLE_STAFF, type RoleHomeRoute } from './types'
+import { ROLE_ATTENDEE, ROLE_ORGANIZER, ROLE_STAFF } from './types'
+import type { RoleHomeRoute } from './types'
 
 // This realm's "realm roles" protocol mapper only adds realm_access.roles to the access
 // token (confirmed via the admin API -- no id.token.claim/userinfo.token.claim config at
