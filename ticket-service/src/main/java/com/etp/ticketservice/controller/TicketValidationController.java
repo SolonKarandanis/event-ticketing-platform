@@ -5,6 +5,7 @@ import com.etp.ticketservice.domain.dto.response.TicketValidationResponseDto;
 import com.etp.ticketservice.domain.entity.TicketValidation;
 import com.etp.ticketservice.domain.enums.TicketValidationMethod;
 import com.etp.ticketservice.domain.service.TicketValidationService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,11 +22,11 @@ public class TicketValidationController {
 
     @PostMapping
     public ResponseEntity<TicketValidationResponseDto> validateTicket(
-            @RequestBody TicketValidationRequestDto ticketValidationRequestDto) {
+            @Valid @RequestBody TicketValidationRequestDto ticketValidationRequestDto) {
         TicketValidationMethod method = ticketValidationRequestDto.getMethod();
         TicketValidation ticketValidation;
         if (TicketValidationMethod.MANUAL.equals(method)) {
-            ticketValidation = ticketValidationService.validateTicketManually(
+            ticketValidation = ticketValidationService.validateTicketByReferenceCode(
                     ticketValidationRequestDto.getId());
         } else {
             ticketValidation = ticketValidationService.validateTicketByQrCode(

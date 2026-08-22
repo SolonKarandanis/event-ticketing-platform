@@ -1,0 +1,1 @@
+ALTER TABLE "ticket_sales" ADD COLUMN "organizer_id" uuid NOT NULL;

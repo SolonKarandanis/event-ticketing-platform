@@ -1,6 +1,5 @@
 package com.etp.ticketservice.domain.model;
 
-import com.etp.ticketservice.domain.enums.EventStatusEnum;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -21,6 +20,5 @@ public class UpdateEventRequest {
     private UUID venueId;
     private LocalDateTime salesStart;
     private LocalDateTime salesEnd;
-    private EventStatusEnum status;
     private List<UpdateTicketTypeRequest> ticketTypes = new ArrayList<>();
 }

@@ -13,6 +13,7 @@ import java.util.UUID;
 @NoArgsConstructor
 public class GetTicketResponseDto {
     private UUID id;
+    private String referenceCode;
     private TicketStatusEnum status;
     private Double price;
     private String description;

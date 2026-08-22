@@ -92,6 +92,24 @@ public class EventController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping(path = "/{eventId}/publish")
+    public ResponseEntity<Void> publishEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        eventService.publishEvent(parseUserId(jwt), eventId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping(path = "/{eventId}/cancel")
+    public ResponseEntity<Void> cancelEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        eventService.cancelEvent(parseUserId(jwt), eventId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping(path = "/{eventId}/complete")
+    public ResponseEntity<Void> completeEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        eventService.completeEvent(parseUserId(jwt), eventId);
+        return ResponseEntity.noContent().build();
+    }
+
     private UUID parseUserId(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());
     }

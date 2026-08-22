@@ -59,6 +59,11 @@ public class Ticket {
     @Column(name = "domain_id", nullable = false, updatable = false, unique = true)
     private UUID domainId;
 
+    // Short human-typeable code for the manual ticket-validation fallback -- domainId is a
+    // full UUID, impractical for staff to type by hand at a door under time pressure.
+    @Column(name = "reference_code", nullable = false, updatable = false, unique = true)
+    private String referenceCode;
+
     @Column(name = "status", nullable = false)
     @Enumerated(EnumType.STRING)
     private TicketStatusEnum status;
@@ -113,6 +118,7 @@ public class Ticket {
         Ticket ticket = (Ticket) o;
         return Objects.equals(id, ticket.id) &&
                Objects.equals(domainId, ticket.domainId) &&
+               Objects.equals(referenceCode, ticket.referenceCode) &&
                status == ticket.status &&
                Objects.equals(createdAt, ticket.createdAt) &&
                Objects.equals(updatedAt, ticket.updatedAt);
@@ -120,6 +126,6 @@ public class Ticket {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, status, createdAt, updatedAt);
+        return Objects.hash(id, domainId, referenceCode, status, createdAt, updatedAt);
     }
 }

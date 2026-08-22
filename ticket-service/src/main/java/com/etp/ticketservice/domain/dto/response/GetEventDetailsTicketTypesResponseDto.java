@@ -16,6 +16,7 @@ public class GetEventDetailsTicketTypesResponseDto {
     private Double price;
     private String description;
     private Integer totalAvailable;
+    private Integer ticketsSold;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

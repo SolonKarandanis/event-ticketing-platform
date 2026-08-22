@@ -11,6 +11,7 @@ export const ticketSales = pgTable('ticket_sales', {
   ticketId: uuid('ticket_id').notNull().unique(),
   ticketTypeId: uuid('ticket_type_id').notNull(),
   eventId: uuid('event_id').notNull(),
+  organizerId: uuid('organizer_id').notNull(),
   purchaserId: uuid('purchaser_id').notNull(),
   price: doublePrecision('price').notNull(),
   purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull(),

@@ -7,6 +7,7 @@ public record TicketPurchasedEvent(
         UUID ticketId,
         UUID ticketTypeId,
         UUID eventId,
+        UUID organizerId,
         UUID purchaserId,
         Double price,
         LocalDateTime purchasedAt

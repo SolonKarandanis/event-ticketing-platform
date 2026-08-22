@@ -55,6 +55,7 @@ public class TicketServiceImpl implements TicketService {
     public GetTicketResponseDto convertToGetTicketResponseDto(Ticket ticket) {
         GetTicketResponseDto dto = new GetTicketResponseDto();
         dto.setId(ticket.getDomainId());
+        dto.setReferenceCode(ticket.getReferenceCode());
         dto.setStatus(ticket.getStatus());
         dto.setPrice(ticket.getTicketType().getPrice());
         dto.setDescription(ticket.getTicketType().getDescription());

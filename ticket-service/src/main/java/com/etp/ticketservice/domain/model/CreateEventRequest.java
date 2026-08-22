@@ -8,7 +8,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import com.etp.ticketservice.domain.enums.EventStatusEnum;
 
 @Data
 @AllArgsConstructor
@@ -20,6 +19,5 @@ public class CreateEventRequest {
     private UUID venueId;
     private LocalDateTime salesStart;
     private LocalDateTime salesEnd;
-    private EventStatusEnum status;
     private List<CreateTicketTypeRequest> ticketTypes = new ArrayList<>();
 }

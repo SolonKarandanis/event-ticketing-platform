@@ -23,7 +23,11 @@ import com.etp.ticketservice.domain.entity.Venue;
 import com.etp.ticketservice.domain.enums.EventStatusEnum;
 import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.EventNotFoundException;
+import com.etp.ticketservice.domain.exception.EventNotPublishableException;
 import com.etp.ticketservice.domain.exception.EventUpdateException;
+import com.etp.ticketservice.domain.exception.InvalidEventDatesException;
+import com.etp.ticketservice.domain.exception.InvalidEventStatusTransitionException;
+import com.etp.ticketservice.domain.exception.TicketTypeHasSoldTicketsException;
 import com.etp.ticketservice.domain.exception.TicketTypeNotFoundException;
 import com.etp.ticketservice.domain.exception.UserNotFoundException;
 import com.etp.ticketservice.domain.exception.VenueNotFoundException;
@@ -32,6 +36,7 @@ import com.etp.ticketservice.domain.model.CreateTicketTypeRequest;
 import com.etp.ticketservice.domain.model.UpdateEventRequest;
 import com.etp.ticketservice.domain.model.UpdateTicketTypeRequest;
 import com.etp.ticketservice.domain.repository.EventRepository;
+import com.etp.ticketservice.domain.repository.TicketRepository;
 import com.etp.ticketservice.domain.repository.UserRepository;
 import com.etp.ticketservice.domain.repository.VenueRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +47,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -52,6 +58,7 @@ public class EventServiceImpl implements EventService {
     private final UserRepository userRepository;
     private final VenueRepository venueRepository;
     private final EventRepository eventRepository;
+    private final TicketRepository ticketRepository;
 
     @Override
     @Transactional
@@ -62,6 +69,8 @@ public class EventServiceImpl implements EventService {
         Venue venue = venueRepository.findByDomainId(event.getVenueId())
                 .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
+        validateEventDates(event.getStart(), event.getEnd(), event.getSalesStart(), event.getSalesEnd());
+
         Event eventToCreate = new Event();
         eventToCreate.setDomainId(UUID.randomUUID());
         eventToCreate.setName(event.getName());
@@ -69,7 +78,10 @@ public class EventServiceImpl implements EventService {
         eventToCreate.setEnd(event.getEnd());
         eventToCreate.setSalesStart(event.getSalesStart());
         eventToCreate.setSalesEnd(event.getSalesEnd());
-        eventToCreate.setStatus(event.getStatus());
+        // New events always start as DRAFT -- publishing is a separate, explicit action
+        // (see publishEvent) so a client can never create an event in a CANCELLED/COMPLETED
+        // state, or skip straight to PUBLISHED without the ticket-types-required check.
+        eventToCreate.setStatus(EventStatusEnum.DRAFT);
 
         venue.addEvent(eventToCreate);
         organizer.addEventOrganized(eventToCreate);
@@ -124,8 +136,17 @@ public class EventServiceImpl implements EventService {
                 .findByDomainIdAndOrganizerDomainId(id, organizerId)
                 .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
+        // CANCELLED/COMPLETED are terminal -- the event becomes a stable historical record,
+        // never editable again, not just non-transitionable (see publishEvent/cancelEvent/completeEvent).
+        if (EventStatusEnum.CANCELLED.equals(existingEvent.getStatus())
+                || EventStatusEnum.COMPLETED.equals(existingEvent.getStatus())) {
+            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, existingEvent.getStatus());
+        }
+
         Venue venue = venueRepository.findByDomainId(event.getVenueId())
                 .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
+
+        validateEventDates(event.getStart(), event.getEnd(), event.getSalesStart(), event.getSalesEnd());
 
         existingEvent.setName(event.getName());
         existingEvent.setStart(event.getStart());
@@ -133,7 +154,6 @@ public class EventServiceImpl implements EventService {
         venue.addEvent(existingEvent);
         existingEvent.setSalesStart(event.getSalesStart());
         existingEvent.setSalesEnd(event.getSalesEnd());
-        existingEvent.setStatus(event.getStatus());
 
         // UpdateTicketTypeRequest.id is the ticket type's domainId, not its internal id
         Set<UUID> requestTicketTypeDomainIds = event.getTicketTypes()
@@ -145,6 +165,15 @@ public class EventServiceImpl implements EventService {
         Set<TicketType> ticketTypesToRemove = existingEvent.getTicketTypes().stream()
                 .filter(existingTicketType -> !requestTicketTypeDomainIds.contains(existingTicketType.getDomainId()))
                 .collect(Collectors.toSet());
+
+        // A ticket type that already has sold tickets can't be silently orphan-deleted --
+        // removing it from the request would otherwise cascade-delete rows that back real
+        // purchases, with no warning to the organizer.
+        for (TicketType ticketTypeToRemove : ticketTypesToRemove) {
+            if (ticketRepository.countByTicketTypeId(ticketTypeToRemove.getId()) > 0) {
+                throw new TicketTypeHasSoldTicketsException(ErrorCode.TICKET_TYPE_HAS_SOLD_TICKETS, ticketTypeToRemove.getDomainId());
+            }
+        }
         ticketTypesToRemove.forEach(existingEvent::removeTicketType);
 
         Map<UUID, TicketType> existingTicketTypesIndex = existingEvent.getTicketTypes().stream()
@@ -182,15 +211,84 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Page<Event> listPublishedEvents(Pageable pageable) {
-        return eventRepository.findByStatus(EventStatusEnum.PUBLISHED, pageable);
+    @Transactional
+    public Event publishEvent(UUID organizerId, UUID id) {
+        Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
+                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+
+        if (!EventStatusEnum.DRAFT.equals(event.getStatus())) {
+            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
+        }
+
+        if (event.getTicketTypes().isEmpty()) {
+            throw new EventNotPublishableException(ErrorCode.EVENT_NOT_PUBLISHABLE, id);
+        }
+
+        event.setStatus(EventStatusEnum.PUBLISHED);
+        return eventRepository.save(event);
+    }
+
+    @Override
+    @Transactional
+    public Event cancelEvent(UUID organizerId, UUID id) {
+        Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
+                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+
+        if (!EventStatusEnum.PUBLISHED.equals(event.getStatus())) {
+            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
+        }
+
+        event.setStatus(EventStatusEnum.CANCELLED);
+        return eventRepository.save(event);
+    }
+
+    @Override
+    @Transactional
+    public Event completeEvent(UUID organizerId, UUID id) {
+        Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
+                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+
+        if (!EventStatusEnum.PUBLISHED.equals(event.getStatus())) {
+            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
+        }
+
+        event.setStatus(EventStatusEnum.COMPLETED);
+        return eventRepository.save(event);
+    }
+
+    // None of start/end/salesStart/salesEnd are required, so each rule only fires when both
+    // of its relevant fields are actually present.
+    private void validateEventDates(LocalDateTime start, LocalDateTime end, LocalDateTime salesStart, LocalDateTime salesEnd) {
+        if (null != start && null != end && !end.isAfter(start)) {
+            throw new InvalidEventDatesException(ErrorCode.EVENT_INVALID_DATES, "end must be after start");
+        }
+
+        if (null != salesEnd && null != start && salesEnd.isAfter(start)) {
+            throw new InvalidEventDatesException(ErrorCode.EVENT_INVALID_DATES, "salesEnd must not be after start");
+        }
+
+        if (null != salesStart && null != salesEnd && !salesEnd.isAfter(salesStart)) {
+            throw new InvalidEventDatesException(ErrorCode.EVENT_INVALID_DATES, "salesStart must be before salesEnd");
+        }
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<Event> searchPublishedEvents(String query, Pageable pageable) {
-        Page<Event> page = eventRepository.searchEvents(query, pageable);
+    public Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
+            Double minPrice, Double maxPrice, String city, String sortBy, Pageable pageable) {
+        // With no explicit date range, default to upcoming events only -- otherwise a
+        // PUBLISHED event whose end has already passed but hasn't been manually marked
+        // COMPLETED yet would still show up in browse results.
+        LocalDateTime effectiveFrom = (null == from && null == to) ? LocalDateTime.now() : from;
+
+        Page<Event> page = switch (null == sortBy ? "" : sortBy) {
+            case "priceAsc" -> eventRepository.findPublishedEventsSortedByPriceAsc(
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, pageable);
+            case "priceDesc" -> eventRepository.findPublishedEventsSortedByPriceDesc(
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, pageable);
+            default -> eventRepository.findPublishedEventsSortedBySoonest(
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, pageable);
+        };
 
         // Native query -- JOIN FETCH isn't expressible here, so venue (the only association
         // ListPublishedEventResponseDto needs) is force-initialized while the session is
@@ -216,7 +314,6 @@ public class EventServiceImpl implements EventService {
         request.setVenueId(dto.getVenueId());
         request.setSalesStart(dto.getSalesStart());
         request.setSalesEnd(dto.getSalesEnd());
-        request.setStatus(dto.getStatus());
         request.setTicketTypes(dto.getTicketTypes().stream()
                 .map(this::convertFromDto)
                 .toList());
@@ -264,7 +361,6 @@ public class EventServiceImpl implements EventService {
         request.setVenueId(dto.getVenueId());
         request.setSalesStart(dto.getSalesStart());
         request.setSalesEnd(dto.getSalesEnd());
-        request.setStatus(dto.getStatus());
         request.setTicketTypes(convertFromDtoList(dto.getTicketTypes()));
         return request;
     }
@@ -368,6 +464,7 @@ public class EventServiceImpl implements EventService {
         dto.setPrice(ticketType.getPrice());
         dto.setDescription(ticketType.getDescription());
         dto.setTotalAvailable(ticketType.getTotalAvailable());
+        dto.setTicketsSold(ticketRepository.countByTicketTypeId(ticketType.getId()));
         dto.setCreatedAt(ticketType.getCreatedAt());
         dto.setUpdatedAt(ticketType.getUpdatedAt());
         return dto;

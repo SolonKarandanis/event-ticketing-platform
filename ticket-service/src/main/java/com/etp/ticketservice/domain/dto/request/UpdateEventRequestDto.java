@@ -1,6 +1,5 @@
 package com.etp.ticketservice.domain.dto.request;
 
-import com.etp.ticketservice.domain.enums.EventStatusEnum;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -34,9 +33,6 @@ public class UpdateEventRequestDto {
     private LocalDateTime salesStart;
 
     private LocalDateTime salesEnd;
-
-    @NotNull(message = "{validation.event.status.required}")
-    private EventStatusEnum status;
 
     @NotEmpty(message = "{validation.event.ticket-types.required}")
     @Valid

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @RestController
@@ -24,14 +25,19 @@ public class PublishedEventController {
     private final EventService eventService;
 
     @GetMapping
-    public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(@RequestParam(required = false) String q,
+    public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) LocalDateTime from,
+            @RequestParam(required = false) LocalDateTime to,
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false, defaultValue = "soonest") String sortBy,
             Pageable pageable) {
-        Page<Event> events;
-        if (null != q && !q.trim().isEmpty()) {
-            events = eventService.searchPublishedEvents(q, pageable);
-        } else {
-            events = eventService.listPublishedEvents(pageable);
-        }
+        // A blank/whitespace-only q means "browse all", same as omitting it -- normalize
+        // here so the repository's ":searchTerm IS NULL" check treats both the same way.
+        String searchTerm = (null != q && !q.trim().isEmpty()) ? q : null;
+        Page<Event> events = eventService.findPublishedEvents(searchTerm, from, to, minPrice, maxPrice, city, sortBy, pageable);
         return ResponseEntity.ok(
                 events.map(eventService::convertToListPublishedEventResponseDto)
         );

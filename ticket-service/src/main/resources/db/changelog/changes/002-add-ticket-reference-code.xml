@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="11-add-ticket-reference-code" author="event-ticket-platform">
+        <addColumn tableName="tickets">
+            <column name="reference_code" type="VARCHAR(8)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_tickets_reference_code"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

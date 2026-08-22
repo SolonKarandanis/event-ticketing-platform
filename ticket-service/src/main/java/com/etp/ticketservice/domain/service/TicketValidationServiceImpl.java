@@ -29,8 +29,15 @@ public class TicketValidationServiceImpl implements TicketValidationService {
     private final TicketRepository ticketRepository;
 
     @Override
-    public TicketValidation validateTicketByQrCode(UUID qrCodeId) {
-        QrCode qrCode = qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)
+    public TicketValidation validateTicketByQrCode(String qrCodeId) {
+        UUID qrCodeDomainId;
+        try {
+            qrCodeDomainId = UUID.fromString(qrCodeId);
+        } catch (IllegalArgumentException e) {
+            throw new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, qrCodeId);
+        }
+
+        QrCode qrCode = qrCodeRepository.findByDomainIdAndStatus(qrCodeDomainId, QrCodeStatusEnum.ACTIVE)
                 .orElseThrow(() -> new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, qrCodeId));
 
         Ticket ticket = qrCode.getTicket();
@@ -39,9 +46,9 @@ public class TicketValidationServiceImpl implements TicketValidationService {
     }
 
     @Override
-    public TicketValidation validateTicketManually(UUID ticketId) {
-        Ticket ticket = ticketRepository.findByDomainId(ticketId)
-                .orElseThrow(() -> new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
+    public TicketValidation validateTicketByReferenceCode(String referenceCode) {
+        Ticket ticket = ticketRepository.findByReferenceCode(referenceCode)
+                .orElseThrow(() -> new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, referenceCode));
         return validateTicket(ticket, TicketValidationMethod.MANUAL);
     }
 

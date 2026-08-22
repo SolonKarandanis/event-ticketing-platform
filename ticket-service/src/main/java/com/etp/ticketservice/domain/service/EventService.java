@@ -26,6 +26,7 @@ import com.etp.ticketservice.domain.model.UpdateTicketTypeRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -42,9 +43,14 @@ public interface EventService {
 
     void deleteEventForOrganizer(UUID organizerId, UUID id);
 
-    Page<Event> listPublishedEvents(Pageable pageable);
+    Event publishEvent(UUID organizerId, UUID id);
 
-    Page<Event> searchPublishedEvents(String query, Pageable pageable);
+    Event cancelEvent(UUID organizerId, UUID id);
+
+    Event completeEvent(UUID organizerId, UUID id);
+
+    Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
+            Double minPrice, Double maxPrice, String city, String sortBy, Pageable pageable);
 
     Optional<Event> getPublishedEvent(UUID id);
 

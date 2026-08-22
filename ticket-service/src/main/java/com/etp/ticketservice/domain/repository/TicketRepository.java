@@ -32,4 +32,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
     @Query("SELECT t FROM Ticket t WHERE t.domainId = :domainId")
     Optional<Ticket> findByDomainId(@Param("domainId") UUID domainId);
+
+    @Query("SELECT t FROM Ticket t WHERE t.referenceCode = :referenceCode")
+    Optional<Ticket> findByReferenceCode(@Param("referenceCode") String referenceCode);
 }
