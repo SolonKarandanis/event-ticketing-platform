@@ -8117,6 +8117,278 @@ This is the complete `authorizeHttpRequests` block, gathering every rule introdu
 - Added `/api/v1/venues/**` to `SecurityConfig`, restricted to `Role.ORGANIZER`
 - This is the final state of `authorizeHttpRequests`, consolidating every rule from earlier lessons in one place
 
+## Frontend Project Setup
+
+Everything so far has been backend. It's time to actually build the frontend the earlier lessons in this document kept assuming was already there -- it wasn't; see "Project Status" at the end of this document for how that gap got tracked in the meantime. We're building it as `frontend/`, a new top-level directory alongside `ticket-service` and `analytics-service` in the same repository, not a separate one.
+
+### Scaffold the Project
+
+The TanStack Start ecosystem's scaffolding tools have moved fast enough that the commands you'll find in most tutorials are already out of date. We confirmed the current path against the live docs rather than guessing, and used the TanStack CLI directly:
+
+```bash
+npx @tanstack/cli@latest create frontend --package-manager npm --add-ons shadcn,tanstack-query,eslint
+```
+
+This one command produces a working TanStack Start app (React 19, Vite, file-based routing) with three things wired in from the start:
+
+- **Tailwind CSS v4** and **shadcn/ui** (the `shadcn` add-on), pre-configured with the `new-york` style
+- **TanStack Query**, already integrated with the router -- `src/router.tsx` builds a `QueryClient` and threads it into the router's context, and `src/routes/__root.tsx` already declares `queryClient` on `MyRouterContext`. There was no manual `QueryClientProvider` wiring left to do.
+- **ESLint + Prettier**
+
+One naming quirk worth knowing: this scaffold uses Node's native subpath imports (`"imports": { "#/*": "./src/*" }` in `package.json`) as its import alias, not the `@/*` convention older tutorials show. `components.json` (shadcn's config file) is already set up to match, so every `npx shadcn add <component>` generates imports using `#/*` automatically -- we followed that convention throughout rather than fighting it.
+
+#### Feature-Based Folders
+
+Rather than organizing by technical layer the way `ticket-service` does (`controller/`, `domain/service/`, `domain/dto/`), the frontend is organized by feature, one directory per backend entity:
+
+```
+src/features/
+  events/{api.ts,types.ts,hooks.ts,components/}
+  ticket-types/{api.ts,types.ts,hooks.ts,components/}
+  tickets/{api.ts,types.ts,hooks.ts,components/}
+  venues/{api.ts,types.ts,hooks.ts,components/}
+  auth/{api.ts,types.ts,hooks.ts,components/}
+  analytics/{api.ts,types.ts,hooks.ts,components/}
+```
+
+Each feature's `api.ts` holds typed fetch functions, `types.ts` mirrors the backend's DTOs field-for-field, and `hooks.ts` wraps `api.ts` in named React Query hooks (`useEvents()`, `useCreateEvent()`, and so on) -- the query keys and cache-invalidation rules live in exactly one place, rather than being copy-pasted at every call site that needs the same data. `src/routes/` (TanStack Start's file-based routes) stays thin: it composes screens from features, it doesn't own data-fetching logic itself.
+
+Shared, non-shadcn components go in a flat `src/components/` -- but only once a second feature actually needs one. A component that's only used by one feature stays inside that feature's own `components/` folder; it gets promoted to the shared folder on its second real use, not preemptively.
+
+#### Environment Configuration
+
+`.env.local` (git-ignored) holds the two backend URLs and the Keycloak settings:
+
+```bash
+VITE_TICKET_SERVICE_URL=http://localhost:4005/ticket-service
+VITE_ANALYTICS_SERVICE_URL=http://localhost:3001
+VITE_KEYCLOAK_ISSUER=http://localhost:9090/realms/event-ticket-platform
+VITE_KEYCLOAK_CLIENT_ID=event-ticket-platform-app
+```
+
+`ticket-service`'s base URL isn't just a port -- it also carries `server.servlet.context-path=/ticket-service` from `application.properties`, so every API call is actually `/ticket-service/api/v1/...`. Baking the context path into the env var here means individual features' `api.ts` files never need to know it exists; they just append `/api/v1/...`.
+
+#### Summary
+
+- Scaffolded `frontend/` via the TanStack CLI with the `shadcn`, `tanstack-query`, and `eslint` add-ons -- Tailwind, shadcn/ui, and React Query all came pre-wired
+- Adopted the scaffold's own `#/*` import alias rather than the more common `@/*`, since shadcn's generated components already assume it
+- Organized the app by feature (`src/features/<entity>/`), not by technical layer, mirroring the backend's domain vocabulary rather than its folder structure
+- `.env.local` holds both backend base URLs (including `ticket-service`'s `/ticket-service` context path) and the Keycloak issuer/client id
+
+## Frontend Authentication
+
+With the project scaffolded, the next thing it needs before any real screen makes sense is a working login. Keycloak already has a client registered for this app (`event-ticket-platform-app`, from "Running Keycloak" earlier) -- we're wiring the frontend to actually use it.
+
+### Configure the OIDC Client
+
+```bash
+npm install react-oidc-context oidc-client-ts
+```
+
+`oidc-client-ts` does the actual protocol work (`react-oidc-context` is a thin React wrapper around it), so the `UserManager` is constructed by hand rather than letting `react-oidc-context` build one implicitly from settings -- that's what makes it possible to also reach it from outside React, which the route guards need:
+
+```typescript
+// src/lib/oidc.ts
+import { UserManager, type StateStore } from 'oidc-client-ts';
+
+class InMemoryStateStore implements StateStore {
+  private store = new Map<string, string>();
+
+  async set(key: string, value: string) { this.store.set(key, value); }
+  async get(key: string) { return this.store.get(key) ?? null; }
+  async remove(key: string) {
+    const value = this.store.get(key) ?? null;
+    this.store.delete(key);
+    return value;
+  }
+  async getAllKeys() { return Array.from(this.store.keys()); }
+}
+
+let userManagerInstance: UserManager | undefined;
+
+export function getUserManager(): UserManager {
+  if (typeof window === 'undefined') {
+    throw new Error('getUserManager() must only be called on the client');
+  }
+
+  if (!userManagerInstance) {
+    const store = new InMemoryStateStore();
+    userManagerInstance = new UserManager({
+      authority: import.meta.env.VITE_KEYCLOAK_ISSUER,
+      client_id: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/callback`,
+      post_logout_redirect_uri: window.location.origin,
+      response_type: 'code',
+      scope: 'openid profile email',
+      userStore: store,
+      stateStore: store,
+      automaticSilentRenew: true,
+    });
+  }
+
+  return userManagerInstance;
+}
+```
+
+A few things worth calling out:
+
+- **Tokens are held in memory, not `sessionStorage`.** `oidc-client-ts`'s default stores persist across a reload; ours deliberately don't, via a small `Map`-backed `StateStore` used for both `userStore` and `stateStore`. A reload losing everything sounds harsh, but see "Sign In, Sign Out, and Session Recovery" below for how that's covered without a visible re-login.
+- **There's no `useRefreshToken` setting.** It doesn't exist on `oidc-client-ts`'s `UserManagerSettings` -- `signinSilent()`'s own behavior is "via refresh token or an iframe," trying the refresh token first whenever one is available. Since `silent_redirect_uri` is never set here, there's no iframe fallback path at all -- renewal is refresh-token-only by construction, not by a flag.
+- **`getUserManager()` is lazy and guarded.** TanStack Start renders both server and client from the same `router.tsx`, and `oidc-client-ts`'s `UserManager` needs `window`. Constructing it eagerly at module scope would crash the very first server render; constructing it lazily behind a client-only guard means the module can be imported anywhere without incident, and only actually builds a `UserManager` the first time client-side code calls it.
+
+### Wire the Auth Provider and Router Context
+
+`react-oidc-context`'s `AuthProvider` accepts an existing `UserManager` instance directly, rather than only building its own from settings -- that's the hook that lets the hand-constructed one above become the single source of truth everywhere, including outside React:
+
+```tsx
+// src/routes/__root.tsx (inside RootDocument)
+const userManager = typeof window !== 'undefined' ? getUserManager() : undefined;
+
+const onSigninCallback = (user: User | undefined) => {
+  void router.navigate({ to: getRoleHomeRoute(getRoles(user)), replace: true });
+};
+
+return (
+  // ...
+  <AuthProvider userManager={userManager} onSigninCallback={onSigninCallback}>
+    <Header />
+    {children}
+    <Footer />
+  </AuthProvider>
+  // ...
+);
+```
+
+`AuthProvider` tolerates `userManager` being `undefined` -- it falls back to an inert stub rather than throwing, and its real initialization work (detecting a login callback, loading the current user) is deferred to a `useEffect`, which never runs during SSR anyway. That's what makes wrapping the whole app in `AuthProvider` safe even though the manager itself only ever really exists client-side.
+
+`AuthProvider` also auto-detects when the current URL has `code`/`state` query params (i.e. Keycloak just redirected back after a login) and processes the callback itself -- there's no need to manually call `signinRedirectCallback()` anywhere. `onSigninCallback` is just the hook for what happens next: it reads the signed-in user's roles and navigates to whichever screen is theirs.
+
+The router's own context gets a small `auth` accessor alongside the existing `queryClient`, so route guards (which run outside the React tree, in `beforeLoad`) can ask "who's logged in right now":
+
+```typescript
+// src/router.tsx
+const router = createTanStackRouter({
+  routeTree,
+  context: {
+    ...context,
+    auth: {
+      getUser: () =>
+        typeof window !== 'undefined' ? getUserManager().getUser() : Promise.resolve(null),
+    },
+  },
+  // ...
+});
+
+if (typeof window !== 'undefined') {
+  const userManager = getUserManager();
+  userManager.events.addUserLoaded(() => router.invalidate());
+  userManager.events.addUserUnloaded(() => router.invalidate());
+}
+```
+
+That last part matters: without it, a route guard only re-checks auth state on the *next* navigation. Subscribing to `UserManager`'s own load/unload events and calling `router.invalidate()` means a guard re-evaluates the instant a login or logout actually happens, not whenever the user next happens to click a link.
+
+### Guard Routes by Role
+
+Each of the three roles gets a pathless layout route -- a route file that contributes no URL segment of its own, just a shared `beforeLoad` for whatever's nested underneath it:
+
+```tsx
+// src/routes/_organizer.tsx
+export const Route = createFileRoute('/_organizer')({
+  ssr: false,
+  beforeLoad: async ({ context }) => {
+    const user = await context.auth.getUser();
+
+    if (!user) {
+      await getUserManager().signinRedirect();
+      throw redirect({ to: '/' });
+    }
+
+    const roles = getRoles(user);
+    if (!roles.includes(ROLE_ORGANIZER)) {
+      throw redirect({ to: getRoleHomeRoute(roles) });
+    }
+  },
+  component: () => <Outlet />,
+});
+```
+
+`_attendee.tsx` and `_staff.tsx` are the same shape, checking their own role. `ssr: false` is what makes this safe to write without a manual `typeof window` check inside the guard itself -- TanStack Start's Selective SSR means `beforeLoad` simply never runs server-side for a route marked this way, so the client-only `getUserManager()` call inside it never executes anywhere that would crash.
+
+A user with the wrong role for a given layout gets redirected to *their own* role's home (`getRoleHomeRoute`), not shown a Forbidden page -- organizer, attendee, and staff are effectively three different apps sharing one codebase, so bouncing someone back to the app that's actually theirs is the more honest response than an error screen. A user with no role at all, or not logged in, gets sent to Keycloak's login page directly.
+
+Each layout currently has one placeholder screen underneath it -- `/dashboard` for organizers, `/browse` for attendees, `/scan` for staff -- just enough to confirm the guard actually works. The real screens for each of these are separate pieces of future work.
+
+### Sign In, Sign Out, and Session Recovery
+
+There's no custom sign-up or login page anywhere in this app. "Log In" is a plain button:
+
+```tsx
+<button onClick={() => auth.signinRedirect()}>Log In</button>
+```
+
+That's a full-page redirect to Keycloak's own hosted login screen -- the same one an admin sees logging into the Keycloak console, just themed for this realm. "Log Out" is the mirror image, `auth.signoutRedirect()`, which clears local state and round-trips through Keycloak's end-session endpoint back to the app.
+
+Because tokens live in memory only, a plain page reload would normally force a visible re-login even for someone who's still genuinely signed in. One call at app bootstrap avoids that:
+
+```tsx
+useEffect(() => {
+  getUserManager()
+    .signinSilent()
+    .catch(() => {
+      // No existing session to recover -- expected for a first visit or a logged-out user.
+    });
+}, []);
+```
+
+If Keycloak's own SSO session cookie is still valid, this quietly recovers a fresh token with no redirect the user ever sees. If it isn't, it just fails silently and the user looks logged out until they click "Log In" -- which is the correct behavior either way, not an error.
+
+### The Shared `apiFetch` Wrapper
+
+Every feature's `api.ts` calls this instead of raw `fetch`, so the auth header and 401 handling live in exactly one place:
+
+```typescript
+// src/lib/api-client.ts
+export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const userManager = getUserManager();
+  const user = await userManager.getUser();
+
+  const headers = new Headers(init.headers);
+  if (user?.access_token) {
+    headers.set('Authorization', `Bearer ${user.access_token}`);
+  }
+  headers.set('Accept-Language', 'en');
+
+  const response = await fetch(input, { ...init, headers });
+  if (response.status !== 401) return response;
+
+  try {
+    await userManager.signinSilent();
+  } catch {
+    await userManager.signinRedirect();
+    return response;
+  }
+
+  const retryUser = await userManager.getUser();
+  const retryHeaders = new Headers(init.headers);
+  if (retryUser?.access_token) retryHeaders.set('Authorization', `Bearer ${retryUser.access_token}`);
+  retryHeaders.set('Accept-Language', 'en');
+  return fetch(input, { ...init, headers: retryHeaders });
+}
+```
+
+A 401 gets one retry after a silent token refresh before giving up and sending the user back through `signinRedirect()` -- the same fallback the bootstrap recovery uses. `Accept-Language` is hardcoded to `en` for now; see "Frontend Internationalization" below for where that stops being hardcoded.
+
+#### Summary
+
+- Installed `react-oidc-context` + `oidc-client-ts`; the `UserManager` is hand-constructed in `src/lib/oidc.ts` rather than left to `react-oidc-context` to build implicitly, so route guards outside React can reach the same instance
+- Tokens are in-memory only (a custom `StateStore`, not `sessionStorage`), with refresh-token-only silent renewal and a `signinSilent()` bootstrap call to recover a session invisibly after a reload
+- `AuthProvider` wraps the whole app and auto-detects the OIDC callback itself; `onSigninCallback` just decides where to send the user afterward
+- The router's context carries an `auth.getUser()` accessor, and `UserManager`'s load/unload events call `router.invalidate()` so guards react the instant login/logout happens
+- Three pathless layout routes (`_organizer`, `_attendee`, `_staff`), each `ssr: false`, each with one `beforeLoad` checking its own role and bouncing a mismatched user to their own home instead of a Forbidden page
+- No custom sign-up/login pages -- both redirect straight to Keycloak's hosted screens
+- Added `src/lib/api-client.ts`'s `apiFetch()` wrapper: attaches `Authorization`, handles a 401 with one silent-refresh retry before falling back to a full sign-in redirect
+
 ## Frontend Internationalization
 
 `ticket-service` now resolves its own validation and error messages by locale. The frontend needs the same capability for everything the backend doesn't own -- button labels, page titles, form field names, empty states. We're keeping these two systems deliberately separate: `ticket-service` owns backend-originated text, and the frontend owns UI text, each with its own translation files and no runtime dependency on the other.
@@ -8207,24 +8479,17 @@ function CreateEventForm() {
 
 ### Keep the Backend in Sync
 
-`ticket-service` resolves validation and error messages from the request's `Accept-Language` header. If the frontend switches language but keeps sending requests without that header, or with the browser's default language instead of whatever the user picked in the UI, the two will drift -- English form labels next to a Greek validation error, or vice versa. The API client needs to explicitly forward the active language on every request:
+`ticket-service` resolves validation and error messages from the request's `Accept-Language` header. If the frontend switches language but keeps sending requests without that header, or with the browser's default language instead of whatever the user picked in the UI, the two will drift -- English form labels next to a Greek validation error, or vice versa. `apiFetch()` (see "Frontend Authentication" earlier) already sets this header on every request, just hardcoded to `en` for lack of anywhere else to read it from at the time. Now that i18next exists, that's a one-line change:
 
 ```typescript
 // src/lib/api-client.ts
 import i18next from '../i18n';
 
-export function apiFetch(input: RequestInfo, init: RequestInit = {}) {
-  return fetch(input, {
-    ...init,
-    headers: {
-      ...init.headers,
-      'Accept-Language': i18next.language,
-    },
-  });
-}
+// ...
+headers.set('Accept-Language', i18next.language); // was hardcoded to 'en'
 ```
 
-Every call into `ticket-service` should go through this wrapper (or whatever TanStack Query fetcher wraps it) rather than calling `fetch` directly, or the header simply won't be there.
+Both places `apiFetch()` sets the header -- the initial request and the retry after a silent-refresh 401 -- need the same change, or the retry would still send the stale hardcoded value.
 
 One honest limitation worth flagging: there's no shared source of truth between the two translation systems. Renaming a field on the backend doesn't touch the frontend's JSON files, and adding a UI label doesn't touch the backend's properties files -- each has to be updated by hand, in its own language, in its own repository. That's the trade-off for keeping them decoupled; it's the same trade-off `auth-service` avoided by centralizing UI labels server-side, at the cost of the DB-backed management layer we specifically decided not to build here.
 
@@ -8787,9 +9052,17 @@ A quick way to confirm the guard is actually doing something, before wiring up a
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
 
-### The biggest gap: no frontend yet
+### Frontend: scaffolded and authenticated, no real screens yet
 
-Everything built so far is backend -- `ticket-service` (Spring Boot) and `analytics-service` (NestJS). The "Ui Testing" lessons throughout this document describe a React + TanStack Start frontend (event creation forms, the purchase flow, the QR validation screen, the published-events landing page), but that project has never been scaffolded. "Frontend Internationalization" is in the same position -- the lesson exists, but there's no frontend yet to apply it to.
+`frontend/` now exists -- see "Frontend Project Setup" and "Frontend Authentication" above. It's a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (in-memory tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every future feature will call into.
+
+What it doesn't have yet: any of the actual screens the "Ui Testing" lessons throughout this document describe (event creation forms, the purchase flow, the QR validation screen, the published-events landing page, venue management, the reports dashboard). Each of the three role layouts currently renders one placeholder page (`/dashboard`, `/browse`, `/scan`) whose only job is proving the auth/routing shell works -- none of them are real yet. "Frontend Internationalization" is applied (the `apiFetch()` wrapper already forwards `Accept-Language`), but there's no actual UI text anywhere yet to translate.
+
+### `frontend` loose ends
+
+- No automated tests, matching the rest of this project's all-manual-verification pattern
+- The full login round-trip (redirect to Keycloak, log in, land on the right role's home, get bounced from a mismatched route, reload without a forced re-login) was verified manually rather than by an automated browser check -- no headless-browser tooling was wired into this build
+- `react-hook-form`, `zod`, and `i18next`'s actual translation files aren't installed/added yet -- they land alongside whichever feature first needs them, not speculatively ahead of time
 
 ### `ticket-service` loose ends
 
