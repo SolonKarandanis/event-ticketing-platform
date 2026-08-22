@@ -1,1 +1,9 @@
-// Auth hooks (role checks, sign-in/out helpers) -- see issue #3.
+import { useAuth } from 'react-oidc-context'
+import { getRoles } from '#/lib/oidc'
+
+// Thin convenience wrapper -- components that just need "what roles does the current
+// user have" don't need to know about the realm_access claim shape.
+export function useUserRoles(): string[] {
+  const auth = useAuth()
+  return getRoles(auth.user)
+}

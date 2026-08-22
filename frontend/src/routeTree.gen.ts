@@ -10,7 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AttendeeRouteImport } from './routes/_attendee'
+import { Route as OrganizerRouteImport } from './routes/_organizer'
+import { Route as StaffRouteImport } from './routes/_staff'
 import { Route as AboutRouteImport } from './routes/about'
+import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as AttendeeBrowseRouteImport } from './routes/_attendee/browse'
+import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dashboard'
+import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 
 const IndexRoute = IndexRouteImport.update({
@@ -18,10 +25,42 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AttendeeRoute = AttendeeRouteImport.update({
+  id: '/_attendee',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrganizerRoute = OrganizerRouteImport.update({
+  id: '/_organizer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StaffRoute = StaffRouteImport.update({
+  id: '/_staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AboutRoute = AboutRouteImport.update({
   id: '/about',
   path: '/about',
   getParentRoute: () => rootRouteImport,
+} as any)
+const CallbackRoute = CallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AttendeeBrowseRoute = AttendeeBrowseRouteImport.update({
+  id: '/browse',
+  path: '/browse',
+  getParentRoute: () => AttendeeRoute,
+} as any)
+const OrganizerDashboardRoute = OrganizerDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const StaffScanRoute = StaffScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => StaffRoute,
 } as any)
 const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   id: '/demo/tanstack-query',
@@ -32,30 +71,74 @@ const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/callback': typeof CallbackRoute
+  '/browse': typeof AttendeeBrowseRoute
+  '/dashboard': typeof OrganizerDashboardRoute
+  '/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/callback': typeof CallbackRoute
+  '/browse': typeof AttendeeBrowseRoute
+  '/dashboard': typeof OrganizerDashboardRoute
+  '/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_attendee': typeof AttendeeRouteWithChildren
+  '/_organizer': typeof OrganizerRouteWithChildren
+  '/_staff': typeof StaffRouteWithChildren
   '/about': typeof AboutRoute
+  '/callback': typeof CallbackRoute
+  '/_attendee/browse': typeof AttendeeBrowseRoute
+  '/_organizer/dashboard': typeof OrganizerDashboardRoute
+  '/_staff/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/demo/tanstack-query'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/callback'
+    | '/browse'
+    | '/dashboard'
+    | '/scan'
+    | '/demo/tanstack-query'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/demo/tanstack-query'
-  id: '__root__' | '/' | '/about' | '/demo/tanstack-query'
+  to:
+    | '/'
+    | '/about'
+    | '/callback'
+    | '/browse'
+    | '/dashboard'
+    | '/scan'
+    | '/demo/tanstack-query'
+  id:
+    | '__root__'
+    | '/'
+    | '/_attendee'
+    | '/_organizer'
+    | '/_staff'
+    | '/about'
+    | '/callback'
+    | '/_attendee/browse'
+    | '/_organizer/dashboard'
+    | '/_staff/scan'
+    | '/demo/tanstack-query'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AttendeeRoute: typeof AttendeeRouteWithChildren
+  OrganizerRoute: typeof OrganizerRouteWithChildren
+  StaffRoute: typeof StaffRouteWithChildren
   AboutRoute: typeof AboutRoute
+  CallbackRoute: typeof CallbackRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
 }
 
@@ -68,12 +151,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_attendee': {
+      id: '/_attendee'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AttendeeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_organizer': {
+      id: '/_organizer'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof OrganizerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_staff': {
+      id: '/_staff'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof StaffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/about': {
       id: '/about'
       path: '/about'
       fullPath: '/about'
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/callback': {
+      id: '/callback'
+      path: '/callback'
+      fullPath: '/callback'
+      preLoaderRoute: typeof CallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_attendee/browse': {
+      id: '/_attendee/browse'
+      path: '/browse'
+      fullPath: '/browse'
+      preLoaderRoute: typeof AttendeeBrowseRouteImport
+      parentRoute: typeof AttendeeRoute
+    }
+    '/_organizer/dashboard': {
+      id: '/_organizer/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof OrganizerDashboardRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/_staff/scan': {
+      id: '/_staff/scan'
+      path: '/scan'
+      fullPath: '/scan'
+      preLoaderRoute: typeof StaffScanRouteImport
+      parentRoute: typeof StaffRoute
     }
     '/demo/tanstack-query': {
       id: '/demo/tanstack-query'
@@ -85,9 +217,47 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AttendeeRouteChildren {
+  AttendeeBrowseRoute: typeof AttendeeBrowseRoute
+}
+
+const AttendeeRouteChildren: AttendeeRouteChildren = {
+  AttendeeBrowseRoute: AttendeeBrowseRoute,
+}
+
+const AttendeeRouteWithChildren = AttendeeRoute._addFileChildren(
+  AttendeeRouteChildren,
+)
+
+interface OrganizerRouteChildren {
+  OrganizerDashboardRoute: typeof OrganizerDashboardRoute
+}
+
+const OrganizerRouteChildren: OrganizerRouteChildren = {
+  OrganizerDashboardRoute: OrganizerDashboardRoute,
+}
+
+const OrganizerRouteWithChildren = OrganizerRoute._addFileChildren(
+  OrganizerRouteChildren,
+)
+
+interface StaffRouteChildren {
+  StaffScanRoute: typeof StaffScanRoute
+}
+
+const StaffRouteChildren: StaffRouteChildren = {
+  StaffScanRoute: StaffScanRoute,
+}
+
+const StaffRouteWithChildren = StaffRoute._addFileChildren(StaffRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AttendeeRoute: AttendeeRouteWithChildren,
+  OrganizerRoute: OrganizerRouteWithChildren,
+  StaffRoute: StaffRouteWithChildren,
   AboutRoute: AboutRoute,
+  CallbackRoute: CallbackRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
 }
 export const routeTree = rootRouteImport

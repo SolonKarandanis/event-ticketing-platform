@@ -1,4 +1,5 @@
-// Populated in the auth-wiring pass (issue #3): the hand-constructed oidc-client-ts
-// UserManager shared with react-oidc-context, plus the shared apiFetch() wrapper that
-// attaches Authorization + Accept-Language on every request. Not built yet -- this
-// scaffold pass stops at the folder structure.
+// Auth isn't a REST resource on ticket-service (it's all Keycloak-based), so there's no
+// typed fetch functions to put here. The actual OIDC mechanics (issue #3) live in
+// #/lib/oidc.ts (the shared UserManager) and #/lib/api-client.ts (the apiFetch()
+// wrapper) instead -- see hooks.ts in this folder for the one small feature-facing
+// convenience wrapper (useUserRoles).
