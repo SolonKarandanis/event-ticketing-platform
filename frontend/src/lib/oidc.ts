@@ -1,9 +1,17 @@
-import { UserManager, type StateStore, type User } from 'oidc-client-ts'
+import { UserManager, WebStorageStateStore, type StateStore, type User } from 'oidc-client-ts'
 
-// Genuinely in-memory -- oidc-client-ts's default stores are sessionStorage-backed, which
-// survives a reload. The design here calls for state that doesn't, recovered instead via
-// signinSilent() on bootstrap (see AuthProvider's onSigninCallback usage in __root.tsx and
-// the bootstrap effect that calls it).
+// Genuinely in-memory -- used ONLY for userStore (the signed-in user's tokens). This is
+// what "in-memory tokens" in the design actually means: keep the access/refresh tokens
+// out of persistent browser storage, recovered after a reload via signinSilent() instead
+// (see the bootstrap effect in __root.tsx).
+//
+// stateStore is deliberately NOT this -- it can't be. signinRedirect() does a real,
+// full-page browser navigation to Keycloak and back; that wipes all JS memory in the tab,
+// so a pure in-memory store has no record of the PKCE verifier/state by the time the
+// browser lands back on /callback (this is exactly the "stuck on /callback" bug this
+// comment is here to stop someone from reintroducing). The state store only ever holds a
+// short-lived, single-use handshake value anyway -- sessionStorage (tab-scoped, cleared
+// on tab close) is the right, and only working, place for it.
 class InMemoryStateStore implements StateStore {
   private store = new Map<string, string>()
 
@@ -38,8 +46,6 @@ export function getUserManager(): UserManager {
   }
 
   if (!userManagerInstance) {
-    const store = new InMemoryStateStore()
-
     userManagerInstance = new UserManager({
       authority: import.meta.env.VITE_KEYCLOAK_ISSUER,
       client_id: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
@@ -47,8 +53,8 @@ export function getUserManager(): UserManager {
       post_logout_redirect_uri: window.location.origin,
       response_type: 'code',
       scope: 'openid profile email',
-      userStore: store,
-      stateStore: store,
+      userStore: new InMemoryStateStore(),
+      stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
       automaticSilentRenew: true,
       // No silent_redirect_uri is set -- signinSilent() tries a refresh token first and
       // only falls back to an iframe if one isn't configured/available. Omitting it
@@ -63,12 +69,29 @@ const ROLE_ORGANIZER = 'ROLE_ORGANIZER'
 const ROLE_ATTENDEE = 'ROLE_ATTENDEE'
 const ROLE_STAFF = 'ROLE_STAFF'
 
-// Keycloak's realm_access claim isn't a standard OIDC claim, so oidc-client-ts types
-// UserProfile's extra fields as `unknown` -- this is the one place that gets cast.
+// This realm's "realm roles" protocol mapper only adds realm_access.roles to the access
+// token (confirmed via the admin API -- no id.token.claim/userinfo.token.claim config at
+// all), not the ID token. oidc-client-ts's user.profile comes from the ID token, so
+// realm_access is never there to read -- roles have to come from decoding the access
+// token itself instead. This matches ticket-service's own JwtAuthenticationConverter,
+// which reads the identical claim off the identical token (the one sent as the bearer
+// token), so frontend and backend agree on where roles live by construction, not by luck.
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const base64Url = token.split('.')[1]
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
+  return JSON.parse(atob(padded))
+}
+
 export function getRoles(user: User | null | undefined): string[] {
-  if (!user) return []
-  const realmAccess = user.profile.realm_access as { roles?: string[] } | undefined
-  return realmAccess?.roles ?? []
+  if (!user?.access_token) return []
+  try {
+    const payload = decodeJwtPayload(user.access_token)
+    const realmAccess = payload.realm_access as { roles?: string[] } | undefined
+    return realmAccess?.roles ?? []
+  } catch {
+    return []
+  }
 }
 
 // Literal union, not a bare string -- TanStack Router's navigate()/redirect() are typed
