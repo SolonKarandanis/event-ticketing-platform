@@ -1,4 +1,4 @@
-import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
+import { UserManager, WebStorageStateStore } from 'oidc-client-ts'
 
 let userManagerInstance: UserManager | undefined
 
@@ -39,47 +39,12 @@ export function getUserManager(): UserManager {
   return userManagerInstance
 }
 
-const ROLE_ORGANIZER = 'ROLE_ORGANIZER'
-const ROLE_ATTENDEE = 'ROLE_ATTENDEE'
-const ROLE_STAFF = 'ROLE_STAFF'
-
-// This realm's "realm roles" protocol mapper only adds realm_access.roles to the access
-// token (confirmed via the admin API -- no id.token.claim/userinfo.token.claim config at
-// all), not the ID token. oidc-client-ts's user.profile comes from the ID token, so
-// realm_access is never there to read -- roles have to come from decoding the access
-// token itself instead. This matches ticket-service's own JwtAuthenticationConverter,
-// which reads the identical claim off the identical token (the one sent as the bearer
-// token), so frontend and backend agree on where roles live by construction, not by luck.
-function decodeJwtPayload(token: string): Record<string, unknown> {
+// Generic JWT payload decode -- base64url (not plain base64), no Keycloak- or app-specific
+// knowledge of what's inside. Anything that needs a particular claim (e.g. roles, see
+// features/auth/roles.ts) builds on top of this rather than parsing tokens itself.
+export function decodeJwtPayload(token: string): Record<string, unknown> {
   const base64Url = token.split('.')[1]
   const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
   const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
   return JSON.parse(atob(padded))
 }
-
-export function getRoles(user: User | null | undefined): string[] {
-  if (!user?.access_token) return []
-  try {
-    const payload = decodeJwtPayload(user.access_token)
-    const realmAccess = payload.realm_access as { roles?: string[] } | undefined
-    return realmAccess?.roles ?? []
-  } catch {
-    return []
-  }
-}
-
-// Literal union, not a bare string -- TanStack Router's navigate()/redirect() are typed
-// against known route paths, so this has to match one of them exactly to type-check.
-export type RoleHomeRoute = '/dashboard' | '/browse' | '/scan' | '/'
-
-// Per issue #3: role mismatch redirects to the user's own role's home, not a Forbidden
-// page -- the three roles are effectively different apps sharing one codebase. Falls back
-// to the public landing page for a user with none of the three roles.
-export function getRoleHomeRoute(roles: string[]): RoleHomeRoute {
-  if (roles.includes(ROLE_ORGANIZER)) return '/dashboard'
-  if (roles.includes(ROLE_ATTENDEE)) return '/browse'
-  if (roles.includes(ROLE_STAFF)) return '/scan'
-  return '/'
-}
-
-export { ROLE_ORGANIZER, ROLE_ATTENDEE, ROLE_STAFF }

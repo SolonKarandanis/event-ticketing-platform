@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
-import { getRoleHomeRoute, getRoles, ROLE_ORGANIZER } from '#/lib/oidc'
+import { getRoleHomeRoute, getRoles } from '#/features/auth/roles'
+import { ROLE_ORGANIZER } from '#/features/auth/types'
 
 // Pathless layout -- contributes no URL segment of its own, just wraps its children
 // (organizer screens) with this one role check. ssr: false means beforeLoad never runs

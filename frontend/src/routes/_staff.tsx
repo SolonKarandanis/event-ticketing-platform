@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
-import { getRoleHomeRoute, getRoles, ROLE_STAFF } from '#/lib/oidc'
+import { getRoleHomeRoute, getRoles } from '#/features/auth/roles'
+import { ROLE_STAFF } from '#/features/auth/types'
 
 // See _organizer.tsx for why "no user" redirects to '/' instead of calling
 // signinRedirect() directly -- doing that here raced sign-out and won, undoing it.
