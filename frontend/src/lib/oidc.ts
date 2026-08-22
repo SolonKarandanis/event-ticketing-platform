@@ -1,38 +1,4 @@
-import { UserManager, WebStorageStateStore, type StateStore, type User } from 'oidc-client-ts'
-
-// Genuinely in-memory -- used ONLY for userStore (the signed-in user's tokens). This is
-// what "in-memory tokens" in the design actually means: keep the access/refresh tokens
-// out of persistent browser storage, recovered after a reload via signinSilent() instead
-// (see the bootstrap effect in __root.tsx).
-//
-// stateStore is deliberately NOT this -- it can't be. signinRedirect() does a real,
-// full-page browser navigation to Keycloak and back; that wipes all JS memory in the tab,
-// so a pure in-memory store has no record of the PKCE verifier/state by the time the
-// browser lands back on /callback (this is exactly the "stuck on /callback" bug this
-// comment is here to stop someone from reintroducing). The state store only ever holds a
-// short-lived, single-use handshake value anyway -- sessionStorage (tab-scoped, cleared
-// on tab close) is the right, and only working, place for it.
-class InMemoryStateStore implements StateStore {
-  private store = new Map<string, string>()
-
-  async set(key: string, value: string): Promise<void> {
-    this.store.set(key, value)
-  }
-
-  async get(key: string): Promise<string | null> {
-    return this.store.get(key) ?? null
-  }
-
-  async remove(key: string): Promise<string | null> {
-    const value = this.store.get(key) ?? null
-    this.store.delete(key)
-    return value
-  }
-
-  async getAllKeys(): Promise<string[]> {
-    return Array.from(this.store.keys())
-  }
-}
+import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts'
 
 let userManagerInstance: UserManager | undefined
 
@@ -53,7 +19,15 @@ export function getUserManager(): UserManager {
       post_logout_redirect_uri: window.location.origin,
       response_type: 'code',
       scope: 'openid profile email',
-      userStore: new InMemoryStateStore(),
+      // sessionStorage, not pure in-memory: a real reload -- not just a redirect round-trip
+      // -- wipes JS memory too, and signinSilent()'s refresh-token path needs an *existing*
+      // refresh token already loaded to renew. There's nothing to renew after a from-scratch
+      // reload with nothing in memory, so a reload always dropped the session and bounced to
+      // '/' with no way back in. sessionStorage (tab-scoped, cleared on tab close -- not
+      // localStorage) is the standard trade-off here: the refresh token is the genuinely
+      // sensitive one of the two either way, so this isn't meaningfully less safe than the
+      // in-memory version was, and it actually works across a reload.
+      userStore: new WebStorageStateStore({ store: window.sessionStorage }),
       stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
       automaticSilentRenew: true,
       // No silent_redirect_uri is set -- signinSilent() tries a refresh token first and

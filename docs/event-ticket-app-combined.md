@@ -8189,20 +8189,7 @@ npm install react-oidc-context oidc-client-ts
 
 ```typescript
 // src/lib/oidc.ts
-import { UserManager, type StateStore } from 'oidc-client-ts';
-
-class InMemoryStateStore implements StateStore {
-  private store = new Map<string, string>();
-
-  async set(key: string, value: string) { this.store.set(key, value); }
-  async get(key: string) { return this.store.get(key) ?? null; }
-  async remove(key: string) {
-    const value = this.store.get(key) ?? null;
-    this.store.delete(key);
-    return value;
-  }
-  async getAllKeys() { return Array.from(this.store.keys()); }
-}
+import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 
 let userManagerInstance: UserManager | undefined;
 
@@ -8212,7 +8199,6 @@ export function getUserManager(): UserManager {
   }
 
   if (!userManagerInstance) {
-    const store = new InMemoryStateStore();
     userManagerInstance = new UserManager({
       authority: import.meta.env.VITE_KEYCLOAK_ISSUER,
       client_id: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
@@ -8220,8 +8206,8 @@ export function getUserManager(): UserManager {
       post_logout_redirect_uri: window.location.origin,
       response_type: 'code',
       scope: 'openid profile email',
-      userStore: store,
-      stateStore: store,
+      userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+      stateStore: new WebStorageStateStore({ store: window.sessionStorage }),
       automaticSilentRenew: true,
     });
   }
@@ -8230,9 +8216,16 @@ export function getUserManager(): UserManager {
 }
 ```
 
-A few things worth calling out:
+This went through two live-bug-driven revisions before landing here -- worth walking through both, since neither was hypothetical and the reasoning explains why plain "keep it in memory" doesn't actually work for either store.
 
-- **Tokens are held in memory, not `sessionStorage`.** `oidc-client-ts`'s default stores persist across a reload; ours deliberately don't, via a small `Map`-backed `StateStore` used for both `userStore` and `stateStore`. A reload losing everything sounds harsh, but see "Sign In, Sign Out, and Session Recovery" below for how that's covered without a visible re-login.
+**First attempt: a custom in-memory store for both `userStore` and `stateStore`.** The theory was that "in-memory tokens" meant everything should be in-memory, full stop. It broke login entirely: `signinRedirect()` does a real, full-page browser navigation to Keycloak and back, which wipes all JS memory in the tab. By the time the browser lands back on `/callback`, the module has reloaded from scratch and has no record of the PKCE verifier or state param it started with -- `signinCallback()` throws, and the app hangs on `/callback` forever with no visible error. Fix at the time: move just `stateStore` (a short-lived, single-use handshake value that only needs to survive one redirect round-trip) to `sessionStorage`, keep `userStore` (the actual tokens) on the in-memory store.
+
+**Second bug: a real page reload doesn't survive on `userStore` either.** With the actual tokens in memory, refreshing the browser while logged in bounced straight back to `/` with no way back to a protected page -- indistinguishable from being logged out. The cause: `signinSilent()`'s refresh-token path (confirmed by reading its actual source, not assumed) starts by loading the *existing* stored user and checking for a `refresh_token` on it; if there isn't one already in storage, there's nothing to renew. A real reload wipes in-memory storage just as completely as the redirect round-trip did, so after a reload there was no refresh token anywhere to use -- `signinSilent()` had nothing to work with, every time.
+
+That leaves three honest options: keep an iframe around purely for bootstrap recovery (reintroduces the Safari-ITP fragility this design was trying to avoid), accept that a reload always requires clicking "Log In" again (a fast round-trip since Keycloak's own session cookie is usually still valid, just not silent), or store the tokens somewhere that survives a reload. We went with the third: both `userStore` and `stateStore` on `sessionStorage`. The tokens are in browser storage while the tab is open now, not purely in-memory -- but tab-scoped and cleared on tab close, not `localStorage`, and the refresh token (the actually long-lived, sensitive one of the two) was always going to be the harder thing to protect either way. This isn't a compromise made lightly -- it's the standard trade-off most production SPAs land on, for exactly this reason.
+
+Two settings still worth calling out:
+
 - **There's no `useRefreshToken` setting.** It doesn't exist on `oidc-client-ts`'s `UserManagerSettings` -- `signinSilent()`'s own behavior is "via refresh token or an iframe," trying the refresh token first whenever one is available. Since `silent_redirect_uri` is never set here, there's no iframe fallback path at all -- renewal is refresh-token-only by construction, not by a flag.
 - **`getUserManager()` is lazy and guarded.** TanStack Start renders both server and client from the same `router.tsx`, and `oidc-client-ts`'s `UserManager` needs `window`. Constructing it eagerly at module scope would crash the very first server render; constructing it lazily behind a client-only guard means the module can be imported anywhere without incident, and only actually builds a `UserManager` the first time client-side code calls it.
 
@@ -8300,7 +8293,6 @@ export const Route = createFileRoute('/_organizer')({
     const user = await context.auth.getUser();
 
     if (!user) {
-      await getUserManager().signinRedirect();
       throw redirect({ to: '/' });
     }
 
@@ -8315,7 +8307,36 @@ export const Route = createFileRoute('/_organizer')({
 
 `_attendee.tsx` and `_staff.tsx` are the same shape, checking their own role. `ssr: false` is what makes this safe to write without a manual `typeof window` check inside the guard itself -- TanStack Start's Selective SSR means `beforeLoad` simply never runs server-side for a route marked this way, so the client-only `getUserManager()` call inside it never executes anywhere that would crash.
 
-A user with the wrong role for a given layout gets redirected to *their own* role's home (`getRoleHomeRoute`), not shown a Forbidden page -- organizer, attendee, and staff are effectively three different apps sharing one codebase, so bouncing someone back to the app that's actually theirs is the more honest response than an error screen. A user with no role at all, or not logged in, gets sent to Keycloak's login page directly.
+A user with the wrong role for a given layout gets redirected to *their own* role's home (`getRoleHomeRoute`), not shown a Forbidden page -- organizer, attendee, and staff are effectively three different apps sharing one codebase, so bouncing someone back to the app that's actually theirs is the more honest response than an error screen.
+
+The "no user" branch used to do more -- it called `signinRedirect()` directly, on the theory that a guard catching an unauthenticated visitor should immediately send them to log in rather than just showing a dead end. That caused a third live bug, and this one broke sign-out entirely rather than sign-in: clicking "Log Out" appeared to do nothing -- the browser never even reached Keycloak's logout page, and the user was back on `/dashboard`, still logged in, every time. The cause was a race this guard didn't know it was part of. `signoutRedirect()` clears the local user before it finishes navigating to Keycloak's logout endpoint; clearing the user fires the `addUserUnloaded` event, which -- per "Wire the Auth Provider and Router Context" above -- calls `router.invalidate()`. Since the browser hadn't actually left `/dashboard` yet at that instant, `router.invalidate()` re-ran this exact guard right then, mid-page. It saw "no user" and did exactly what it was told to do: called `signinRedirect()` immediately. That fresh login redirect won the race against sign-out's own pending navigation, so the browser went straight into a new login instead of ever reaching the logout page -- indistinguishable, from the user's side, from logout just not working.
+
+The fix removes `signinRedirect()` from the guard entirely -- "no user" just redirects to `/` and stops, the same page `post_logout_redirect_uri` already sends you to. The existing "Log In" button there is what actually starts a session; the guard's only job is deciding whether the *current* page is allowed to render, not deciding to kick off an entirely separate auth flow as a side effect. That also closes off the whole category of race this bug came from -- nothing in a route guard triggers a browser-level redirect on its own anymore, so there's nothing left for a sign-out (or anything else that changes auth state reactively) to race against.
+
+`getRoles(user)` had its own live bug worth recording. The obvious place to look for Keycloak's realm roles is `user.profile.realm_access.roles` -- `oidc-client-ts`'s `user.profile` is populated from the ID token's claims, and that's where a tutorial would point you. It came back empty for every user, every time, and everyone still ended up on `/` (`getRoleHomeRoute`'s fallback for "no roles matched") instead of their actual role's page. Checking the realm's "roles" client scope directly via Keycloak's admin API showed why: the realm-roles protocol mapper is configured with `access.token.claim: true` and nothing else -- no `id.token.claim`, no `userinfo.token.claim`. `realm_access.roles` only ever lands on the **access token** in this realm, never the ID token, so `user.profile` was never going to have it no matter what the frontend did. This is exactly how `ticket-service`'s own `JwtAuthenticationConverter` already reads roles too (see "Extract Roles" earlier) -- off the access token, not the ID token -- so the fix was to make the frontend consistent with the backend instead of consistent with a generic OIDC tutorial:
+
+```typescript
+// src/lib/oidc.ts
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  const base64Url = token.split('.')[1];
+  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+  return JSON.parse(atob(padded));
+}
+
+export function getRoles(user: User | null | undefined): string[] {
+  if (!user?.access_token) return [];
+  try {
+    const payload = decodeJwtPayload(user.access_token);
+    const realmAccess = payload.realm_access as { roles?: string[] } | undefined;
+    return realmAccess?.roles ?? [];
+  } catch {
+    return [];
+  }
+}
+```
+
+Decoding the access token's own payload directly sidesteps the ID-token-mapper question entirely -- frontend and backend now agree on where roles live because they're reading the identical claim off the identical token, not because both happen to be configured the same way today.
 
 Each layout currently has one placeholder screen underneath it -- `/dashboard` for organizers, `/browse` for attendees, `/scan` for staff -- just enough to confirm the guard actually works. The real screens for each of these are separate pieces of future work.
 
@@ -8329,7 +8350,7 @@ There's no custom sign-up or login page anywhere in this app. "Log In" is a plai
 
 That's a full-page redirect to Keycloak's own hosted login screen -- the same one an admin sees logging into the Keycloak console, just themed for this realm. "Log Out" is the mirror image, `auth.signoutRedirect()`, which clears local state and round-trips through Keycloak's end-session endpoint back to the app.
 
-Because tokens live in memory only, a plain page reload would normally force a visible re-login even for someone who's still genuinely signed in. One call at app bootstrap avoids that:
+A plain page reload survives on its own now, since `userStore` is `sessionStorage`-backed (see "Configure the OIDC Client" above for why that took two attempts to get right) -- the stored user, including its refresh token, is still there after a reload the moment the app re-reads it. One extra call at app bootstrap is still worth making on top of that, though:
 
 ```tsx
 useEffect(() => {
@@ -8341,7 +8362,7 @@ useEffect(() => {
 }, []);
 ```
 
-If Keycloak's own SSO session cookie is still valid, this quietly recovers a fresh token with no redirect the user ever sees. If it isn't, it just fails silently and the user looks logged out until they click "Log In" -- which is the correct behavior either way, not an error.
+This isn't what makes a reload survive -- `sessionStorage` already does that structurally. What this adds is a proactive refresh: if the stored access token happens to be expired or close to it by the time the tab reopens, this renews it immediately using the stored refresh token, rather than waiting for the first real API call to hit a 401 and trigger `apiFetch()`'s own reactive retry. If Keycloak's own SSO session cookie is also still valid, this recovers cleanly with no redirect the user ever sees; if neither the stored refresh token nor the SSO cookie is still good, it just fails silently and the user looks logged out until they click "Log In" -- correct behavior either way, not an error.
 
 ### The Shared `apiFetch` Wrapper
 
@@ -8382,12 +8403,15 @@ A 401 gets one retry after a silent token refresh before giving up and sending t
 #### Summary
 
 - Installed `react-oidc-context` + `oidc-client-ts`; the `UserManager` is hand-constructed in `src/lib/oidc.ts` rather than left to `react-oidc-context` to build implicitly, so route guards outside React can reach the same instance
-- Tokens are in-memory only (a custom `StateStore`, not `sessionStorage`), with refresh-token-only silent renewal and a `signinSilent()` bootstrap call to recover a session invisibly after a reload
+- Both `userStore` and `stateStore` end up `sessionStorage`-backed, after two different in-memory attempts each broke on contact with a real browser round-trip: a shared in-memory store broke login (`signinRedirect()`'s full-page navigation wipes JS memory before the handshake state can be read back), and keeping just `userStore` in-memory afterwards broke reload (`signinSilent()`'s refresh-token path needs an existing refresh token already in storage, which a real reload wipes just as completely)
+- `getRoles()` decodes the access token's own JWT payload rather than reading `user.profile.realm_access` -- this realm's role mapper only ever puts that claim on the access token, matching how `ticket-service`'s `JwtAuthenticationConverter` already reads the exact same claim off the exact same token
+- Refresh-token-only silent renewal, plus a `signinSilent()` bootstrap call as an extra proactive refresh on top of what `sessionStorage` already recovers on its own
 - `AuthProvider` wraps the whole app and auto-detects the OIDC callback itself; `onSigninCallback` just decides where to send the user afterward
 - The router's context carries an `auth.getUser()` accessor, and `UserManager`'s load/unload events call `router.invalidate()` so guards react the instant login/logout happens
-- Three pathless layout routes (`_organizer`, `_attendee`, `_staff`), each `ssr: false`, each with one `beforeLoad` checking its own role and bouncing a mismatched user to their own home instead of a Forbidden page
+- Three pathless layout routes (`_organizer`, `_attendee`, `_staff`), each `ssr: false`, each with one `beforeLoad` checking its own role and bouncing a mismatched user to their own home instead of a Forbidden page -- the "no user" branch redirects to `/` rather than calling `signinRedirect()` itself, after doing exactly that raced (and won against) sign-out's own navigation, making "Log Out" silently log the user right back in
 - No custom sign-up/login pages -- both redirect straight to Keycloak's hosted screens
 - Added `src/lib/api-client.ts`'s `apiFetch()` wrapper: attaches `Authorization`, handles a 401 with one silent-refresh retry before falling back to a full sign-in redirect
+- Verified live so far: logging in as `skaran` (organizer) redirects to Keycloak, back through `/callback`, and lands on `/dashboard`. The sign-out fix and the reload fix are both in and match the diagnosed root cause in each case, but neither had been re-confirmed against a live click-through as of this writing -- along with the `attendee`/`staff` logins and the role-mismatch bounce, still open to independently confirm
 
 ## Frontend Internationalization
 
