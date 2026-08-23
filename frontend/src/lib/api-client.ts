@@ -39,6 +39,16 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, { ...init, headers: retryHeaders })
 }
 
+// The subset of Spring Data's Page<T> JSON envelope every paginated list screen
+// actually needs -- not the full shape (sort, pageable, first/last, etc).
+export interface Page<T> {
+  content: T[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,

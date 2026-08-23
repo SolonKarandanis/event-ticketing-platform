@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ApiError } from '#/lib/api-client'
 import { createVenue, getVenue, listVenues, updateVenue } from './api'
+import type { ListVenuesParams } from './api'
 import type { CreateVenueRequest, UpdateVenueRequest } from './types'
 
 const venuesKey = ['venues'] as const
@@ -12,8 +13,11 @@ function toastErrorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback
 }
 
-export function useVenues() {
-  return useQuery({ queryKey: venuesKey, queryFn: listVenues })
+export function useVenues(params: ListVenuesParams) {
+  return useQuery({
+    queryKey: [...venuesKey, params],
+    queryFn: () => listVenues(params),
+  })
 }
 
 export function useVenue(venueId: string) {
