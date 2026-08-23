@@ -1,10 +1,16 @@
-// Named React Query hooks wrapping api.ts -- query keys and invalidation live here once,
-// not duplicated at call sites. See issue #7.
+// Named React Query hooks wrapping api.ts -- query keys, invalidation, and
+// success/failure toasts all live here once, not duplicated at call sites. See issue #7.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { ApiError } from '#/lib/api-client'
 import { createVenue, getVenue, listVenues, updateVenue } from './api'
 import type { CreateVenueRequest, UpdateVenueRequest } from './types'
 
 const venuesKey = ['venues'] as const
+
+function toastErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback
+}
 
 export function useVenues() {
   return useQuery({ queryKey: venuesKey, queryFn: listVenues })
@@ -22,7 +28,13 @@ export function useCreateVenue() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (request: CreateVenueRequest) => createVenue(request),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: venuesKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: venuesKey })
+      toast.success('Venue created')
+    },
+    onError: (error) => {
+      toast.error(toastErrorMessage(error, "Couldn't create venue"))
+    },
   })
 }
 
@@ -30,6 +42,12 @@ export function useUpdateVenue(venueId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (request: UpdateVenueRequest) => updateVenue(venueId, request),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: venuesKey }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: venuesKey })
+      toast.success('Venue updated')
+    },
+    onError: (error) => {
+      toast.error(toastErrorMessage(error, "Couldn't update venue"))
+    },
   })
 }

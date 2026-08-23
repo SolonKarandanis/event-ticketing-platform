@@ -1,5 +1,4 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ApiError } from '#/lib/api-client'
 import {
   VenueForm,
   formValuesToRequest,
@@ -34,11 +33,6 @@ function NewVenue() {
         onSubmit={handleSubmit}
         isSubmitting={createVenue.isPending}
         submitLabel="Save Venue"
-        submitError={
-          createVenue.error instanceof ApiError
-            ? createVenue.error.message
-            : null
-        }
       />
     </main>
   )

@@ -11,6 +11,7 @@ import { AuthProvider } from 'react-oidc-context'
 import type { User } from 'oidc-client-ts'
 import Footer from '../components/Footer'
 import Header from '../components/Header'
+import { Toaster } from '#/components/ui/sonner'
 import { getUserManager } from '#/lib/oidc'
 import { getRoleHomeRoute, getRoles } from '#/features/auth/roles'
 
@@ -89,6 +90,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           {children}
           <Footer />
         </AuthProvider>
+        <Toaster richColors position="top-right" />
         <TanStackDevtools
           config={{
             position: 'bottom-right',

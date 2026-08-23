@@ -92,7 +92,6 @@ interface VenueFormProps {
   onSubmit: (values: VenueFormValues) => void
   isSubmitting: boolean
   submitLabel: string
-  submitError?: string | null
 }
 
 export function VenueForm({
@@ -100,7 +99,6 @@ export function VenueForm({
   onSubmit,
   isSubmitting,
   submitLabel,
-  submitError,
 }: VenueFormProps) {
   const form = useForm<VenueFormValues>({
     resolver: zodResolver(venueFormSchema),
@@ -245,9 +243,7 @@ export function VenueForm({
           )}
         />
 
-        {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
-
-        <Button type="submit" disabled={isSubmitting} className="justify-self-start">
+        <Button type="submit" disabled={isSubmitting} className="justify-self-start cursor-pointer">
           {isSubmitting ? 'Saving...' : submitLabel}
         </Button>
       </form>
