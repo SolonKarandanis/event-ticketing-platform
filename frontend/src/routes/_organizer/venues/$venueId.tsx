@@ -31,12 +31,12 @@ function EditVenue() {
         &larr; Back to Venues
       </Link>
       <p className="island-kicker mb-2">Organizer</p>
-      <h1 className="display-title mb-6 text-3xl font-bold text-[var(--sea-ink)]">
+      <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
         Edit Venue
       </h1>
 
       {isPending ? (
-        <p className="text-sm text-[var(--sea-ink-soft)]">Loading venue...</p>
+        <p className="text-sm text-(--sea-ink-soft)">Loading venue...</p>
       ) : isError ? (
         <p className="text-sm text-destructive">Couldn't load this venue.</p>
       ) : (

@@ -22,7 +22,7 @@ function VenuesList() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <p className="island-kicker mb-2">Organizer</p>
-          <h1 className="display-title text-3xl font-bold text-[var(--sea-ink)]">
+          <h1 className="display-title text-3xl font-bold text-(--sea-ink)">
             Venues
           </h1>
         </div>
@@ -32,13 +32,13 @@ function VenuesList() {
       </div>
 
       {isPending ? (
-        <p className="text-sm text-[var(--sea-ink-soft)]">Loading venues...</p>
+        <p className="text-sm text-(--sea-ink-soft)">Loading venues...</p>
       ) : isError ? (
         <p className="text-sm text-destructive">
           Couldn't load venues. Try refreshing.
         </p>
       ) : venues.length === 0 ? (
-        <p className="text-sm text-[var(--sea-ink-soft)]">
+        <p className="text-sm text-(--sea-ink-soft)">
           No venues yet. Add one before creating an event.
         </p>
       ) : (

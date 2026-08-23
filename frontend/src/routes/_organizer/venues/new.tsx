@@ -27,7 +27,7 @@ function NewVenue() {
         &larr; Back to Venues
       </Link>
       <p className="island-kicker mb-2">Organizer</p>
-      <h1 className="display-title mb-6 text-3xl font-bold text-[var(--sea-ink)]">
+      <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
         Add Venue
       </h1>
       <VenueForm
