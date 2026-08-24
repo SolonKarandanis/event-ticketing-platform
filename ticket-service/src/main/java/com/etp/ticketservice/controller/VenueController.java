@@ -9,6 +9,8 @@ import com.etp.ticketservice.domain.model.UpdateVenueRequest;
 import com.etp.ticketservice.domain.service.VenueService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -28,11 +30,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VenueController {
 
+    private static final Logger log = LoggerFactory.getLogger(VenueController.class);
+
     private final VenueService venueService;
 
     @PostMapping
     public ResponseEntity<VenueResponseDto> createVenue(
             @Valid @RequestBody CreateVenueRequestDto createVenueRequestDto) {
+        log.info("VenueController --> createVenue");
         CreateVenueRequest createVenueRequest = venueService.convertFromDto(createVenueRequestDto);
         Venue createdVenue = venueService.createVenue(createVenueRequest);
         VenueResponseDto venueResponseDto = venueService.convertToVenueResponseDto(createdVenue);
@@ -42,6 +47,7 @@ public class VenueController {
     @PutMapping(path = "/{venueId}")
     public ResponseEntity<VenueResponseDto> updateVenue(@PathVariable UUID venueId,
             @Valid @RequestBody UpdateVenueRequestDto updateVenueRequestDto) {
+        log.info("VenueController --> updateVenue");
         UpdateVenueRequest updateVenueRequest = venueService.convertFromDto(updateVenueRequestDto);
         Venue updatedVenue = venueService.updateVenue(venueId, updateVenueRequest);
         VenueResponseDto venueResponseDto = venueService.convertToVenueResponseDto(updatedVenue);
@@ -50,12 +56,14 @@ public class VenueController {
 
     @GetMapping
     public ResponseEntity<Page<VenueResponseDto>> listVenues(Pageable pageable) {
+        log.info("VenueController --> listVenues");
         Page<Venue> venues = venueService.listVenues(pageable);
         return ResponseEntity.ok(venues.map(venueService::convertToVenueResponseDto));
     }
 
     @GetMapping(path = "/{venueId}")
     public ResponseEntity<VenueResponseDto> getVenue(@PathVariable UUID venueId) {
+        log.info("VenueController --> getVenue --> id: {}", venueId);
         return venueService.getVenue(venueId)
                 .map(venueService::convertToVenueResponseDto)
                 .map(ResponseEntity::ok)

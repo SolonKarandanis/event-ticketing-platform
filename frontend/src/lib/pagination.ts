@@ -25,3 +25,11 @@ export const paginationSearchSchema = z.object({
 })
 
 export type PaginationSearch = z.infer<typeof paginationSearchSchema>
+
+// What a feature's list function actually sends to the backend -- 0-based, matching
+// ticket-service's Pageable exactly. Distinct from PaginationSearch (1-based, optional,
+// URL-facing): the 1-based/0-based translation happens once, in the route, not in api.ts.
+export interface PaginationParams {
+  page: number
+  size: number
+}

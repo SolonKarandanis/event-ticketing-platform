@@ -12,6 +12,8 @@ import com.etp.ticketservice.domain.model.UpdateEventRequest;
 import com.etp.ticketservice.domain.service.EventService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -33,11 +35,15 @@ import java.util.UUID;
 @RequestMapping("/api/v1/events")
 @RequiredArgsConstructor
 public class EventController {
+
+    private static final Logger log = LoggerFactory.getLogger(EventController.class);
+
     private final EventService eventService;
 
     @PostMapping
     public ResponseEntity<CreateEventResponseDto> createEvent(@AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateEventRequestDto createEventRequestDto) {
+        log.info("EventController --> createEvent");
         CreateEventRequest createEventRequest = eventService.convertFromDto(createEventRequestDto);
 
         UUID userId = parseUserId(jwt);
@@ -52,6 +58,7 @@ public class EventController {
     @GetMapping
     public ResponseEntity<Page<ListEventResponseDto>> listEvents(@AuthenticationPrincipal Jwt jwt, Pageable pageable
     ) {
+        log.info("EventController --> listEvents");
         UUID userId = parseUserId(jwt);
         Page<Event> events = eventService.listEventsForOrganizer(userId, pageable);
         return ResponseEntity.ok(
@@ -62,6 +69,7 @@ public class EventController {
     @GetMapping(path = "/{eventId}")
     public ResponseEntity<GetEventDetailsResponseDto> getEvent(@AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID eventId) {
+        log.info("EventController --> getEvent --> id: {}", eventId);
         UUID userId = parseUserId(jwt);
 
         return eventService.getEventForOrganizer(userId, eventId)
@@ -73,6 +81,7 @@ public class EventController {
     @PutMapping(path = "/{eventId}")
     public ResponseEntity<UpdateEventResponseDto> updateEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId,
             @Valid @RequestBody UpdateEventRequestDto updateEventRequestDto) {
+        log.info("EventController --> updateEvent --> id: {}", eventId);
         UpdateEventRequest updateEventRequest = eventService.convertFromDto(updateEventRequestDto);
         UUID userId = parseUserId(jwt);
 
@@ -87,6 +96,7 @@ public class EventController {
 
     @DeleteMapping(path = "/{eventId}")
     public ResponseEntity<Void> deleteEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        log.info("EventController --> deleteEvent --> id: {}", eventId);
         UUID userId = parseUserId(jwt);
         eventService.deleteEventForOrganizer(userId, eventId);
         return ResponseEntity.noContent().build();
@@ -94,18 +104,21 @@ public class EventController {
 
     @PostMapping(path = "/{eventId}/publish")
     public ResponseEntity<Void> publishEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        log.info("EventController --> publishEvent --> id: {}", eventId);
         eventService.publishEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping(path = "/{eventId}/cancel")
     public ResponseEntity<Void> cancelEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        log.info("EventController --> cancelEvent --> id: {}", eventId);
         eventService.cancelEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping(path = "/{eventId}/complete")
     public ResponseEntity<Void> completeEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+        log.info("EventController --> completeEvent --> id: {}", eventId);
         eventService.completeEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
     }

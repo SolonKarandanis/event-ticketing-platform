@@ -73,3 +73,10 @@ export async function parseJsonOrThrow<T>(response: Response): Promise<T> {
   }
   return await response.json() as Promise<T>
 }
+
+// For a mutation's onError handler: surfaces the backend's real, localized message when
+// the failure came from parseJsonOrThrow, falls back to a feature-supplied string for
+// anything else (a network failure, an unexpected exception).
+export function toastErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback
+}
