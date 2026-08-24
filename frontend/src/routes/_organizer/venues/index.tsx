@@ -27,7 +27,6 @@ function VenuesList() {
     <main className="page-wrap px-4 py-12">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <p className="island-kicker mb-2">Organizer</p>
           <h1 className="display-title text-3xl font-bold text-(--sea-ink)">
             Venues
           </h1>

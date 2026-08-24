@@ -44,6 +44,14 @@ function OrganizerLayout() {
         >
           Venues
         </Link>
+        <Link
+            to="/events"
+            className="nav-link"
+            activeProps={{ className: 'nav-link is-active' }}
+            activeOptions={{ exact: false }}
+        >
+          Events
+        </Link>
       </nav>
       <Outlet />
     </>
