@@ -8,7 +8,8 @@ import type {
     ListEventResponse, UpdateEventRequest, UpdateEventResponse
 } from "#/features/events/types.ts";
 import type {PaginationParams} from "#/lib/pagination.ts";
-import {apiFetch, type Page, parseJsonOrThrow} from "#/lib/api-client.ts";
+import {apiFetch, parseJsonOrThrow, throwIfNotOk} from "#/lib/api-client.ts";
+import type {Page} from "#/lib/api-client.ts";
 
 const BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/events`
 
@@ -44,26 +45,26 @@ export async function deleteEvent(eventId: string):Promise<void>{
     const response = await apiFetch(`${BASE_URL}/${eventId}`, {
         method: 'DELETE',
     });
-    return parseJsonOrThrow<void>(response);
+    return throwIfNotOk(response);
 }
 
 export async function publishEvent(eventId: string):Promise<void> {
     const response = await apiFetch(`${BASE_URL}/${eventId}/publish`, {
         method: 'POST',
     });
-    return parseJsonOrThrow<void>(response);
+    return throwIfNotOk(response);
 }
 
 export async function cancelEvent(eventId: string):Promise<void> {
     const response = await apiFetch(`${BASE_URL}/${eventId}/cancel`, {
         method: 'POST',
     });
-    return parseJsonOrThrow<void>(response);
+    return throwIfNotOk(response);
 }
 
 export async function completeEvent(eventId: string):Promise<void> {
     const response = await apiFetch(`${BASE_URL}/${eventId}/complete`, {
         method: 'POST',
     });
-    return parseJsonOrThrow<void>(response);
+    return throwIfNotOk(response);
 }

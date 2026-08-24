@@ -2,6 +2,8 @@ package com.etp.ticketservice.controller;
 
 import com.etp.ticketservice.domain.service.TicketTypeService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,11 +20,14 @@ import java.util.UUID;
 @RequestMapping(path = "/api/v1/events/{eventId}/ticket-types")
 public class TicketTypeController {
 
+    private static final Logger log = LoggerFactory.getLogger(TicketTypeController.class);
+
     private final TicketTypeService ticketTypeService;
 
     @PostMapping(path = "/{ticketTypeId}/tickets")
     public ResponseEntity<Void> purchaseTicket(@AuthenticationPrincipal Jwt jwt,
                                                @PathVariable UUID ticketTypeId) {
+        log.info("TicketTypeController --> purchaseTicket");
         ticketTypeService.purchaseTicket(parseUserId(jwt), ticketTypeId);
         return new ResponseEntity<>(HttpStatus.NO_CONTENT);
     }
