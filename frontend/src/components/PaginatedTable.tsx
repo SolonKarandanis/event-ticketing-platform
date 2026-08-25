@@ -9,6 +9,7 @@ import {
 } from '#/components/ui/table'
 import { Skeleton } from '#/components/ui/skeleton'
 import { PaginationControls } from '#/components/PaginationControls'
+import { useMinimumDuration } from '#/hooks/use-minimum-duration'
 import type { PageSize } from '#/lib/pagination'
 
 // Cycled per column so skeleton rows don't read as one uniform grid.
@@ -17,6 +18,11 @@ const SKELETON_CELL_WIDTHS = ['w-3/4', 'w-1/2', 'w-2/3', 'w-1/3', 'w-full']
 // Loading caps out at a handful of rows regardless of page size -- a size=100 page
 // doesn't need 100 shimmering placeholders to communicate "this is loading".
 const MAX_SKELETON_ROWS = 8
+
+// A cached/fast response can resolve in well under a frame, which reads as a flicker
+// rather than a loading state -- holding the skeleton for at least this long makes it
+// register as deliberate instead.
+const MIN_SKELETON_DURATION_MS = 400
 
 export interface PaginatedTableColumn<T> {
   header: string
@@ -78,7 +84,9 @@ export function PaginatedTable<T>({
   loadingMessage = 'Loading...',
   errorMessage = 'Something went wrong. Try refreshing.',
 }: PaginatedTableProps<T>) {
-  if (isPending) {
+  const showSkeleton = useMinimumDuration(isPending, MIN_SKELETON_DURATION_MS)
+
+  if (showSkeleton) {
     const skeletonRowCount = Math.min(size, MAX_SKELETON_ROWS)
     return (
       <div className="island-shell rounded-xl" role="status">

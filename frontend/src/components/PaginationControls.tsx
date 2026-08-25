@@ -40,7 +40,11 @@ export function PaginationControls({
   function changeSize(nextSize: PageSize) {
     // Changing the page size while deep in the list can land past the new last page --
     // resetting to page 1 sidesteps that instead of showing an empty page.
-    void navigate({ to: '.', search: (prev) => ({ ...prev, page: DEFAULT_PAGE, size: nextSize }) })
+    void navigate({
+      to: '.',
+      search: (prev) => ({ ...prev, page: DEFAULT_PAGE, size: nextSize }),
+      viewTransition: true,
+    })
   }
 
   return (
@@ -75,6 +79,7 @@ export function PaginationControls({
               <Link
                 to="."
                 search={(prev) => ({ ...prev, page: page - 1 })}
+                viewTransition
                 className={buttonVariants({ variant: 'ghost', size: 'default' })}
               >
                 Previous
@@ -102,6 +107,7 @@ export function PaginationControls({
               <Link
                 to="."
                 search={(prev) => ({ ...prev, page: page + 1 })}
+                viewTransition
                 className={buttonVariants({ variant: 'ghost', size: 'default' })}
               >
                 Next
