@@ -20,6 +20,7 @@ import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dash
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
+import { Route as OrganizerEventsEventIdRouteImport } from './routes/_organizer/events/$eventId'
 import { Route as OrganizerEventsNewRouteImport } from './routes/_organizer/events/new'
 import { Route as OrganizerVenuesIndexRouteImport } from './routes/_organizer/venues/index'
 import { Route as OrganizerVenuesVenueIdRouteImport } from './routes/_organizer/venues/$venueId'
@@ -77,6 +78,11 @@ const OrganizerEventsIndexRoute = OrganizerEventsIndexRouteImport.update({
   path: '/events/',
   getParentRoute: () => OrganizerRoute,
 } as any)
+const OrganizerEventsEventIdRoute = OrganizerEventsEventIdRouteImport.update({
+  id: '/events/$eventId',
+  path: '/events/$eventId',
+  getParentRoute: () => OrganizerRoute,
+} as any)
 const OrganizerEventsNewRoute = OrganizerEventsNewRouteImport.update({
   id: '/events/new',
   path: '/events/new',
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/venues/new': typeof OrganizerVenuesNewRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/venues/new': typeof OrganizerVenuesNewRoute
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/_organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/_organizer/events/new': typeof OrganizerEventsNewRoute
   '/_organizer/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/_organizer/venues/new': typeof OrganizerVenuesNewRoute
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/demo/tanstack-query'
+    | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
     | '/venues/new'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/demo/tanstack-query'
+    | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
     | '/venues/new'
@@ -185,6 +196,7 @@ export interface FileRouteTypes {
     | '/_organizer/dashboard'
     | '/_staff/scan'
     | '/demo/tanstack-query'
+    | '/_organizer/events/$eventId'
     | '/_organizer/events/new'
     | '/_organizer/venues/$venueId'
     | '/_organizer/venues/new'
@@ -281,6 +293,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrganizerEventsIndexRouteImport
       parentRoute: typeof OrganizerRoute
     }
+    '/_organizer/events/$eventId': {
+      id: '/_organizer/events/$eventId'
+      path: '/events/$eventId'
+      fullPath: '/events/$eventId'
+      preLoaderRoute: typeof OrganizerEventsEventIdRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
     '/_organizer/events/new': {
       id: '/_organizer/events/new'
       path: '/events/new'
@@ -326,6 +345,7 @@ const AttendeeRouteWithChildren = AttendeeRoute._addFileChildren(
 
 interface OrganizerRouteChildren {
   OrganizerDashboardRoute: typeof OrganizerDashboardRoute
+  OrganizerEventsEventIdRoute: typeof OrganizerEventsEventIdRoute
   OrganizerEventsNewRoute: typeof OrganizerEventsNewRoute
   OrganizerVenuesVenueIdRoute: typeof OrganizerVenuesVenueIdRoute
   OrganizerVenuesNewRoute: typeof OrganizerVenuesNewRoute
@@ -335,6 +355,7 @@ interface OrganizerRouteChildren {
 
 const OrganizerRouteChildren: OrganizerRouteChildren = {
   OrganizerDashboardRoute: OrganizerDashboardRoute,
+  OrganizerEventsEventIdRoute: OrganizerEventsEventIdRoute,
   OrganizerEventsNewRoute: OrganizerEventsNewRoute,
   OrganizerVenuesVenueIdRoute: OrganizerVenuesVenueIdRoute,
   OrganizerVenuesNewRoute: OrganizerVenuesNewRoute,

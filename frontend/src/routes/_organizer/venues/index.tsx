@@ -1,14 +1,6 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '#/components/ui/table'
-import { PaginationControls } from '#/components/PaginationControls'
+import { PaginatedTable } from '#/components/PaginatedTable'
 import { useVenues } from '#/features/venues/hooks'
 import { DEFAULT_PAGE, DEFAULT_SIZE, paginationSearchSchema } from '#/lib/pagination'
 
@@ -36,59 +28,36 @@ function VenuesList() {
         </Button>
       </div>
 
-      {isPending ? (
-        <p className="text-sm text-(--sea-ink-soft)">Loading venues...</p>
-      ) : isError ? (
-        <p className="text-sm text-destructive">
-          Couldn't load venues. Try refreshing.
-        </p>
-      ) : data.content.length === 0 && page === 1 ? (
-        <p className="text-sm text-(--sea-ink-soft)">
-          No venues yet. Add one before creating an event.
-        </p>
-      ) : (
-        <>
-          <div className="island-shell rounded-xl">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>City</TableHead>
-                  <TableHead>Capacity</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.content.map((venue) => (
-                  <TableRow key={venue.id}>
-                    <TableCell>{venue.name}</TableCell>
-                    <TableCell>{venue.city}</TableCell>
-                    <TableCell>{venue.capacity ?? '—'}</TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild variant="outline" size="sm">
-                        <Link
-                          to="/venues/$venueId"
-                          params={{ venueId: venue.id }}
-                        >
-                          Edit
-                        </Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <PaginationControls
-            page={page}
-            size={size}
-            totalPages={data.totalPages}
-            totalElements={data.totalElements}
-            itemLabel="venue"
-          />
-        </>
-      )}
+      <PaginatedTable
+        items={data?.content ?? []}
+        isPending={isPending}
+        isError={isError}
+        page={page}
+        size={size}
+        totalPages={data?.totalPages ?? 0}
+        totalElements={data?.totalElements ?? 0}
+        itemLabel="venue"
+        getRowKey={(venue) => venue.id}
+        emptyMessage="No venues yet. Add one before creating an event."
+        loadingMessage="Loading venues..."
+        errorMessage="Couldn't load venues. Try refreshing."
+        columns={[
+          { header: 'Name', cell: (venue) => venue.name },
+          { header: 'City', cell: (venue) => venue.city },
+          { header: 'Capacity', cell: (venue) => venue.capacity ?? '—' },
+          {
+            header: 'Actions',
+            className: 'text-right',
+            cell: (venue) => (
+              <Button asChild variant="outline" size="sm">
+                <Link to="/venues/$venueId" params={{ venueId: venue.id }}>
+                  Edit
+                </Link>
+              </Button>
+            ),
+          },
+        ]}
+      />
     </main>
   )
 }
