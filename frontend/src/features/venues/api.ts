@@ -6,8 +6,15 @@ import type { CreateVenueRequest, UpdateVenueRequest, Venue } from './types'
 
 const BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/venues`
 
-export async function listVenues({ page, size }: PaginationParams): Promise<Page<Venue>> {
-  const response = await apiFetch(`${BASE_URL}?page=${page}&size=${size}`)
+export interface ListVenuesParams extends PaginationParams {
+  // Venue-picker search-as-you-type -- not part of the generic PaginationParams shape,
+  // since events/tickets have no search param yet.
+  q?: string
+}
+
+export async function listVenues({ page, size, q }: ListVenuesParams): Promise<Page<Venue>> {
+  const searchParam = q ? `&q=${encodeURIComponent(q)}` : ''
+  const response = await apiFetch(`${BASE_URL}?page=${page}&size=${size}${searchParam}`)
   return parseJsonOrThrow<Page<Venue>>(response)
 }
 

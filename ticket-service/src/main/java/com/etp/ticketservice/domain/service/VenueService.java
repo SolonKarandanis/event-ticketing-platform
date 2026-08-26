@@ -17,7 +17,9 @@ public interface VenueService {
 
     Venue updateVenue(UUID id, UpdateVenueRequest request);
 
-    Page<Venue> listVenues(Pageable pageable);
+    // searchTerm is null for a plain "list everything" call, set for the venue picker's
+    // search-as-you-type.
+    Page<Venue> listVenues(String searchTerm, Pageable pageable);
 
     Optional<Venue> getVenue(UUID id);
 

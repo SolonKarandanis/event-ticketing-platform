@@ -1,5 +1,4 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link } from '@tanstack/react-router'
 import { useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '#/components/ui/button'
@@ -12,14 +11,7 @@ import {
     FormMessage,
 } from '#/components/ui/form'
 import { Input } from '#/components/ui/input'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '#/components/ui/select'
-import { useVenues } from '#/features/venues/hooks'
+import { VenueCombobox } from '#/features/venues/components/VenueCombobox'
 import { isIntegerOrEmpty, isNonNegativeDecimal } from '#/lib/validation'
 import { TicketTypeRow } from './TicketTypeRow'
 import type { GetEventDetailsResponse, UpdateEventRequest } from '../types'
@@ -193,12 +185,6 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
 
     const ticketTypes = useFieldArray({ control: form.control, name: 'ticketTypes' })
 
-    // A generous page size stands in for "list every venue" for the picker, same trick
-    // the venues list itself used before it had real pagination -- a dropdown wants all
-    // of them, not one page at a time.
-    const { data: venuesPage } = useVenues({ page: 0, size: 100 })
-    const venues = venuesPage?.content ?? []
-
     const [primaryAction, ...secondaryActions] = actions
     const anySubmitting = actions.some((action) => action.isSubmitting)
 
@@ -254,30 +240,9 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel>Venue</FormLabel>
-                            {venues.length === 0 ? (
-                                <p className="text-sm text-(--sea-ink-soft)">
-                                    No venues yet.{' '}
-                                    <Link to="/venues/new" className="underline">
-                                        Create one first
-                                    </Link>
-                                    .
-                                </p>
-                            ) : (
-                                <Select value={field.value} onValueChange={field.onChange}>
-                                    <FormControl>
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="Select a venue" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {venues.map((venue) => (
-                                            <SelectItem key={venue.id} value={venue.id}>
-                                                {venue.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
+                            <FormControl>
+                                <VenueCombobox value={field.value} onChange={field.onChange} />
+                            </FormControl>
                             <FormMessage />
                         </FormItem>
                     )}

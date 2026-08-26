@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -55,9 +56,13 @@ public class VenueController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<VenueResponseDto>> listVenues(Pageable pageable) {
+    public ResponseEntity<Page<VenueResponseDto>> listVenues(
+            @RequestParam(required = false) String q, Pageable pageable) {
         log.info("VenueController --> listVenues");
-        Page<Venue> venues = venueService.listVenues(pageable);
+        // A blank/whitespace-only q means "browse all", same as omitting it -- matches
+        // PublishedEventController's normalization for the same reason.
+        String searchTerm = (null != q && !q.trim().isEmpty()) ? q : null;
+        Page<Venue> venues = venueService.listVenues(searchTerm, pageable);
         return ResponseEntity.ok(venues.map(venueService::convertToVenueResponseDto));
     }
 

@@ -74,8 +74,8 @@ public class VenueServiceImpl implements VenueService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<Venue> listVenues(Pageable pageable) {
-        return venueRepository.findAll(pageable);
+    public Page<Venue> listVenues(String searchTerm, Pageable pageable) {
+        return venueRepository.search(searchTerm, pageable);
     }
 
     @Override
