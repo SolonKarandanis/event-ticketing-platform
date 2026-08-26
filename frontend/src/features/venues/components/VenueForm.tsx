@@ -12,14 +12,12 @@ import {
 } from '#/components/ui/form'
 import { Input } from '#/components/ui/input'
 import { Textarea } from '#/components/ui/textarea'
+import { isDecimalOrEmpty, isIntegerOrEmpty } from '#/lib/validation'
 import type { CreateVenueRequest, Venue } from '../types'
 
 // Numeric fields stay strings in form state (native inputs hand back strings) and get
 // converted to numbers only when building the wire request in onSubmit -- simpler than
 // fighting zod's number coercion around an empty optional input.
-const integerOrEmpty = /^\d+$/
-const numberOrEmpty = /^-?\d+(\.\d+)?$/
-
 const venueFormSchema = z.object({
   name: z.string().trim().min(1, 'Name is required'),
   addressLine1: z.string().trim().min(1, 'Address line 1 is required'),
@@ -27,18 +25,9 @@ const venueFormSchema = z.object({
   city: z.string().trim().min(1, 'City is required'),
   postalCode: z.string().trim().min(1, 'Postal code is required'),
   country: z.string().trim().min(1, 'Country is required'),
-  capacity: z
-    .string()
-    .trim()
-    .refine((value) => value === '' || integerOrEmpty.test(value), 'Must be a whole number'),
-  latitude: z
-    .string()
-    .trim()
-    .refine((value) => value === '' || numberOrEmpty.test(value), 'Must be a number'),
-  longitude: z
-    .string()
-    .trim()
-    .refine((value) => value === '' || numberOrEmpty.test(value), 'Must be a number'),
+  capacity: z.string().trim().refine(isIntegerOrEmpty, 'Must be a whole number'),
+  latitude: z.string().trim().refine(isDecimalOrEmpty, 'Must be a number'),
+  longitude: z.string().trim().refine(isDecimalOrEmpty, 'Must be a number'),
   accessibilityInfo: z.string().trim(),
 })
 

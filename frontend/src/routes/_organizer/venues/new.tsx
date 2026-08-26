@@ -25,7 +25,6 @@ function NewVenue() {
       <Link to="/venues" className="nav-link mb-4 inline-block">
         &larr; Back to Venues
       </Link>
-      <p className="island-kicker mb-2">Organizer</p>
       <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
         Add Venue
       </h1>
