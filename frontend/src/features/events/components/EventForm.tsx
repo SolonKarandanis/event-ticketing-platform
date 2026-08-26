@@ -174,6 +174,10 @@ export interface EventFormAction {
 
 interface EventFormProps {
     defaultValues?: EventFormValues
+    // An empty array means "read-only": no submit buttons render, and every field
+    // (including ticket-type rows and the add/remove controls) is disabled -- the
+    // terminal-status case (CANCELLED/COMPLETED) from issue #6, where the backend
+    // itself rejects any update once an event is terminal.
     actions: EventFormAction[]
 }
 
@@ -185,12 +189,20 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
 
     const ticketTypes = useFieldArray({ control: form.control, name: 'ticketTypes' })
 
-    const [primaryAction, ...secondaryActions] = actions
+    // .at(0), not array destructuring -- destructuring types actions[0] as always-defined
+    // (TS doesn't add | undefined without noUncheckedIndexedAccess), which would hide the
+    // real possibility of an empty actions array (the read-only case) from the type checker.
+    const primaryAction = actions.at(0)
+    const secondaryActions = actions.slice(1)
+    const readOnly = actions.length === 0
     const anySubmitting = actions.some((action) => action.isSubmitting)
 
     return (
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(primaryAction.onSubmit)} className="grid max-w-2xl gap-5">
+            <form
+                onSubmit={primaryAction ? form.handleSubmit(primaryAction.onSubmit) : (event) => event.preventDefault()}
+                className="grid max-w-2xl gap-5"
+            >
                 <FormField
                     control={form.control}
                     name="name"
@@ -198,7 +210,7 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                         <FormItem>
                             <FormLabel>Name</FormLabel>
                             <FormControl>
-                                <Input {...field} />
+                                <Input disabled={readOnly} {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -213,7 +225,7 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Start (optional)</FormLabel>
                                 <FormControl>
-                                    <Input type="datetime-local" {...field} />
+                                    <Input type="datetime-local" disabled={readOnly} {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -226,7 +238,7 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>End (optional)</FormLabel>
                                 <FormControl>
-                                    <Input type="datetime-local" {...field} />
+                                    <Input type="datetime-local" disabled={readOnly} {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -241,7 +253,11 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                         <FormItem>
                             <FormLabel>Venue</FormLabel>
                             <FormControl>
-                                <VenueCombobox value={field.value} onChange={field.onChange} />
+                                <VenueCombobox
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    disabled={readOnly}
+                                />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -256,7 +272,7 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Sales Start (optional)</FormLabel>
                                 <FormControl>
-                                    <Input type="datetime-local" {...field} />
+                                    <Input type="datetime-local" disabled={readOnly} {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -269,7 +285,7 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                             <FormItem>
                                 <FormLabel>Sales End (optional)</FormLabel>
                                 <FormControl>
-                                    <Input type="datetime-local" {...field} />
+                                    <Input type="datetime-local" disabled={readOnly} {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
@@ -280,14 +296,16 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                 <div className="grid gap-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-semibold text-(--sea-ink)">Ticket Types</h2>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => ticketTypes.append(emptyTicketType)}
-                        >
-                            + Add Ticket Type
-                        </Button>
+                        {readOnly ? null : (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => ticketTypes.append(emptyTicketType)}
+                            >
+                                + Add Ticket Type
+                            </Button>
+                        )}
                     </div>
 
                     {ticketTypes.fields.map((field, index) => (
@@ -297,6 +315,7 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                             index={index}
                             canRemove={ticketTypes.fields.length > 1}
                             onRemove={() => ticketTypes.remove(index)}
+                            disabled={readOnly}
                         />
                     ))}
 
@@ -307,26 +326,28 @@ export function EventForm({ defaultValues, actions }: EventFormProps) {
                     ) : null}
                 </div>
 
-                <div className="flex gap-3">
-                    <Button
-                        type="submit"
-                        variant={primaryAction.variant ?? 'default'}
-                        disabled={anySubmitting}
-                    >
-                        {primaryAction.isSubmitting ? 'Saving...' : primaryAction.label}
-                    </Button>
-                    {secondaryActions.map((action) => (
+                {primaryAction ? (
+                    <div className="flex gap-3">
                         <Button
-                            key={action.label}
-                            type="button"
-                            variant={action.variant ?? 'outline'}
+                            type="submit"
+                            variant={primaryAction.variant ?? 'default'}
                             disabled={anySubmitting}
-                            onClick={form.handleSubmit(action.onSubmit)}
                         >
-                            {action.isSubmitting ? 'Saving...' : action.label}
+                            {primaryAction.isSubmitting ? 'Saving...' : primaryAction.label}
                         </Button>
-                    ))}
-                </div>
+                        {secondaryActions.map((action) => (
+                            <Button
+                                key={action.label}
+                                type="button"
+                                variant={action.variant ?? 'outline'}
+                                disabled={anySubmitting}
+                                onClick={form.handleSubmit(action.onSubmit)}
+                            >
+                                {action.isSubmitting ? 'Saving...' : action.label}
+                            </Button>
+                        ))}
+                    </div>
+                ) : null}
             </form>
         </Form>
     )

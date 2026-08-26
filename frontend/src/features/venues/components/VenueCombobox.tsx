@@ -19,6 +19,7 @@ import { useInfiniteVenues, useVenue } from '../hooks'
 interface VenueComboboxProps {
     value: string
     onChange: (venueId: string) => void
+    disabled?: boolean
 }
 
 // Search-as-you-type + infinite scroll instead of a plain <Select> loading a single
@@ -26,7 +27,7 @@ interface VenueComboboxProps {
 // own history before it had real pagination). shouldFilter={false} on Command turns off
 // cmdk's own client-side filtering: filtering is the server's job here, driven by the
 // debounced search term in the query key.
-export function VenueCombobox({ value, onChange }: VenueComboboxProps) {
+export function VenueCombobox({ value, onChange, disabled }: VenueComboboxProps) {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState('')
     const debouncedSearch = useDebouncedValue(search, 300)
@@ -55,6 +56,7 @@ export function VenueCombobox({ value, onChange }: VenueComboboxProps) {
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
+                    disabled={disabled}
                     className="w-full justify-between font-normal"
                 >
                     {value ? (selectedVenue?.name ?? 'Loading...') : 'Select a venue'}

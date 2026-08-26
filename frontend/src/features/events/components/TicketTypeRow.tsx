@@ -18,12 +18,13 @@ interface TicketTypeRowProps {
     index: number
     canRemove: boolean
     onRemove: () => void
+    disabled?: boolean
 }
 
 // One ticket-type row's fields, split out of EventForm so `limitedQuantity`'s watch
 // only re-renders this row -- calling form.watch() directly inside EventForm's
 // ticketTypes.map would re-render the whole form on every row's every keystroke.
-export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTypeRowProps) {
+export function TicketTypeRow({ control, index, canRemove, onRemove, disabled }: TicketTypeRowProps) {
     const limitedQuantity = useWatch({ control, name: `ticketTypes.${index}.limitedQuantity` })
 
     return (
@@ -36,7 +37,7 @@ export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTyp
                         <FormItem>
                             <FormLabel>Name</FormLabel>
                             <FormControl>
-                                <Input {...field} />
+                                <Input disabled={disabled} {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -49,7 +50,7 @@ export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTyp
                         <FormItem>
                             <FormLabel>Price</FormLabel>
                             <FormControl>
-                                <Input inputMode="decimal" {...field} />
+                                <Input inputMode="decimal" disabled={disabled} {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -64,7 +65,7 @@ export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTyp
                     <FormItem>
                         <FormLabel>Description (optional)</FormLabel>
                         <FormControl>
-                            <Textarea {...field} />
+                            <Textarea disabled={disabled} {...field} />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
@@ -78,7 +79,11 @@ export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTyp
                     <FormItem className="flex flex-row items-center justify-between">
                         <FormLabel>Limited quantity</FormLabel>
                         <FormControl>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
+                            <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                disabled={disabled}
+                            />
                         </FormControl>
                     </FormItem>
                 )}
@@ -92,7 +97,7 @@ export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTyp
                         <FormItem>
                             <FormLabel>Total Available</FormLabel>
                             <FormControl>
-                                <Input inputMode="numeric" {...field} />
+                                <Input inputMode="numeric" disabled={disabled} {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -100,16 +105,18 @@ export function TicketTypeRow({ control, index, canRemove, onRemove }: TicketTyp
                 />
             ) : null}
 
-            <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!canRemove}
-                onClick={onRemove}
-                className="justify-self-start"
-            >
-                Remove
-            </Button>
+            {disabled ? null : (
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canRemove}
+                    onClick={onRemove}
+                    className="justify-self-start"
+                >
+                    Remove
+                </Button>
+            )}
         </div>
     )
 }
