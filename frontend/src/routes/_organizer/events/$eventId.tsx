@@ -15,6 +15,7 @@ import {
     usePublishEvent,
     useUpdateEvent,
 } from '#/features/events/hooks'
+import { EventStatus } from '#/features/events/types'
 
 export const Route = createFileRoute('/_organizer/events/$eventId')({
     component: RouteComponent,
@@ -24,6 +25,8 @@ function RouteComponent() {
     const { eventId } = Route.useParams()
     const navigate = useNavigate()
     const { data: event, isPending, isError } = useEvent(eventId)
+    const isTerminal =
+        event?.status === EventStatus.CANCELLED || event?.status === EventStatus.COMPLETED
 
     const updateEvent = useUpdateEvent(eventId)
     const publishEvent = usePublishEvent(eventId)
@@ -63,7 +66,7 @@ function RouteComponent() {
                         rejects any field update once an event is CANCELLED/COMPLETED, so the form
                         renders fully read-only (actions=[]) rather than letting an edit fail at
                         submit time. */}
-                    {event.status === 'CANCELLED' || event.status === 'COMPLETED' ? (
+                    {isTerminal ? (
                         <p className="mb-4 text-sm text-(--sea-ink-soft)">
                             This event is {event.status.toLowerCase()} and can no longer be edited.
                         </p>
@@ -72,7 +75,7 @@ function RouteComponent() {
                     <EventForm
                         defaultValues={eventToFormValues(event)}
                         actions={
-                            event.status === 'CANCELLED' || event.status === 'COMPLETED'
+                            isTerminal
                                 ? []
                                 : [
                                       {
@@ -91,7 +94,7 @@ function RouteComponent() {
                         status guard on the backend at all, but stays Draft-only here per the
                         decided design -- a published event with real ticket sales shouldn't be
                         one click from disappearing. */}
-                    {event.status === 'DRAFT' ? (
+                    {event.status === EventStatus.DRAFT ? (
                         <div className="mt-4 flex gap-3">
                             <Button
                                 type="button"
@@ -112,7 +115,7 @@ function RouteComponent() {
                         </div>
                     ) : null}
 
-                    {event.status === 'PUBLISHED' ? (
+                    {event.status === EventStatus.PUBLISHED ? (
                         <div className="mt-4 flex gap-3">
                             <Button
                                 type="button"

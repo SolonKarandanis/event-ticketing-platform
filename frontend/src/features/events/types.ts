@@ -9,7 +9,19 @@
 // value in the create/update body.
 import type { Venue } from '#/features/venues/types'
 
-export type EventStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED'
+// A const object rather than a real TS `enum` -- matches the rest of this frontend
+// (nothing else here uses `enum`), while still giving named references
+// (EventStatus.DRAFT) instead of magic strings scattered across status checks. The
+// type and the value share the name on purpose: `EventStatus` works as both a type
+// annotation and a value/namespace, the same way a real enum would.
+export const EventStatus = {
+    DRAFT: 'DRAFT',
+    PUBLISHED: 'PUBLISHED',
+    CANCELLED: 'CANCELLED',
+    COMPLETED: 'COMPLETED',
+} as const
+
+export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus]
 
 // ---- Requests ----
 
