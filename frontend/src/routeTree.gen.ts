@@ -15,9 +15,11 @@ import { Route as OrganizerRouteImport } from './routes/_organizer'
 import { Route as StaffRouteImport } from './routes/_staff'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as CallbackRouteImport } from './routes/callback'
-import { Route as AttendeeBrowseRouteImport } from './routes/_attendee/browse'
+import { Route as AttendeeTicketsRouteImport } from './routes/_attendee/tickets'
 import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dashboard'
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
+import { Route as BrowseIndexRouteImport } from './routes/browse/index'
+import { Route as BrowseEventIdRouteImport } from './routes/browse/$eventId'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
 import { Route as OrganizerEventsEventIdRouteImport } from './routes/_organizer/events/$eventId'
@@ -53,9 +55,9 @@ const CallbackRoute = CallbackRouteImport.update({
   path: '/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AttendeeBrowseRoute = AttendeeBrowseRouteImport.update({
-  id: '/browse',
-  path: '/browse',
+const AttendeeTicketsRoute = AttendeeTicketsRouteImport.update({
+  id: '/tickets',
+  path: '/tickets',
   getParentRoute: () => AttendeeRoute,
 } as any)
 const OrganizerDashboardRoute = OrganizerDashboardRouteImport.update({
@@ -67,6 +69,16 @@ const StaffScanRoute = StaffScanRouteImport.update({
   id: '/scan',
   path: '/scan',
   getParentRoute: () => StaffRoute,
+} as any)
+const BrowseIndexRoute = BrowseIndexRouteImport.update({
+  id: '/browse/',
+  path: '/browse/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BrowseEventIdRoute = BrowseEventIdRouteImport.update({
+  id: '/browse/$eventId',
+  path: '/browse/$eventId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   id: '/demo/tanstack-query',
@@ -108,10 +120,12 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
-  '/browse': typeof AttendeeBrowseRoute
+  '/tickets': typeof AttendeeTicketsRoute
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
+  '/browse/$eventId': typeof BrowseEventIdRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/browse/': typeof BrowseIndexRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
@@ -123,10 +137,12 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
-  '/browse': typeof AttendeeBrowseRoute
+  '/tickets': typeof AttendeeTicketsRoute
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
+  '/browse/$eventId': typeof BrowseEventIdRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/browse': typeof BrowseIndexRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
@@ -142,10 +158,12 @@ export interface FileRoutesById {
   '/_staff': typeof StaffRouteWithChildren
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
-  '/_attendee/browse': typeof AttendeeBrowseRoute
+  '/_attendee/tickets': typeof AttendeeTicketsRoute
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
+  '/browse/$eventId': typeof BrowseEventIdRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/browse/': typeof BrowseIndexRoute
   '/_organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/_organizer/events/new': typeof OrganizerEventsNewRoute
   '/_organizer/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
@@ -159,10 +177,12 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/callback'
-    | '/browse'
+    | '/tickets'
     | '/dashboard'
     | '/scan'
+    | '/browse/$eventId'
     | '/demo/tanstack-query'
+    | '/browse/'
     | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
@@ -174,10 +194,12 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/callback'
-    | '/browse'
+    | '/tickets'
     | '/dashboard'
     | '/scan'
+    | '/browse/$eventId'
     | '/demo/tanstack-query'
+    | '/browse'
     | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
@@ -192,10 +214,12 @@ export interface FileRouteTypes {
     | '/_staff'
     | '/about'
     | '/callback'
-    | '/_attendee/browse'
+    | '/_attendee/tickets'
     | '/_organizer/dashboard'
     | '/_staff/scan'
+    | '/browse/$eventId'
     | '/demo/tanstack-query'
+    | '/browse/'
     | '/_organizer/events/$eventId'
     | '/_organizer/events/new'
     | '/_organizer/venues/$venueId'
@@ -211,7 +235,9 @@ export interface RootRouteChildren {
   StaffRoute: typeof StaffRouteWithChildren
   AboutRoute: typeof AboutRoute
   CallbackRoute: typeof CallbackRoute
+  BrowseEventIdRoute: typeof BrowseEventIdRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
+  BrowseIndexRoute: typeof BrowseIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -258,11 +284,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_attendee/browse': {
-      id: '/_attendee/browse'
-      path: '/browse'
-      fullPath: '/browse'
-      preLoaderRoute: typeof AttendeeBrowseRouteImport
+    '/_attendee/tickets': {
+      id: '/_attendee/tickets'
+      path: '/tickets'
+      fullPath: '/tickets'
+      preLoaderRoute: typeof AttendeeTicketsRouteImport
       parentRoute: typeof AttendeeRoute
     }
     '/_organizer/dashboard': {
@@ -278,6 +304,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/scan'
       preLoaderRoute: typeof StaffScanRouteImport
       parentRoute: typeof StaffRoute
+    }
+    '/browse/': {
+      id: '/browse/'
+      path: '/browse'
+      fullPath: '/browse/'
+      preLoaderRoute: typeof BrowseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/browse/$eventId': {
+      id: '/browse/$eventId'
+      path: '/browse/$eventId'
+      fullPath: '/browse/$eventId'
+      preLoaderRoute: typeof BrowseEventIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/demo/tanstack-query': {
       id: '/demo/tanstack-query'
@@ -332,11 +372,11 @@ declare module '@tanstack/react-router' {
 }
 
 interface AttendeeRouteChildren {
-  AttendeeBrowseRoute: typeof AttendeeBrowseRoute
+  AttendeeTicketsRoute: typeof AttendeeTicketsRoute
 }
 
 const AttendeeRouteChildren: AttendeeRouteChildren = {
-  AttendeeBrowseRoute: AttendeeBrowseRoute,
+  AttendeeTicketsRoute: AttendeeTicketsRoute,
 }
 
 const AttendeeRouteWithChildren = AttendeeRoute._addFileChildren(
@@ -384,7 +424,9 @@ const rootRouteChildren: RootRouteChildren = {
   StaffRoute: StaffRouteWithChildren,
   AboutRoute: AboutRoute,
   CallbackRoute: CallbackRoute,
+  BrowseEventIdRoute: BrowseEventIdRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
+  BrowseIndexRoute: BrowseIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

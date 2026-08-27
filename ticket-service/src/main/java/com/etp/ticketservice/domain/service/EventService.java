@@ -54,6 +54,8 @@ public interface EventService {
 
     Optional<Event> getPublishedEvent(UUID id);
 
+    List<String> findPublishedEventCities();
+
     CreateEventRequest convertFromDto(CreateEventRequestDto dto);
 
     CreateTicketTypeRequest convertFromDto(CreateTicketTypeRequestDto dto);

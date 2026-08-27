@@ -49,13 +49,21 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // JOIN FETCH isn't expressible in native SQL either -- see EventServiceImpl#findPublishedEvents
     // for how venue gets hydrated instead. minPrice/maxPrice match an event's cheapest ticket
     // type ("starting from" price), not "any ticket type in range".
+    // Every :param below is wrapped in CAST(... AS <type>), including the "IS NULL" side --
+    // same root cause and same fix as VenueRepository.search (see its comment): a
+    // parameter used only in an "IS NULL" comparison gives Postgres zero type context to
+    // infer from, and it either guesses wrong (silently, in the venue case) or -- as
+    // happened here -- refuses outright with "could not determine data type of parameter".
+    // Native query, so this is plain PostgreSQL CAST syntax, not Hibernate's JPQL one;
+    // each :name is its own independent positional parameter per occurrence, so every
+    // occurrence needs its own cast, not just the one that happened to fail first.
     String PUBLISHED_EVENTS_WHERE = "e.status = 'PUBLISHED' " +
-            "AND (:searchTerm IS NULL OR to_tsvector('english', COALESCE(e.name, '') || ' ' || COALESCE(v.name, '') || ' ' || COALESCE(v.city, '')) @@ plainto_tsquery('english', :searchTerm)) " +
-            "AND (:city IS NULL OR v.city = :city) " +
-            "AND (:from IS NULL OR e.event_start >= :from) " +
-            "AND (:to IS NULL OR e.event_start <= :to) " +
-            "AND (:minPrice IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) >= :minPrice) " +
-            "AND (:maxPrice IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) <= :maxPrice)";
+            "AND (CAST(:searchTerm AS text) IS NULL OR to_tsvector('english', COALESCE(e.name, '') || ' ' || COALESCE(v.name, '') || ' ' || COALESCE(v.city, '')) @@ plainto_tsquery('english', CAST(:searchTerm AS text))) " +
+            "AND (CAST(:city AS text) IS NULL OR v.city = CAST(:city AS text)) " +
+            "AND (CAST(:from AS timestamp) IS NULL OR e.event_start >= CAST(:from AS timestamp)) " +
+            "AND (CAST(:to AS timestamp) IS NULL OR e.event_start <= CAST(:to AS timestamp)) " +
+            "AND (CAST(:minPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS double precision)) " +
+            "AND (CAST(:maxPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS double precision))";
 
     String PUBLISHED_EVENTS_COUNT_QUERY = "SELECT count(*) FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE;
 
@@ -82,4 +90,12 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     Page<Event> findPublishedEventsSortedByPriceDesc(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
             @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice, Pageable pageable);
+
+    // Backs the browse page's City filter -- plain JPQL, not native, since there's no
+    // full-text search or nullable-parameter filtering here to force the native-query
+    // path (see PUBLISHED_EVENTS_WHERE above). Only cities that actually have a
+    // published event, not every venue ever created -- a venue with zero published
+    // events would be a misleading filter option.
+    @Query("SELECT DISTINCT e.venue.city FROM Event e WHERE e.status = 'PUBLISHED' ORDER BY e.venue.city")
+    List<String> findDistinctPublishedEventCities();
 }

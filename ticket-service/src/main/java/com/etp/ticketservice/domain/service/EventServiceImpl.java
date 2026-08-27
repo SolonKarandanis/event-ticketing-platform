@@ -306,6 +306,12 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<String> findPublishedEventCities() {
+        return eventRepository.findDistinctPublishedEventCities();
+    }
+
+    @Override
     public CreateEventRequest convertFromDto(CreateEventRequestDto dto) {
         CreateEventRequest request = new CreateEventRequest();
         request.setName(dto.getName());

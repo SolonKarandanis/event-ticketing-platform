@@ -7,4 +7,4 @@ export const ROLE_STAFF = 'ROLE_STAFF'
 
 // Literal union, not a bare string -- TanStack Router's navigate()/redirect() are typed
 // against known route paths, so this has to match one of them exactly to type-check.
-export type RoleHomeRoute = '/dashboard' | '/browse' | '/scan' | '/'
+export type RoleHomeRoute = '/dashboard' | '/tickets' | '/scan' | '/'

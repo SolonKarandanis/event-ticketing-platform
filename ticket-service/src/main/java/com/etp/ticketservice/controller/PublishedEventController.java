@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -41,6 +42,16 @@ public class PublishedEventController {
         return ResponseEntity.ok(
                 events.map(eventService::convertToListPublishedEventResponseDto)
         );
+    }
+
+    // Backs the browse page's City filter -- distinct cities with at least one published
+    // event, not every venue ever created. Public, same as the rest of this controller
+    // (GET /api/v1/published-events/** is permitAll in SecurityConfig) -- unlike
+    // /api/v1/venues, which is organizer-only and shouldn't be called from a page an
+    // anonymous visitor can reach.
+    @GetMapping(path = "/cities")
+    public ResponseEntity<List<String>> listPublishedEventCities() {
+        return ResponseEntity.ok(eventService.findPublishedEventCities());
     }
 
     @GetMapping(path = "/{eventId}")

@@ -18,6 +18,10 @@ export default function Header() {
           </Link>
         </h2>
 
+        <Link to="/browse" className="nav-link">
+          Browse Events
+        </Link>
+
         <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
           <a
             href="https://x.com/tan_stack"

@@ -24,9 +24,13 @@ export function getRoles(user: User | null | undefined): string[] {
 // Per issue #3: role mismatch redirects to the user's own role's home, not a Forbidden
 // page -- the three roles are effectively different apps sharing one codebase. Falls back
 // to the public landing page for a user with none of the three roles.
+//
+// Attendee lands on /tickets, not /browse -- /browse (issue #10) is a public route now,
+// browsing events never needed a login. Landing a freshly-logged-in attendee back on a
+// page they didn't need to log in for would be a strange first impression.
 export function getRoleHomeRoute(roles: string[]): RoleHomeRoute {
   if (roles.includes(ROLE_ORGANIZER)) return '/dashboard'
-  if (roles.includes(ROLE_ATTENDEE)) return '/browse'
+  if (roles.includes(ROLE_ATTENDEE)) return '/tickets'
   if (roles.includes(ROLE_STAFF)) return '/scan'
   return '/'
 }
