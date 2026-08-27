@@ -9245,30 +9245,293 @@ A quick way to confirm the guard is actually doing something, before wiring up a
 - Registered `PassportModule`, the strategy, and the controller in `AppModule`, and removed the unused default `AppController`/`AppService`
 - `analytics-service` now has no direct dependency on `ticket-service` in either direction -- RabbitMQ in, a read API out
 
+## Frontend Event Management
+
+With Venues built, the event creation/edit form (issue #6) is the natural next screen -- `Event` has a required venue foreign key, so this always had to come second. It's a bigger build than Venues in every dimension: more fields, a nested array of ticket types instead of flat fields, a real lifecycle (`DRAFT -> PUBLISHED -> {CANCELLED|COMPLETED}`) instead of plain CRUD, and two genuinely different submit flows (create vs. edit) instead of one shared one.
+
+### Event Types, API, and Hooks
+
+`features/events/types.ts` mirrors every DTO shape the backend actually has, not one collapsed shape -- `CreateEventResponse`, `UpdateEventResponse`, `GetEventDetailsResponse`, and `ListEventResponse` each get their own interface (and their own nested ticket-type interface), the same "no MapStruct-style collapsing" discipline the backend itself follows. `GetEventDetailsTicketTypesResponse` is the one that carries `ticketsSold`, since that field only exists on the get-details endpoint -- a newly-created ticket type can't have sales against it yet, so `CreateTicketTypeResponse` never needed the field in the first place.
+
+One bug worth calling out from `api.ts`: `deleteEvent`/`publishEvent`/`cancelEvent`/`completeEvent` all hit endpoints that return `204 No Content`, and the original code ran them through the same `parseJsonOrThrow<void>` every other call used. That's wrong in a way that only shows up on the success path: `response.json()` on an empty body throws `SyntaxError: Unexpected end of JSON input`, so every one of those calls would have failed *after* the backend had already done what was asked. Fixed by adding a dedicated helper to `api-client.ts`:
+
+```typescript
+// For endpoints that succeed with 204 No Content -- same failure handling as
+// parseJsonOrThrow, but never calls response.json() on an empty success body.
+export async function throwIfNotOk(response: Response): Promise<void> {
+  if (!response.ok) {
+    return throwApiError(response)
+  }
+}
+```
+
+`events/hooks.ts` follows the same named-hooks-with-toasts shape venues established (`useEvents`, `useEvent`, `useCreateEvent`, `useUpdateEvent`, `useDeleteEvent`, `usePublishEvent`, `useCancelEvent`, `useCompleteEvent`), each invalidating the `['events']` query key on success.
+
+### The Event Form's Validation Schema
+
+`EventForm`'s Zod schema mirrors the backend's validation exactly, not approximately -- including the cross-field date rules, checked directly against `EventServiceImpl.validateEventDates` rather than assumed:
+
+```typescript
+.superRefine((event, ctx) => {
+  const { start, end, salesStart, salesEnd } = event
+
+  if (start && end && end <= start) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['end'], message: 'End must be after start' })
+  }
+  if (start && salesEnd && salesEnd > start) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['salesEnd'], message: 'Sales must end by the event start' })
+  }
+  if (salesStart && salesEnd && salesEnd <= salesStart) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['salesEnd'], message: 'Sales end must be after sales start' })
+  }
+})
+```
+
+Getting the comparisons strict-vs-non-strict right mattered: the backend rejects `end <= start` but only rejects `salesEnd` when it's *after* `start` (equal is fine), so a looser client-side check would either block something the backend allows or let through something it rejects.
+
+Ticket type price needed a validation helper that didn't already exist. `#/lib/validation.ts` already had `isIntegerOrEmpty`/`isDecimalOrEmpty` from Venues, both of which treat a blank value as valid -- correct for optional fields like `capacity`/`latitude`, wrong for `price`, which is `@NotNull` on the backend. Added `isNonNegativeDecimal` (required, no leading minus sign) alongside them rather than stretching the "OrEmpty" helpers to cover a case they were never meant for.
+
+`totalAvailable` isn't simply optional -- it's conditionally required, driven by a form-only field with no backend equivalent:
+
+```typescript
+const ticketTypeFormSchema = z
+  .object({
+    id: z.string().optional(),
+    name: z.string().trim().min(1, 'Name is required'),
+    price: z.string().trim().refine(isNonNegativeDecimal, 'Must be a non-negative number'),
+    description: z.string().trim(),
+    limitedQuantity: z.boolean(),
+    totalAvailable: z.string().trim(),
+  })
+  .superRefine((ticketType, ctx) => {
+    if (ticketType.limitedQuantity && ticketType.totalAvailable === '') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['totalAvailable'], message: 'Required when quantity is limited' })
+      return
+    }
+    if (!isIntegerOrEmpty(ticketType.totalAvailable)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['totalAvailable'], message: 'Must be a whole number' })
+    }
+  })
+```
+
+`limitedQuantity` is the "Limited quantity" toggle from issue #6's design -- it exists purely to decide, at submit time, whether `totalAvailable` gets sent to the backend at all (`totalAvailable: undefined` when off, meaning unlimited). `eventToFormValues` reconstructs the toggle's state the other direction when loading an existing event: `limitedQuantity: ticketType.totalAvailable !== null`.
+
+### The Ticket-Type Field Array
+
+`ticketTypes` is a real `useFieldArray`, and its per-row UI is its own component, `TicketTypeRow`, not inlined in `EventForm`'s `.map()`. The reason is a subtle React Query/react-hook-form performance trap: `limitedQuantity` needs to be watched to conditionally show `totalAvailable`, and calling `form.watch()` directly inside a loop inside `EventForm` would re-render the *entire* form -- every row, every field -- on every keystroke in *any* row. `TicketTypeRow` uses `useWatch({ control, name: 'ticketTypes.${index}.limitedQuantity' })` scoped to just its own index instead, so only the row whose toggle actually changed re-renders.
+
+`emptyTicketType`/`emptyValues` seed the create form (and the "+ Add Ticket Type" button) with one blank row rather than an empty array -- `ticketTypes` has a `.min(1)` constraint matching the backend's `@NotEmpty`, so "no ticket types yet" has to look like one blank row, not zero rows. The "Remove" button on each row is disabled once it's the last one left, for the same reason.
+
+### Multiple Submit Actions: Draft, Publish, and Save Changes
+
+`VenueForm` only ever needed one submit button. `EventForm` needs a genuinely variable number: one ("Save Changes") on the edit page, two ("Save as Draft" / "Publish") on the create page. That reshaped `EventForm`'s props from `VenueForm`'s `{ onSubmit, isSubmitting, submitLabel }` into an array:
+
+```typescript
+export interface EventFormAction {
+  label: string
+  onSubmit: (values: EventFormValues) => void
+  isSubmitting: boolean
+  variant?: 'default' | 'outline'
+}
+```
+
+The first action renders as the form's native `type="submit"` button (so pressing Enter does the sensible default thing); any further actions are `type="button"`, each triggering `form.handleSubmit(action.onSubmit)` directly so every action gets independently validated against the same form state. All actions disable together while any one is submitting.
+
+An empty `actions` array means something specific: read-only. Every field gets `disabled={readOnly}` threaded down to it (including into `TicketTypeRow` and `VenueCombobox`, both of which needed a new `disabled` prop for this), the "+ Add Ticket Type" button and each row's "Remove" button disappear, and no submit buttons render at all. This is what powers the terminal-status edit page below -- not a special case bolted on, just the natural zero-actions state of the same component.
+
+Extracting `primaryAction` from `actions` surfaced a real type-safety gap, caught by ESLint rather than assumed: `const [primaryAction] = actions` types `primaryAction` as always-defined, because TypeScript doesn't add `| undefined` to a destructured array element unless `noUncheckedIndexedAccess` is on -- even though `actions` can genuinely be empty. Switched to `actions.at(0)`, whose type signature is `T | undefined` regardless of that flag, so the "is there actually a primary action" check the code needs is one the type checker can actually verify instead of silently trusting.
+
+On the create page, "Save as Draft" and "Publish" turned out to need two independent `useCreateEvent()` instances, not one shared between both buttons -- calling the same hook twice gives two fully separate `isPending` states, so clicking Publish doesn't make the Draft button's label flicker to "Saving..." too. Publish itself is create-then-publish, confirmed against `EventServiceImpl.createEvent` directly: it always creates in `DRAFT` status, there's no create-as-published path. The existing `usePublishEvent(eventId)` hook doesn't fit this flow either -- it takes `eventId` as a hook argument, which has to be known before the hook runs, and a not-yet-created event has no id yet. The create page calls the raw `publishEvent` API function directly instead, inside `onSuccess` of the create call, with the id the create response just returned.
+
+### The Venue Picker: From a Capped Dropdown to a Searchable Combobox
+
+The first version of the venue field was a plain `<Select>` backed by `useVenues({ page: 0, size: 100 })` -- the same "a big page stands in for everything" trick Venues itself used before it had real pagination. The problem is the same one that trick always has: past 100 venues, anything further is silently unreachable, with no error and no indication anything's missing.
+
+The fix, `VenueCombobox`, is a `Popover` + `Command` combobox: a debounced (300ms) search box driving `useInfiniteQuery`, with an `onScroll` handler on the results list that calls `fetchNextPage()` once the user scrolls near the bottom.
+
+```typescript
+export function useInfiniteVenues(searchTerm: string) {
+  return useInfiniteQuery({
+    queryKey: [...venuesKey, 'search', searchTerm],
+    queryFn: ({ pageParam }) =>
+      listVenues({ page: pageParam, size: 20, q: searchTerm || undefined }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.number + 1 < lastPage.totalPages ? lastPage.number + 1 : undefined,
+  })
+}
+```
+
+`Command`'s own client-side filtering is turned off (`shouldFilter={false}`) -- filtering here is the server's job, driven by the debounced term in the query key, not `cmdk`'s built-in string matching.
+
+This needed a real backend search endpoint that didn't exist: `VenueRepository` only had `findAll`/`findByDomainId` before. Added:
+
+```java
+@Query("SELECT v FROM Venue v WHERE :searchTerm IS NULL OR LOWER(v.name) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
+Page<Venue> search(@Param("searchTerm") String searchTerm, Pageable pageable);
+```
+
+This immediately hit a PostgreSQL failure that's worth understanding, since it recurred later: `function lower(bytea) does not exist`. `:searchTerm` appears twice in the query, and its *only* type context anywhere is `:searchTerm IS NULL` -- which is valid for any type, so it gives Postgres nothing to infer from. Left unconstrained, the `||`/`CONCAT` operator resolution picked a `bytea` overload for the untyped parameter instead of `text`, and `LOWER(bytea)` then failed outright. The fix is an explicit cast on every occurrence:
+
+```java
+@Query("SELECT v FROM Venue v WHERE CAST(:searchTerm AS string) IS NULL OR LOWER(v.name) LIKE LOWER(CONCAT('%', CAST(:searchTerm AS string), '%'))")
+Page<Venue> search(@Param("searchTerm") String searchTerm, Pageable pageable);
+```
+
+### Routes: Create (Draft/Publish) and Edit (Status-Conditional Footer)
+
+The edit page's footer is genuinely status-conditional, checked against every lifecycle method in `EventServiceImpl` directly rather than guessed at:
+
+- **`DRAFT`** -- the form is editable (`updateEventForOrganizer` allows updates here), plus standalone `Publish` and `Delete` buttons.
+- **`PUBLISHED`** -- still editable (the backend allows updates on published events too, confirmed by reading the code, not assumed), plus standalone `Complete` and `Cancel Event` buttons.
+- **`CANCELLED`/`COMPLETED`** -- fully read-only (`actions={[]}`), since `updateEventForOrganizer` rejects any update once an event is terminal.
+
+`Publish`/`Cancel`/`Complete`/`Delete` are deliberately independent of the form's own save action -- none of those endpoints take a request body, so they act on whatever's already persisted, not on unsaved edits sitting in the form. `Delete` and `Cancel Event` go through a small reusable `ConfirmButton` (an `AlertDialog` wrapper) first, since both are effectively one-way doors with real consequences; `Publish`/`Complete` are plain buttons, since they're the expected forward path.
+
+One gap worth flagging rather than silently working around: `deleteEventForOrganizer` has no status guard at all on the backend -- it'll delete a `PUBLISHED` event with real ticket sales exactly as readily as a `DRAFT` one. The frontend keeps `Delete` Draft-only per the decided design, but that's a UI-level restriction sitting on top of a backend that doesn't actually enforce it.
+
+`EventStatus` is a `const` object with a matching type of the same name (`EventStatus.DRAFT`, `EventStatus.PUBLISHED`, ...) rather than a bare string union or a real TypeScript `enum` -- named references instead of magic strings scattered through the status checks, without introducing `enum` into a codebase that doesn't use it anywhere else.
+
+### Reusing `PaginatedTable` for the Events List
+
+`events/index.tsx`'s first draft (hand-written before `PaginatedTable` existed) had its empty-state condition inverted -- the table only rendered when `content.length === 0`, backwards from what was intended, so it showed nothing once there actually were events. Rebuilding it on `PaginatedTable` (same component Venues uses, extracted specifically because this exact class of copy-paste drift kept happening between the two lists) fixed it structurally: that conditional logic doesn't exist in the route anymore to get out of sync in the first place.
+
+#### Summary
+
+- `events/types.ts`/`api.ts`/`hooks.ts` mirror every backend DTO/endpoint individually; fixed a live bug where 204-returning calls (`delete`/`publish`/`cancel`/`complete`) would throw on success, via a new `throwIfNotOk` helper
+- `EventForm`'s Zod schema mirrors `EventServiceImpl.validateEventDates` exactly, including strict-vs-non-strict comparisons; added `isNonNegativeDecimal` to `#/lib/validation.ts` for the required (not optional) price field
+- Ticket types are a `useFieldArray`; `TicketTypeRow` is its own component so the "Limited quantity" toggle's `useWatch` only re-renders its own row
+- `EventForm` takes an `actions: EventFormAction[]` array instead of one `onSubmit` -- supports the create page's two independent actions and doubles as the read-only mode (`actions={[]}`) for terminal events
+- `VenueCombobox` replaced a capped-at-100 `<Select>` with search + infinite scroll; needed a new `VenueRepository.search` endpoint, which hit (and fixed) a Postgres parameter-type-inference bug on its first try
+- The edit page's Publish/Cancel/Complete/Delete buttons are independent of the form's save, checked directly against `EventServiceImpl`'s real transition rules; `Delete`/`Cancel Event` get a confirmation step, `Publish`/`Complete` don't
+- Rebuilding `events/index.tsx` on `PaginatedTable` fixed an inverted empty-state condition that would have shown an empty table whenever events actually existed
+
+## Frontend Published Events Browse & Search
+
+Issue #10's design (search box + filter row above a text-only event-card grid, numbered pagination, two distinct empty states) needed its own feature folder, `features/published-events/`, kept separate from `features/events/` on purpose -- it's a different backend resource (`PublishedEventController`, not `EventController`), different DTOs, and no auth required, the same reasoning that already justified `ticket-types` having its own folder apart from `events`.
+
+### Published Events Types, API, and Hooks
+
+`types.ts` mirrors `ListPublishedEventResponseDto`/`GetPublishedEventDetailsResponseDto` (read from the Java source directly, not assumed from memory), plus `PublishedEventsSort = 'soonest' | 'priceAsc' | 'priceDesc'`, matching `EventServiceImpl.findPublishedEvents`'s sort switch exactly. `api.ts`'s `ListPublishedEventsParams` covers all seven backend filter params (`q`, `from`, `to`, `minPrice`, `maxPrice`, `city`, `sortBy`) plus pagination.
+
+Building `buildQuery` for this surfaced a TypeScript gotcha worth knowing generally: a plain `interface` without its own index signature isn't assignable to a `Record<string, V>` parameter type, even when every one of its properties would fit `V`. The fix was typing the helper directly against `ListPublishedEventsParams` rather than reaching for a generic `Record` signature.
+
+### Fixing PostgreSQL's Bind-Parameter Inference Again
+
+The published-events native query (`EventRepository.PUBLISHED_EVENTS_WHERE`, shared by all three sort variants plus the count query) hit the exact same class of bug the venue search fix had already found, just failing louder: `ERROR: could not determine data type of parameter $5`. `:from`'s only appearance with any type context at all is `:from IS NULL`, same root cause as before, just a native query this time instead of JPQL -- and apparently enough different context elsewhere in the statement that Postgres refused outright rather than silently guessing wrong. The fix is the same shape, applied to every optional parameter in the shared `WHERE` clause -- `text` for `searchTerm`/`city`, `timestamp` for `from`/`to`, `double precision` for `minPrice`/`maxPrice`:
+
+```java
+String PUBLISHED_EVENTS_WHERE = "e.status = 'PUBLISHED' " +
+        "AND (CAST(:searchTerm AS text) IS NULL OR to_tsvector(...) @@ plainto_tsquery('english', CAST(:searchTerm AS text))) " +
+        "AND (CAST(:city AS text) IS NULL OR v.city = CAST(:city AS text)) " +
+        "AND (CAST(:from AS timestamp) IS NULL OR e.event_start >= CAST(:from AS timestamp)) " +
+        "AND (CAST(:to AS timestamp) IS NULL OR e.event_start <= CAST(:to AS timestamp)) " +
+        "AND (CAST(:minPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS double precision)) " +
+        "AND (CAST(:maxPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS double precision))";
+```
+
+Worth remembering as a standing pattern for this stack: any future query using the `(:param IS NULL OR ...)` optional-filter idiom needs the same treatment the moment `:param` doesn't already have unambiguous type context from somewhere else in the same query.
+
+### A Public City Filter, Not the Organizer Venues Endpoint
+
+The City filter's first version reused `useVenues` to populate its options, the same hook the organizer Venues screens use. That's a real bug on a public page: `GET /api/v1/venues` requires `ROLE_ORGANIZER`, so for anyone not logged in as an organizer -- which is everyone on a page that's supposed to need no login at all -- it returns `401`. `apiFetch`'s automatic 401-handling then tries a silent token refresh, which fails since there's no session to refresh, and falls back to a full `signinRedirect()`. The net effect: loading a page that was explicitly built to not require login redirected straight to the Keycloak login screen, because of an unrelated background request for filter options.
+
+The fix is a genuinely public endpoint, and a more correct one than the workaround it replaced -- it only returns cities that actually have a published event, not every venue an organizer has ever created (some of which may have zero published events, which would have been a misleading filter option regardless of the auth bug):
+
+```java
+@Query("SELECT DISTINCT e.venue.city FROM Event e WHERE e.status = 'PUBLISHED' ORDER BY e.venue.city")
+List<String> findDistinctPublishedEventCities();
+```
+
+Exposed as `GET /api/v1/published-events/cities` on `PublishedEventController` -- it falls under the controller's existing `GET /api/v1/published-events/**` -> `permitAll()` wildcard, so no `SecurityConfig` change was needed. Adding it as a new `@GetMapping(path = "/cities")` also needed a full backend restart to pick up, not a hot-swap-only reload -- a partial reload left the running handler mapping without the new route, so `/cities` fell through to `/{eventId}`'s `UUID.fromString("cities")`, throwing `IllegalArgumentException: Invalid UUID string`.
+
+### The Browse Page: Search, Filters, and Numbered Pagination
+
+All filter state lives in the URL (`?q=&page=&city=&date=&price=&sort=`), the same "shareable, back-button-friendly" pattern the organizer list pages already use for `page`/`size`. The search box is the one field that doesn't navigate immediately -- it's debounced (400ms via `useDebouncedValue`) into a `useEffect` that only commits to the URL once typing settles, while every `Select` filter navigates on change immediately, since a dropdown selection isn't firing once per keystroke the way a text input is.
+
+Date and price are preset dropdowns (Any/Today/This week/This month; Any/Free/Under $25/$25-$50/$50+) rather than raw range pickers, translated to the backend's `from`/`to`/`minPrice`/`maxPrice` params client-side:
+
+```typescript
+function dateRangeFor(preset: DatePreset | undefined): { from?: string; to?: string } {
+  if (!preset || preset === 'any') {
+    return {} // omitting both defaults to upcoming-only server-side
+  }
+  const now = new Date()
+  const to = new Date(now)
+  // ...advance `to` by a day / a week / a month depending on preset
+  return { from: toLocalDateTimeString(now), to: toLocalDateTimeString(to) }
+}
+```
+
+`toLocalDateTimeString` matters here, not `Date#toISOString()`: `toISOString()` produces a `Z`-suffixed UTC instant string, which Spring's default `LocalDateTime` request-param binder doesn't accept. The helper formats the same wall-clock components a `datetime-local` input would produce instead.
+
+Every preset here is *forward-looking from now*, including "This week" -- it's `now()` through `now() + 7 days`, not "the current calendar week." That was surprising in practice: testing against a real event whose start had rolled into the past showed it wasn't reachable through *any* filter, "This week" included, since none of the presets let `from` fall before the present moment. That's consistent with the resolved design (nobody browsing to buy a ticket wants to filter for something that already happened), not a bug to fix -- but it means there's currently no way to browse a past published event at all, worth knowing if that's ever needed.
+
+Numbered pagination is a second, distinct component from the organizer tables' `PaginationControls` (Previous/Next + a page-size select) -- issue #10 specifically decided page-number links for this screen, matching the endpoint's plain `Page` response shape. `NumberedPagination` doesn't reuse `ui/pagination.tsx`'s own `PaginationLink`/`PaginationPrevious`/`PaginationNext` components directly, for the same reason `PaginationControls` didn't: those render plain `<a>` tags with no `to`/`search` props, so the interactive elements are built with TanStack Router's own `Link`, styled with `buttonVariants` to match.
+
+The two empty states from the design are distinguished by whether any filter is actually active, not just by "zero results":
+
+```typescript
+const hasActiveFilters = Boolean(
+  search.q || search.city ||
+  (search.date && search.date !== 'any') ||
+  (search.price && search.price !== 'any'),
+)
+```
+
+Zero results with no active filter reads "No events published yet"; zero results with one active reads "No events match your search" plus a "Clear filters" button that resets the URL to `/browse` with no search params at all.
+
+### The Event Detail Page
+
+`browse/$eventId.tsx` shows name, dates, venue, and the list of ticket types with price/description -- no purchase button yet, since that's issues #4/#5, deliberately not started as part of this build.
+
+### Making `/browse` Actually Public
+
+The original placeholder for `/browse` lived under the `_attendee` layout route, which requires an attendee login before rendering anything underneath it -- directly contradicting the backend's own intent (`GET /api/v1/published-events` has always been `permitAll()`, specifically so attendees can browse before creating an account). Moving `/browse` to a top-level public route surfaced a route-generation conflict that wasn't obvious in advance: with `browse.tsx` removed, `_attendee` had zero remaining child routes, and TanStack Router's file-based generator treats a pathless layout route with no children as collapsing onto its parent's path (`/`) -- which then collided with the real `index.tsx` at `/`.
+
+The fix wasn't a workaround, it was the thing `_attendee` was always going to need anyway: `_attendee/tickets.tsx`, a placeholder for the attendee's actual "My Tickets" screen (the `tickets` feature's `useTickets`/`useTicket`/`useTicketQrCode` hooks already existed for it, unused until now). `getRoleHomeRoute` now sends a freshly-logged-in attendee to `/tickets` instead of `/browse` -- landing someone back on the one page that no longer needs a login, right after they just logged in, would have been a strange first impression.
+
+With `/browse` public, it also needed to be *reachable* by someone with no reason to be logged in yet -- there was no link to it anywhere. `Header.tsx` gained a "Browse Events" link, visible unconditionally (not gated behind `auth.isAuthenticated`), sitting next to the logo rather than inside the login/logout controls group.
+
+#### Summary
+
+- New `features/published-events/` folder (types/api/hooks), kept separate from `features/events/` -- different resource, different DTOs, no auth
+- Hit the same Postgres bind-parameter-type bug a second time, this time failing outright rather than silently mis-resolving; fixed with the same explicit-`CAST`-on-every-occurrence approach across the whole shared `PUBLISHED_EVENTS_WHERE` clause
+- The City filter's first version reused the organizer-only `/api/v1/venues` endpoint, which 401'd for anyone without an organizer login and silently redirected them to Keycloak via `apiFetch`'s automatic 401-handling; fixed with a new public `GET /api/v1/published-events/cities` endpoint that's also more correct (only cities with actual published events)
+- `browse/index.tsx`: URL-driven filter state, a debounced search box, preset Date/Price dropdowns translated to backend params client-side, a new `NumberedPagination` component (distinct from the organizer tables' Previous/Next one), and two empty states distinguished by whether a filter is actually active
+- Discovered while testing: every date filter (including the default) is forward-looking from *now*, so there's currently no way to browse a published event whose date has already passed -- consistent with the resolved design, not treated as a gap
+- `browse/$eventId.tsx` shows event details and ticket types; no purchase flow yet (issues #4/#5)
+- Moved `/browse` out of the `_attendee` login-gated layout to a public top-level route, which required adding `_attendee/tickets.tsx` (the attendee's real authenticated landing page, not a placeholder-for-its-own-sake) to keep the layout route from colliding with `/` in TanStack Router's file-based route generation; added a "Browse Events" link to `Header.tsx` so the now-public page is actually reachable without a direct URL
+
 ## Project Status
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
 
-### Frontend: authenticated, one real feature (Venues) built, everything else still a placeholder
+### Frontend: Venues, Events (full lifecycle), and public event browse/search all real; purchase, validation, and reporting still not built
 
-`frontend/` now exists -- see "Frontend Project Setup" and "Frontend Authentication" above. It's a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (session-storage-backed tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every feature calls into.
+`frontend/` is a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (session-storage-backed tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every feature calls into. Three real feature areas exist now, not placeholders:
 
-"Frontend Venue Management" above is the first real screen area, not a placeholder: the organizer's Venues list, create, and edit pages, backed by real `react-hook-form` + `zod` forms and `ticket-service`'s actual `/api/v1/venues` endpoints. It was built ahead of the event creation form on the map because `Event` has a required venue foreign key -- there had to be somewhere for an event form's venue picker to point at.
+- **Venues** (organizer, `/venues`) -- list/create/edit, backed by `react-hook-form` + `zod` and `ticket-service`'s `/api/v1/venues`. The list is genuinely paginated (`PaginatedTable`/`PaginationControls`, not the size=100-stands-in-for-everything trick it started with), and the venue count in an event form's picker is now a searchable, infinite-scrolling combobox (`VenueCombobox`, debounced search + `useInfiniteQuery`) rather than a single capped page.
+- **Events** (organizer, `/events`) -- list/create/edit with the full `DRAFT -> PUBLISHED -> {CANCELLED|COMPLETED}` lifecycle: the create page has separate "Save as Draft"/"Publish" actions (publish is a second, chained API call, not a status field); the edit page's action row is status-conditional (Draft: Publish + Delete-with-confirmation; Published: Complete + Cancel-with-confirmation; terminal: the whole form renders read-only, matching the backend rejecting any update on a terminal event). `EventForm`'s ticket-type rows are a real `useFieldArray`, with a "Limited quantity" toggle controlling whether `totalAvailable` is sent at all.
+- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types. No purchase button on the detail page yet.
 
-Everything else the "Ui Testing" lessons throughout this document describe is still not built: the event creation form, the purchase flow, the QR validation screen, the published-events landing page, the reports dashboard. The attendee (`/browse`) and staff (`/scan`) role layouts, and the organizer's own `/dashboard`, still render one placeholder page each whose only job is proving the auth/routing shell works. "Frontend Internationalization" is applied at the transport level (`apiFetch()` already forwards `Accept-Language`), but there's no actual UI text anywhere yet to translate.
+Still not built: the purchase flow (issues #4/#5), the staff QR/manual validation screen (issue #9), the reports/analytics dashboard (issue #8). The staff (`/scan`) role layout and the organizer's own `/dashboard` still render one placeholder page each. The attendee role layout's authenticated landing page moved from `/browse` (now public) to `/tickets` -- also still a placeholder, but it's the more honest destination once browsing itself stopped requiring a login. "Frontend Internationalization" is still only applied at the transport level (`apiFetch()` forwards `Accept-Language`); `i18next` and translation files still aren't installed.
 
 ### `frontend` loose ends
 
 - No automated tests, matching the rest of this project's all-manual-verification pattern
-- The full login round-trip (redirect to Keycloak, log in, land on the right role's home, get bounced from a mismatched route, reload without a forced re-login) was verified manually rather than by an automated browser check -- no headless-browser tooling was wired into this build
-- The Venues screens (list/create/edit) are confirmed working live in the browser against the running `ticket-service`, on top of a clean `tsc --noEmit`/`npm run build`/`npm run lint`
-- `react-hook-form` and `zod` are now installed (see "Frontend Venue Management"); `i18next` and its translation files still aren't -- they land alongside whichever feature first needs them, not speculatively ahead of time
+- The full login round-trip was verified manually rather than by an automated browser check -- no headless-browser tooling was wired into this build
+- Venues, Events, and the public browse/search page are all confirmed working live in the browser against the running `ticket-service`, on top of a clean `tsc --noEmit`/`npm run build`/`npm run lint`
+- The browse page's date filters (including the default "upcoming-only" one) are all relative to *now* -- there's no filter that can surface a published event whose start date has already passed. Discovered by testing against a real event whose date had rolled into the past; left as-is since it matches the resolved design (nobody browsing to buy a ticket wants an event that already happened), not treated as a gap to close
+- The City filter on `/browse` intentionally does not call `/api/v1/venues` (organizer-only) -- it hits a new public `GET /api/v1/published-events/cities` endpoint instead. An earlier version called the organizer endpoint, which 401'd for anyone not logged in as an organizer and (via `apiFetch`'s automatic 401-handling) silently redirected an anonymous visitor straight to the Keycloak login screen on page load
 
 ### `ticket-service` loose ends
 
-- No automated tests anywhere (unit or integration) -- everything's been verified manually so far, via `bootRun` plus `psql`/`curl` checks, not a test suite
+- No automated tests anywhere (unit or integration) -- everything's been verified manually so far, via `bootRun` plus `psql`/`curl`/browser checks, not a test suite
 - Keycloak now has all three users (`organizer`, `attendee`, `staff`), so the purchase flow and ticket validation flow both have accounts to test with
-- CORS was never configured until the frontend's Venues screen needed it (see "A Missing CORS Configuration") -- `SecurityConfig` now allows `http://localhost:3000` across `/**`; this was previously invisible because every endpoint had only ever been tested with `curl`/Postman, neither of which is subject to CORS
+- CORS was never configured until the frontend's Venues screen needed it (see "A Missing CORS Configuration") -- `SecurityConfig` now allows `http://localhost:3000` across `/**`
+- Hit the same PostgreSQL failure mode twice while wiring up search: a bind parameter used *only* in an `X IS NULL OR ...` comparison (the standard "optional filter" pattern) gives Postgres zero type context to resolve it against, since `IS NULL` is valid for any type. Depending on the rest of the query, this either silently resolves to the wrong type (`VenueRepository.search`'s city `LIKE` picked `bytea`, so `LOWER(bytea)` blew up) or fails outright ("could not determine data type of parameter", `EventRepository`'s published-events native query). Both are fixed the same way: wrap every occurrence of the parameter in an explicit `CAST(:param AS <type>)`. Worth remembering as a standing gotcha for any future nullable-filter query in this stack, not just those two
+- `VenueRepository`/`VenueController`/`VenueService` gained search (`?q=`), and `EventRepository`/`EventService`/`PublishedEventController` gained a `GET /api/v1/published-events/cities` endpoint (distinct cities with at least one published event) -- both purely additive, no existing endpoint's behavior changed
 
 ### `analytics-service` loose ends
 
@@ -9284,3 +9547,4 @@ These are called out directly in the relevant lessons as deliberate simplificati
 - The transactional outbox pattern, for the narrow crash-between-commit-and-publish window (see "Two Kinds of Event, Not One")
 - Additional reporting endpoints beyond the one summary endpoint -- sales-over-time, organizer-level rollups (see "Expose the Reporting API")
 - A `notifications-service` third consumer on the `ticket-platform.events` exchange
+- Any way to browse a published event whose date has already passed -- every date filter on `/browse` (including the default) is upcoming-relative-to-now by design, not an oversight in the filter UI
