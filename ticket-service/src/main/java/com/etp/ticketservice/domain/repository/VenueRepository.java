@@ -20,6 +20,13 @@ public interface VenueRepository extends JpaRepository<Venue, Long> {
     // A null/absent searchTerm is "browse all" (same convention as published events'
     // search) -- one method covers both the plain list and the search-as-you-type
     // venue picker, rather than splitting into findAll/search.
-    @Query("SELECT v FROM Venue v WHERE :searchTerm IS NULL OR LOWER(v.name) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
+    //
+    // CAST(:searchTerm AS string) is required, not decorative: with a null searchTerm,
+    // Postgres has to infer a type for the bind parameter purely from context, since
+    // ":searchTerm IS NULL" alone gives it none. Left uncast, its || (CONCAT) operator
+    // resolution picks a bytea overload for the unknown-typed parameter instead of text,
+    // and LOWER(bytea) then fails outright with "function lower(bytea) does not exist".
+    // The explicit cast pins the parameter to text everywhere it's used.
+    @Query("SELECT v FROM Venue v WHERE CAST(:searchTerm AS string) IS NULL OR LOWER(v.name) LIKE LOWER(CONCAT('%', CAST(:searchTerm AS string), '%'))")
     Page<Venue> search(@Param("searchTerm") String searchTerm, Pageable pageable);
 }
