@@ -15,13 +15,14 @@ import { Route as OrganizerRouteImport } from './routes/_organizer'
 import { Route as StaffRouteImport } from './routes/_staff'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as CallbackRouteImport } from './routes/callback'
-import { Route as AttendeeTicketsRouteImport } from './routes/_attendee/tickets'
 import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dashboard'
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as BrowseIndexRouteImport } from './routes/browse/index'
 import { Route as BrowseEventIdRouteImport } from './routes/browse/$eventId'
 import { Route as BrowseConfirmationRouteImport } from './routes/browse/confirmation'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
+import { Route as AttendeeTicketsIndexRouteImport } from './routes/_attendee/tickets/index'
+import { Route as AttendeeTicketsTicketIdRouteImport } from './routes/_attendee/tickets/$ticketId'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
 import { Route as OrganizerEventsEventIdRouteImport } from './routes/_organizer/events/$eventId'
 import { Route as OrganizerEventsNewRouteImport } from './routes/_organizer/events/new'
@@ -56,11 +57,6 @@ const CallbackRoute = CallbackRouteImport.update({
   path: '/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AttendeeTicketsRoute = AttendeeTicketsRouteImport.update({
-  id: '/tickets',
-  path: '/tickets',
-  getParentRoute: () => AttendeeRoute,
-} as any)
 const OrganizerDashboardRoute = OrganizerDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -90,6 +86,16 @@ const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   id: '/demo/tanstack-query',
   path: '/demo/tanstack-query',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AttendeeTicketsIndexRoute = AttendeeTicketsIndexRouteImport.update({
+  id: '/tickets/',
+  path: '/tickets/',
+  getParentRoute: () => AttendeeRoute,
+} as any)
+const AttendeeTicketsTicketIdRoute = AttendeeTicketsTicketIdRouteImport.update({
+  id: '/tickets/$ticketId',
+  path: '/tickets/$ticketId',
+  getParentRoute: () => AttendeeRoute,
 } as any)
 const OrganizerEventsIndexRoute = OrganizerEventsIndexRouteImport.update({
   id: '/events/',
@@ -126,17 +132,18 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
-  '/tickets': typeof AttendeeTicketsRoute
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
   '/browse/confirmation': typeof BrowseConfirmationRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse/': typeof BrowseIndexRoute
+  '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/venues/new': typeof OrganizerVenuesNewRoute
+  '/tickets/': typeof AttendeeTicketsIndexRoute
   '/events/': typeof OrganizerEventsIndexRoute
   '/venues/': typeof OrganizerVenuesIndexRoute
 }
@@ -144,17 +151,18 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
-  '/tickets': typeof AttendeeTicketsRoute
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
   '/browse/confirmation': typeof BrowseConfirmationRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse': typeof BrowseIndexRoute
+  '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/venues/new': typeof OrganizerVenuesNewRoute
+  '/tickets': typeof AttendeeTicketsIndexRoute
   '/events': typeof OrganizerEventsIndexRoute
   '/venues': typeof OrganizerVenuesIndexRoute
 }
@@ -166,17 +174,18 @@ export interface FileRoutesById {
   '/_staff': typeof StaffRouteWithChildren
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
-  '/_attendee/tickets': typeof AttendeeTicketsRoute
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
   '/browse/confirmation': typeof BrowseConfirmationRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse/': typeof BrowseIndexRoute
+  '/_attendee/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/_organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/_organizer/events/new': typeof OrganizerEventsNewRoute
   '/_organizer/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/_organizer/venues/new': typeof OrganizerVenuesNewRoute
+  '/_attendee/tickets/': typeof AttendeeTicketsIndexRoute
   '/_organizer/events/': typeof OrganizerEventsIndexRoute
   '/_organizer/venues/': typeof OrganizerVenuesIndexRoute
 }
@@ -186,17 +195,18 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/callback'
-    | '/tickets'
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
     | '/browse/confirmation'
     | '/demo/tanstack-query'
     | '/browse/'
+    | '/tickets/$ticketId'
     | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
     | '/venues/new'
+    | '/tickets/'
     | '/events/'
     | '/venues/'
   fileRoutesByTo: FileRoutesByTo
@@ -204,17 +214,18 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/callback'
-    | '/tickets'
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
     | '/browse/confirmation'
     | '/demo/tanstack-query'
     | '/browse'
+    | '/tickets/$ticketId'
     | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
     | '/venues/new'
+    | '/tickets'
     | '/events'
     | '/venues'
   id:
@@ -225,17 +236,18 @@ export interface FileRouteTypes {
     | '/_staff'
     | '/about'
     | '/callback'
-    | '/_attendee/tickets'
     | '/_organizer/dashboard'
     | '/_staff/scan'
     | '/browse/$eventId'
     | '/browse/confirmation'
     | '/demo/tanstack-query'
     | '/browse/'
+    | '/_attendee/tickets/$ticketId'
     | '/_organizer/events/$eventId'
     | '/_organizer/events/new'
     | '/_organizer/venues/$venueId'
     | '/_organizer/venues/new'
+    | '/_attendee/tickets/'
     | '/_organizer/events/'
     | '/_organizer/venues/'
   fileRoutesById: FileRoutesById
@@ -297,13 +309,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_attendee/tickets': {
-      id: '/_attendee/tickets'
-      path: '/tickets'
-      fullPath: '/tickets'
-      preLoaderRoute: typeof AttendeeTicketsRouteImport
-      parentRoute: typeof AttendeeRoute
-    }
     '/_organizer/dashboard': {
       id: '/_organizer/dashboard'
       path: '/dashboard'
@@ -345,6 +350,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/demo/tanstack-query'
       preLoaderRoute: typeof DemoTanstackQueryRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_attendee/tickets/': {
+      id: '/_attendee/tickets/'
+      path: '/tickets'
+      fullPath: '/tickets/'
+      preLoaderRoute: typeof AttendeeTicketsIndexRouteImport
+      parentRoute: typeof AttendeeRoute
+    }
+    '/_attendee/tickets/$ticketId': {
+      id: '/_attendee/tickets/$ticketId'
+      path: '/tickets/$ticketId'
+      fullPath: '/tickets/$ticketId'
+      preLoaderRoute: typeof AttendeeTicketsTicketIdRouteImport
+      parentRoute: typeof AttendeeRoute
     }
     '/_organizer/events/': {
       id: '/_organizer/events/'
@@ -392,11 +411,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AttendeeRouteChildren {
-  AttendeeTicketsRoute: typeof AttendeeTicketsRoute
+  AttendeeTicketsTicketIdRoute: typeof AttendeeTicketsTicketIdRoute
+  AttendeeTicketsIndexRoute: typeof AttendeeTicketsIndexRoute
 }
 
 const AttendeeRouteChildren: AttendeeRouteChildren = {
-  AttendeeTicketsRoute: AttendeeTicketsRoute,
+  AttendeeTicketsTicketIdRoute: AttendeeTicketsTicketIdRoute,
+  AttendeeTicketsIndexRoute: AttendeeTicketsIndexRoute,
 }
 
 const AttendeeRouteWithChildren = AttendeeRoute._addFileChildren(

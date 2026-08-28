@@ -4,7 +4,16 @@
 // GET /tickets/{ticketId}/qr-codes returns a raw PNG, not JSON -- there's no DTO to
 // mirror for it; api.ts treats that response as a Blob.
 
-export type TicketStatus = 'PURCHASED' | 'CANCELLED'
+// Same const-object-as-enum pattern as EventStatus in features/events/types.ts: the
+// type and the value share the name, so TicketStatus works as both an annotation
+// (TicketStatus) and a value/namespace (TicketStatus.CANCELLED).
+export const TicketStatus = {
+  PURCHASED: 'PURCHASED',
+  CANCELLED: 'CANCELLED',
+} as const
+
+export type TicketStatus = (typeof TicketStatus)[keyof typeof TicketStatus]
+
 export type TicketValidationMethod = 'QR_SCAN' | 'MANUAL'
 export type TicketValidationStatus = 'VALID' | 'INVALID' | 'EXPIRED'
 
