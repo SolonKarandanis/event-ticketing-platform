@@ -20,6 +20,7 @@ import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dash
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as BrowseIndexRouteImport } from './routes/browse/index'
 import { Route as BrowseEventIdRouteImport } from './routes/browse/$eventId'
+import { Route as BrowseConfirmationRouteImport } from './routes/browse/confirmation'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
 import { Route as OrganizerEventsEventIdRouteImport } from './routes/_organizer/events/$eventId'
@@ -80,6 +81,11 @@ const BrowseEventIdRoute = BrowseEventIdRouteImport.update({
   path: '/browse/$eventId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BrowseConfirmationRoute = BrowseConfirmationRouteImport.update({
+  id: '/browse/confirmation',
+  path: '/browse/confirmation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   id: '/demo/tanstack-query',
   path: '/demo/tanstack-query',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
+  '/browse/confirmation': typeof BrowseConfirmationRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse/': typeof BrowseIndexRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
+  '/browse/confirmation': typeof BrowseConfirmationRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse': typeof BrowseIndexRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
@@ -162,6 +170,7 @@ export interface FileRoutesById {
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
+  '/browse/confirmation': typeof BrowseConfirmationRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse/': typeof BrowseIndexRoute
   '/_organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
+    | '/browse/confirmation'
     | '/demo/tanstack-query'
     | '/browse/'
     | '/events/$eventId'
@@ -198,6 +208,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
+    | '/browse/confirmation'
     | '/demo/tanstack-query'
     | '/browse'
     | '/events/$eventId'
@@ -218,6 +229,7 @@ export interface FileRouteTypes {
     | '/_organizer/dashboard'
     | '/_staff/scan'
     | '/browse/$eventId'
+    | '/browse/confirmation'
     | '/demo/tanstack-query'
     | '/browse/'
     | '/_organizer/events/$eventId'
@@ -236,6 +248,7 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   CallbackRoute: typeof CallbackRoute
   BrowseEventIdRoute: typeof BrowseEventIdRoute
+  BrowseConfirmationRoute: typeof BrowseConfirmationRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
   BrowseIndexRoute: typeof BrowseIndexRoute
 }
@@ -317,6 +330,13 @@ declare module '@tanstack/react-router' {
       path: '/browse/$eventId'
       fullPath: '/browse/$eventId'
       preLoaderRoute: typeof BrowseEventIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/browse/confirmation': {
+      id: '/browse/confirmation'
+      path: '/browse/confirmation'
+      fullPath: '/browse/confirmation'
+      preLoaderRoute: typeof BrowseConfirmationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/demo/tanstack-query': {
@@ -425,6 +445,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   CallbackRoute: CallbackRoute,
   BrowseEventIdRoute: BrowseEventIdRoute,
+  BrowseConfirmationRoute: BrowseConfirmationRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
   BrowseIndexRoute: BrowseIndexRoute,
 }

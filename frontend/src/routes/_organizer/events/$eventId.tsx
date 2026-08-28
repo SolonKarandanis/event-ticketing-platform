@@ -55,35 +55,31 @@ function RouteComponent() {
             <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
                 Edit Event
             </h1>
-
-            {isPending ? (
-                <p className="text-sm text-(--sea-ink-soft)">Loading event...</p>
-            ) : isError ? (
-                <p className="text-sm text-destructive">Couldn't load this event.</p>
-            ) : (
+            {isPending && <p className="text-sm text-(--sea-ink-soft)">Loading event...</p>}
+            {!isPending && isError && <p className="text-sm text-destructive">Couldn't load this event.</p>}
+            {!isPending && !isError && (
                 <>
                     {/* Terminal per EventServiceImpl.updateEventForOrganizer -- the backend itself
                         rejects any field update once an event is CANCELLED/COMPLETED, so the form
                         renders fully read-only (actions=[]) rather than letting an edit fail at
                         submit time. */}
-                    {isTerminal ? (
+                    {isTerminal && (
                         <p className="mb-4 text-sm text-(--sea-ink-soft)">
                             This event is {event.status.toLowerCase()} and can no longer be edited.
                         </p>
-                    ) : null}
-
+                    )}
                     <EventForm
                         defaultValues={eventToFormValues(event)}
                         actions={
                             isTerminal
                                 ? []
                                 : [
-                                      {
-                                          label: 'Save Changes',
-                                          onSubmit: handleSubmit,
-                                          isSubmitting: updateEvent.isPending,
-                                      },
-                                  ]
+                                    {
+                                        label: 'Save Changes',
+                                        onSubmit: handleSubmit,
+                                        isSubmitting: updateEvent.isPending,
+                                    },
+                                ]
                         }
                     />
 
@@ -94,7 +90,7 @@ function RouteComponent() {
                         status guard on the backend at all, but stays Draft-only here per the
                         decided design -- a published event with real ticket sales shouldn't be
                         one click from disappearing. */}
-                    {event.status === EventStatus.DRAFT ? (
+                    {event.status === EventStatus.DRAFT && (
                         <div className="mt-4 flex gap-3">
                             <Button
                                 type="button"
@@ -113,9 +109,8 @@ function RouteComponent() {
                                 onConfirm={handleDelete}
                             />
                         </div>
-                    ) : null}
-
-                    {event.status === EventStatus.PUBLISHED ? (
+                    )}
+                    {event.status === EventStatus.PUBLISHED && (
                         <div className="mt-4 flex gap-3">
                             <Button
                                 type="button"
@@ -134,7 +129,7 @@ function RouteComponent() {
                                 onConfirm={() => cancelEvent.mutate()}
                             />
                         </div>
-                    ) : null}
+                    )}
                 </>
             )}
         </main>

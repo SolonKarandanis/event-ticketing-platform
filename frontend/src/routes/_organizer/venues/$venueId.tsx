@@ -33,19 +33,16 @@ function EditVenue() {
       <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
         Edit Venue
       </h1>
-
-      {isPending ? (
-        <p className="text-sm text-(--sea-ink-soft)">Loading venue...</p>
-      ) : isError ? (
-        <p className="text-sm text-destructive">Couldn't load this venue.</p>
-      ) : (
-        <VenueForm
-          defaultValues={venueToFormValues(venue)}
-          onSubmit={handleSubmit}
-          isSubmitting={updateVenue.isPending}
-          submitLabel="Save Venue"
-        />
-      )}
+        {isPending && <p className="text-sm text-(--sea-ink-soft)">Loading venue...</p>}
+        {!isPending && !isError && <p className="text-sm text-destructive">Couldn't load this venue.</p>}
+        {!isPending && !isError &&(
+            <VenueForm
+                defaultValues={venueToFormValues(venue)}
+                onSubmit={handleSubmit}
+                isSubmitting={updateVenue.isPending}
+                submitLabel="Save Venue"
+            />
+        )}
     </main>
   )
 }
