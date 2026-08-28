@@ -9503,27 +9503,233 @@ With `/browse` public, it also needed to be *reachable* by someone with no reaso
 - `browse/$eventId.tsx` shows event details and ticket types; no purchase flow yet (issues #4/#5)
 - Moved `/browse` out of the `_attendee` login-gated layout to a public top-level route, which required adding `_attendee/tickets.tsx` (the attendee's real authenticated landing page, not a placeholder-for-its-own-sake) to keep the layout route from colliding with `/` in TanStack Router's file-based route generation; added a "Browse Events" link to `Header.tsx` so the now-public page is actually reachable without a direct URL
 
+## Frontend Purchase Flow & My Tickets
+
+With Browse built, `browse/$eventId.tsx` could show ticket types but not actually sell one. Issues #4 and #5 already decided the shape of this before any code was written: the backend's purchase endpoint takes no quantity, so a multi-ticket purchase has to be a client-side loop, not a single request; and the result lands on its own confirmation page rather than a toast, since a purchase is significant enough to deserve a full screen.
+
+### Purchase Is Gated Client-Side, Not Just Server-Side
+
+`POST /api/v1/events/{eventId}/ticket-types/{ticketTypeId}/tickets` requires `.authenticated()` in `SecurityConfig` -- any logged-in user, not role-restricted to attendees specifically. Rather than let an anonymous click 401 and fall through to `apiFetch`'s automatic `signinRedirect()`, the purchase handler checks `auth.isAuthenticated` itself first and redirects explicitly:
+
+```typescript
+async function handlePurchase(ticketTypeId: string, quantity: number) {
+  if (!auth.isAuthenticated) {
+    void auth.signinRedirect()
+    return
+  }
+  // ...
+}
+```
+
+Functionally identical to letting the 401 handle it, but it means a logged-out visitor gets sent to Keycloak the moment they click Buy, not after a request round-trips and fails first.
+
+### The Sequential Purchase Loop
+
+Each ticket type row gets a quantity input (default 1, no artificial max -- the backend enforces its own cap via `TicketsSoldOutException`) and a Buy button. Since there's no bulk-purchase endpoint, quantity > 1 fires the single-ticket endpoint N times in a row, awaited one at a time, with live progress:
+
+```typescript
+let purchased = 0
+let errorMessage: string | undefined
+for (let i = 0; i < quantity; i++) {
+  try {
+    await purchaseTicket.mutateAsync({ eventId, ticketTypeId })
+    purchased += 1
+    setProgress({ done: purchased, total: quantity })
+  } catch (error) {
+    errorMessage = toastErrorMessage(error, 'Something went wrong')
+    break
+  }
+}
+```
+
+Stopping at the first failure (rather than firing all N at once and reconciling a mixed-result pile afterward) matters concretely when a ticket type sells out mid-loop: `TicketTypeServiceImpl.purchaseTicket` takes a pessimistic lock and throws `TicketsSoldOutException` (409, "No tickets remaining for this ticket type") the moment `purchasedTickets + 1 > totalAvailable` -- a real scenario if two people are buying the last few tickets to the same event at once, not a hypothetical.
+
+### The Confirmation Page
+
+`/browse/confirmation` is a sibling route, not nested under `$eventId` -- `$eventId.tsx` has no children today, and nesting a route under it purely for this one page would turn it into a layout route for no other reason. Instead it's search-param driven (`?eventId=&ticketTypeId=&requested=&purchased=&errorMessage=`), since by the time the purchase loop finishes, the calling page already knows everything the confirmation page needs to show -- there's no server-side "order" resource to look up.
+
+```typescript
+const isFullSuccess = purchased === requested
+```
+
+Success (`purchased === requested`) and Partial (`purchased < requested`, including the `purchased === 0` case) are the two variants issue #5 called for, both offering "View My Tickets" and "Back to Event" -- Partial additionally surfaces the captured `errorMessage` (the same message `usePurchaseTicket`'s `onError` toast already showed, kept here so it's still visible after the toast fades).
+
+### My Tickets: List and Detail
+
+`_attendee/tickets.tsx` had been a placeholder since the `/browse` work, existing only to keep TanStack Router's file-based generator happy. It's now a real folder, `_attendee/tickets/{index,$ticketId}.tsx`, the same list/detail split Events already uses. The list (`useTickets` + `PaginatedTable`) shows ticket type, price, and status; the detail page (`useTicket`) shows the event context `ListTicketResponse` doesn't carry -- event name, venue, dates -- plus the QR code image.
+
+The QR code needed `useObjectUrl`, a small hook built earlier in this project specifically for this: `useTicketQrCode` returns a raw `Blob` (the endpoint's success body is `image/png`, not JSON), and a `Blob` isn't usable directly as an `<img src>`. `useObjectUrl` wraps it in `URL.createObjectURL`, revoking the previous URL whenever the blob changes or the component unmounts.
+
+A cancelled ticket shows "This ticket has been cancelled and can no longer be used for entry" instead of rendering the QR at all -- the QR code itself still exists and would still decode, but showing it as if it were current would be actively misleading.
+
+One real gap surfaced while building this, not fixed: `GetTicketResponse` has no ticket-type `name` field, only `description` (nullable) and `price` -- confirmed directly against `TicketServiceImpl.convertToGetTicketResponseDto`, which simply never sets one. The detail page can show what a ticket type costs and its free-text description, but not the name you'd recognize it by (e.g. "General Admission"). That's the backend's existing shape, not something this build changed.
+
+### `TicketStatus` Becomes an Enum
+
+Building the detail page's cancelled-ticket branch initially compared `ticket.status === 'CANCELLED'` directly. Per feedback on avoiding magic strings, `features/tickets/types.ts` gained the same const-object-as-enum pattern `EventStatus` already established:
+
+```typescript
+export const TicketStatus = {
+  PURCHASED: 'PURCHASED',
+  CANCELLED: 'CANCELLED',
+} as const
+
+export type TicketStatus = (typeof TicketStatus)[keyof typeof TicketStatus]
+```
+
+#### Summary
+
+- Purchase is gated by `auth.isAuthenticated` client-side before any request fires, not just left to the backend's `.authenticated()` 401 to redirect
+- Multi-ticket purchases loop the single-ticket endpoint sequentially, awaiting each call, with a live "Purchasing... (X of Y)" progress state; stops at the first failure (e.g. a real `TicketsSoldOutException` mid-loop) rather than firing every request at once
+- `/browse/confirmation` is a search-param-driven sibling route (not nested under `$eventId`), rendering Success/Partial variants per issue #5's design, both offering "View My Tickets"/"Back to Event"
+- `_attendee/tickets.tsx`'s placeholder became a real `index`/`$ticketId` list-detail pair; the detail page renders the QR code via the existing `useObjectUrl` hook, and shows a plain "cancelled" message instead of a QR for a cancelled ticket
+- Found (not fixed) a real backend DTO gap: `GetTicketResponse` has no ticket-type name field, only description/price
+- `TicketStatus` converted to the same const-object-enum pattern as `EventStatus`, per feedback on magic-string status comparisons
+
+## Frontend Staff Ticket Validation
+
+Issue #9's decision was specific about the library and the interaction shape: `qr-scanner` (nimiq), Web Worker-based, continuous auto-scan, a full-screen colored result that auto-resumes -- not a "point camera, tap to confirm" flow.
+
+### What's Actually Encoded in the QR Image
+
+Rather than guess at the QR payload's format, `QrCodeServiceImpl.generateQrCodeImage` settled it directly: it encodes `uniqueId.toString()`, where `uniqueId` is the `QrCode` entity's own `domainId` -- a bare UUID string, not a URL and not JSON. That means a scanned frame's decoded text can be POSTed as-is:
+
+```typescript
+(scanResult) => void handleValidate(scanResult.data, TicketValidationMethod.QR_SCAN)
+```
+
+no parsing step needed between "what the camera read" and "what the validation endpoint expects" for `id`.
+
+### Reading the Validation Semantics From the Source, Not Assuming Them
+
+`TicketValidationServiceImpl.validateTicket` has no explicit "already used" flag -- it's derived from history:
+
+```java
+TicketValidationStatusEnum ticketValidationStatus = ticket.getValidations().stream()
+        .filter(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()))
+        .findFirst()
+        .map(v -> TicketValidationStatusEnum.INVALID)
+        .orElse(TicketValidationStatusEnum.VALID);
+```
+
+The first scan of a ticket is always `VALID`; every scan after that is `INVALID`, because a prior `VALID` validation now exists. A not-found ticket or QR code (`TicketNotFoundException`/`QrCodeNotFoundException`) is a `400`, not a `404`, with a real localized message ("Ticket not found"/"QR code not found") -- confirmed against `ErrorCode`, not assumed. That shaped the screen's three-way outcome directly: ADMIT and ALREADY USED come from the response body's `status` field on a `200`; NOT FOUND comes from the mutation's *error* path, since the backend expresses "doesn't exist" as a thrown exception, not a response value.
+
+### The Scan Screen
+
+A `<video>` ref feeds a `QrScanner` instance (installed fresh -- nothing in this project touched a camera before); its decode callback and a manual reference-code form both funnel into one `handleValidate(id, method)`, so ADMIT/ALREADY-USED/NOT-FOUND rendering only exists in one place regardless of how the ticket got scanned:
+
+```typescript
+async function handleValidate(id: string, method: TicketValidationMethod) {
+  if (isProcessingRef.current || !id) {
+    return
+  }
+  isProcessingRef.current = true
+  void scannerRef.current?.pause()
+  // ...validate, setResult(...), then a 2s window before resuming
+}
+```
+
+`isProcessingRef` is a ref, not state, deliberately -- it has to block re-triggering synchronously for extra frames scanned while a result is still on screen (a `useState` update wouldn't apply until the next render, which is too late for a callback firing multiple times per second). The result itself (`ADMIT` green / `ALREADY_USED` amber / `NOT_FOUND` red) fills the whole video area and clears itself after 2000ms, resuming the scanner.
+
+One real bug caught before it shipped, not after: the manual form's `disabled` prop was first wired to that same `isProcessingRef.current`. A ref mutation doesn't trigger a re-render, so the input would never actually *look* disabled even while a validation was in flight or a result was showing. Fixed by deriving a proper piece of state for anything the render needs to react to:
+
+```typescript
+const isBusy = result !== null || validateTicket.isPending
+```
+
+keeping the ref for its one real job -- the synchronous guard inside the scan callback -- and using `isBusy` everywhere the UI itself needs to know.
+
+`TicketValidationMethod` and `TicketValidationStatus` picked up the same const-object-enum treatment as `TicketStatus` while writing this screen's fresh `=== 'VALID'`/`=== 'QR_SCAN'`-style comparisons, for the same reason.
+
+No browser was available to click through this screen directly in this environment; a full `npm run build` was run instead as a stand-in check, confirming `qr-scanner`'s Web Worker actually split into its own chunk (`qr-scanner-worker.min-*.js`) rather than just type-checking cleanly -- a bundling failure in a worker import wouldn't necessarily show up in `tsc --noEmit`.
+
+#### Summary
+
+- `qr-scanner` (nimiq) installed for continuous, Web Worker-based scanning per issue #9's decision
+- Confirmed from `QrCodeServiceImpl` that a QR's raw payload is a bare UUID string (the `QrCode` entity's own `domainId`) -- no parsing needed between scan and API call
+- Confirmed from `TicketValidationServiceImpl`/`ErrorCode` that "already used" is derived from validation history (not a stored flag) and "not found" is a `400` thrown exception, not a `404` response value -- shaping ADMIT/ALREADY-USED as response-body outcomes and NOT-FOUND as an error-path outcome
+- One `handleValidate` function serves both the camera callback and the manual reference-code form
+- Caught and fixed a real bug pre-ship: a ref-driven `disabled` prop never actually re-rendered; replaced with `isBusy` state for anything the render needs, keeping the ref only for its synchronous re-entrancy guard
+- `TicketValidationMethod`/`TicketValidationStatus` converted to the same const-object-enum pattern as `TicketStatus`
+- No browser available to test interactively; verified the client bundle (not just types) via a full production build instead
+
+## Frontend Reports Dashboard
+
+Issue #8's own notes state the real constraint plainly: analytics-service's summary endpoint is per-event only (`GET /analytics/events/{eventId}/summary` -> `{eventId, ticketsSold, revenue}`), with no organizer-wide rollup. The dashboard's design was decided against that shape, not against a richer one that doesn't exist yet -- a chart, not a table, one sorted horizontal bar per event.
+
+### One Summary Call Per Event
+
+`useEvents({ page: 0, size: 100 })` gets the organizer's events (capped at the shared pagination system's largest allowed page size -- a real "fetch everything" endpoint doesn't exist, so this is "as many as one page can hold," not truly unbounded). A new hook fans out one summary query per event:
+
+```typescript
+export function useEventAnalyticsSummaries(eventIds: string[]) {
+  return useQueries({
+    queries: eventIds.map((eventId) => ({
+      queryKey: [...analyticsKey, 'events', eventId, 'summary'],
+      queryFn: () => getEventAnalyticsSummary(eventId),
+    })),
+  })
+}
+```
+
+matching each event to its summary by array index, then sorting by revenue descending client-side. This is genuinely N requests for N events, not one -- an accepted tradeoff given the endpoint that exists, not an oversight.
+
+### Going Through `/dataviz` Before Touching Color
+
+The wayfinder map's own notes call for the `/dataviz` skill before designing any chart, so this went through it rather than picking a look by eye. "Compare magnitude, low to high" maps directly to a sequential, single-hue bar -- confirming the ticket's own instinct rather than second-guessing it. The one wrinkle: the skill's color validator is built to check *categorical* palettes (telling several series apart by hue), and every bar here shares the exact same color -- there's no identity being color-coded, since each event is already labeled by its position and its own text label. Running the categorical checks against it FAILed on chroma floor, but the validator's own documented scope says that check doesn't apply to a lone repeated color; the right check for that case is a WCAG *text*-contrast check against the surface it sits on. The app's existing `--lagoon-deep` accent (already used as text elsewhere in the app) clears that comfortably, so no new color was introduced.
+
+### Bar Anatomy, Not Guessed
+
+The skill's mark spec is specific: bars capped at 24px thick (rendered at 20px here), square at the baseline, 4px rounded at the data end, with a 2px surface gap between adjacent marks:
+
+```jsx
+<div className="h-5 flex-1 rounded-sm bg-(--line)">
+  <div
+    className="h-5 rounded-r-[4px] bg-(--lagoon-deep) ..."
+    style={{ width: `${widthPercent}%` }}
+  />
+</div>
+```
+
+Per issue #8's explicit accessibility requirement ("no value lives only in a hover tooltip"), every bar is direct-labeled with both `revenue` and `ticketsSold` as plain text at the tip -- which, per the skill's own rule that axis ticks "carry the values you didn't directly label," meant the chart doesn't need a numeric x-axis or gridlines at all, since every value here already has one. A single-hue, single-series chart also doesn't need a legend -- the section heading ("Revenue by event") already says what's plotted, and a legend box with one swatch would just restate it.
+
+Built as plain divs sized by percentage width, not a charting library -- `recharts`/shadcn's chart wrapper weren't already installed, and a single sorted-bar form doesn't need what they'd add.
+
+#### Summary
+
+- New `useEventAnalyticsSummaries` hook fans out one summary query per organizer event (`useQueries`), since analytics-service has no rollup endpoint to call instead
+- Went through `/dataviz` per the wayfinder map's own instruction before picking a chart form or a color
+- The skill's categorical chroma/CVD checks don't apply to this chart (one repeated hue, not several colors distinguishing categories); validated with a WCAG contrast check against the card surface instead, reusing the app's existing `--lagoon-deep` accent
+- Bars follow the skill's fixed anatomy (≤24px, square baseline, 4px rounded tip); every bar direct-labels both revenue and tickets sold, so the chart skips a numeric axis entirely and needs no legend
+- Built with plain HTML/CSS, not a charting library
+
 ## Project Status
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
 
-### Frontend: Venues, Events (full lifecycle), and public event browse/search all real; purchase, validation, and reporting still not built
+### Frontend: every screen on the wayfinder map is built
 
-`frontend/` is a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (session-storage-backed tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every feature calls into. Three real feature areas exist now, not placeholders:
+`frontend/` is a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (session-storage-backed tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every feature calls into. Every feature area on the wayfinder map (issue #1) is now built, not a placeholder:
 
 - **Venues** (organizer, `/venues`) -- list/create/edit, backed by `react-hook-form` + `zod` and `ticket-service`'s `/api/v1/venues`. The list is genuinely paginated (`PaginatedTable`/`PaginationControls`, not the size=100-stands-in-for-everything trick it started with), and the venue count in an event form's picker is now a searchable, infinite-scrolling combobox (`VenueCombobox`, debounced search + `useInfiniteQuery`) rather than a single capped page.
 - **Events** (organizer, `/events`) -- list/create/edit with the full `DRAFT -> PUBLISHED -> {CANCELLED|COMPLETED}` lifecycle: the create page has separate "Save as Draft"/"Publish" actions (publish is a second, chained API call, not a status field); the edit page's action row is status-conditional (Draft: Publish + Delete-with-confirmation; Published: Complete + Cancel-with-confirmation; terminal: the whole form renders read-only, matching the backend rejecting any update on a terminal event). `EventForm`'s ticket-type rows are a real `useFieldArray`, with a "Limited quantity" toggle controlling whether `totalAvailable` is sent at all.
-- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types. No purchase button on the detail page yet.
+- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types.
+- **Purchase flow** (attendee, from `/browse/$eventId`) -- a quantity selector and Buy button per ticket type, looping the single-ticket purchase endpoint sequentially with live "Purchasing... (X of Y)" progress, landing on a dedicated Success/Partial confirmation page (`/browse/confirmation`) per issues #4/#5.
+- **My Tickets** (attendee, `/tickets`) -- a real list/detail pair (`_attendee/tickets/{index,$ticketId}.tsx`) replacing the old auth-check placeholder; the detail page renders the purchased ticket's QR code image and reference code.
+- **Staff ticket validation** (staff, `/scan`) -- continuous camera QR scanning (`qr-scanner`, Web Worker-based) plus a manual reference-code fallback, both funnelling into one full-screen colored ADMIT/ALREADY-USED/NOT-FOUND result per issue #9.
+- **Reports dashboard** (organizer, `/dashboard`) -- a sorted, single-hue horizontal bar chart of revenue by event, each bar direct-labeled with both revenue and tickets sold, per issue #8.
 
-Still not built: the purchase flow (issues #4/#5), the staff QR/manual validation screen (issue #9), the reports/analytics dashboard (issue #8). The staff (`/scan`) role layout and the organizer's own `/dashboard` still render one placeholder page each. The attendee role layout's authenticated landing page moved from `/browse` (now public) to `/tickets` -- also still a placeholder, but it's the more honest destination once browsing itself stopped requiring a login. "Frontend Internationalization" is still only applied at the transport level (`apiFetch()` forwards `Accept-Language`); `i18next` and translation files still aren't installed.
+Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, PostGIS proximity search, automated tests, ticket cancellation/refund, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
 
 ### `frontend` loose ends
 
 - No automated tests, matching the rest of this project's all-manual-verification pattern
-- The full login round-trip was verified manually rather than by an automated browser check -- no headless-browser tooling was wired into this build
-- Venues, Events, and the public browse/search page are all confirmed working live in the browser against the running `ticket-service`, on top of a clean `tsc --noEmit`/`npm run build`/`npm run lint`
+- The full login round-trip, Venues, Events, the public browse/search page, and the purchase-to-confirmation flow are all confirmed working live in the browser against the running `ticket-service` -- a real ticket was bought and landed on the Success confirmation page during this build
+- My Tickets (list/detail/QR), staff scanning, and the reports dashboard are built and pass `tsc --noEmit`/`npm run lint`/`npm run build` (the staff screen's `npm run build` specifically confirmed `qr-scanner`'s Web Worker split into its own chunk, not just that the types checked out), but haven't yet been confirmed live in a browser -- no headless-browser tooling was wired into this build, so anything not explicitly called out as browser-tested above is verified by build/type/lint checks only, not by clicking through it
 - The browse page's date filters (including the default "upcoming-only" one) are all relative to *now* -- there's no filter that can surface a published event whose start date has already passed. Discovered by testing against a real event whose date had rolled into the past; left as-is since it matches the resolved design (nobody browsing to buy a ticket wants an event that already happened), not treated as a gap to close
 - The City filter on `/browse` intentionally does not call `/api/v1/venues` (organizer-only) -- it hits a new public `GET /api/v1/published-events/cities` endpoint instead. An earlier version called the organizer endpoint, which 401'd for anyone not logged in as an organizer and (via `apiFetch`'s automatic 401-handling) silently redirected an anonymous visitor straight to the Keycloak login screen on page load
+- `GetTicketResponse` (the ticket detail DTO) has no ticket-type name field, only description/price -- found while building the My Tickets detail page, not fixed, since it's the backend's existing shape and wasn't reported as a bug
+- The reports dashboard fetches one analytics summary per event (`useEventAnalyticsSummaries`, N requests) rather than one bulk call, since analytics-service has no organizer-wide rollup endpoint -- an accepted tradeoff against the endpoint that actually exists, not an oversight
 
 ### `ticket-service` loose ends
 
@@ -9536,7 +9742,7 @@ Still not built: the purchase flow (issues #4/#5), the staff QR/manual validatio
 ### `analytics-service` loose ends
 
 - A message has never actually been watched flowing publish → consume → DB row end-to-end -- the consumer's setup (exchange/queue/binding) is confirmed via the RabbitMQ management API, but a live message hasn't been traced through `recordSale` yet; this is expected to get exercised naturally once real purchases are flowing through `ticket-service`
-- The reporting endpoint has only been tested for rejection (`401` with no/bad token) -- not yet with a real valid Keycloak-issued token returning real summary data
+- The reporting endpoint is now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard"), but that screen hasn't been confirmed live in a browser yet -- so it's still only been directly confirmed rejecting an unauthenticated/bad-token request (`401`), not returning real summary data end-to-end through the UI
 - No automated tests
 
 ### Explicitly out of scope, not oversights
