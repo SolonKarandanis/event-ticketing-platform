@@ -14,8 +14,24 @@ export const TicketStatus = {
 
 export type TicketStatus = (typeof TicketStatus)[keyof typeof TicketStatus]
 
-export type TicketValidationMethod = 'QR_SCAN' | 'MANUAL'
-export type TicketValidationStatus = 'VALID' | 'INVALID' | 'EXPIRED'
+export const TicketValidationMethod = {
+  QR_SCAN: 'QR_SCAN',
+  MANUAL: 'MANUAL',
+} as const
+
+export type TicketValidationMethod =
+  (typeof TicketValidationMethod)[keyof typeof TicketValidationMethod]
+
+// EXPIRED is part of the backend's enum but nothing ever sets it yet (flagged for
+// future in issue #16) -- validateTicket only ever actually resolves VALID or INVALID.
+export const TicketValidationStatus = {
+  VALID: 'VALID',
+  INVALID: 'INVALID',
+  EXPIRED: 'EXPIRED',
+} as const
+
+export type TicketValidationStatus =
+  (typeof TicketValidationStatus)[keyof typeof TicketValidationStatus]
 
 export interface ListTicketTicketTypeResponse {
   id: string
