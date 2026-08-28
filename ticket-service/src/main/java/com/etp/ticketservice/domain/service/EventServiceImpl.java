@@ -275,19 +275,29 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional(readOnly = true)
     public Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
-            Double minPrice, Double maxPrice, String city, String sortBy, Pageable pageable) {
+            Double minPrice, Double maxPrice, String city,
+            Double latitude, Double longitude, Double radiusMeters,
+            String sortBy, Pageable pageable) {
         // With no explicit date range, default to upcoming events only -- otherwise a
         // PUBLISHED event whose end has already passed but hasn't been manually marked
         // COMPLETED yet would still show up in browse results.
         LocalDateTime effectiveFrom = (null == from && null == to) ? LocalDateTime.now() : from;
 
-        Page<Event> page = switch (null == sortBy ? "" : sortBy) {
+        // "distance" only means something with an origin point -- a distance sort with
+        // no coordinates falls through to the default (soonest) instead of sorting by
+        // distance to nowhere, the same way an unrecognized sortBy value already does.
+        boolean hasOrigin = null != latitude && null != longitude && null != radiusMeters;
+        String effectiveSortBy = ("distance".equals(sortBy) && !hasOrigin) ? "" : sortBy;
+
+        Page<Event> page = switch (null == effectiveSortBy ? "" : effectiveSortBy) {
             case "priceAsc" -> eventRepository.findPublishedEventsSortedByPriceAsc(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, pageable);
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
             case "priceDesc" -> eventRepository.findPublishedEventsSortedByPriceDesc(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, pageable);
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
+            case "distance" -> eventRepository.findPublishedEventsSortedByDistance(
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
             default -> eventRepository.findPublishedEventsSortedBySoonest(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, pageable);
+                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
         };
 
         // Native query -- JOIN FETCH isn't expressible here, so venue (the only association

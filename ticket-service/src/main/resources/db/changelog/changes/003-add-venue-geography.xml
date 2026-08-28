@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="12-add-venue-location" author="event-ticket-platform" dbms="postgresql">
+        <preConditions onFail="HALT" onFailMessage="PostGIS is not enabled on this database -- run `CREATE EXTENSION postgis;` as a superuser first.">
+            <sqlCheck expectedResult="1">SELECT count(*) FROM pg_extension WHERE extname = 'postgis'</sqlCheck>
+        </preConditions>
+        <addColumn tableName="venues">
+            <column name="location" type="geography(Point,4326)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="13-backfill-venue-location" author="event-ticket-platform" dbms="postgresql">
+        <sql>
+            UPDATE venues
+            SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+        </sql>
+        <rollback>
+            <sql>UPDATE venues SET location = NULL</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="14-add-venue-location-index" author="event-ticket-platform" dbms="postgresql">
+        <sql>CREATE INDEX idx_venues_location ON venues USING GIST (location)</sql>
+        <rollback>
+            <sql>DROP INDEX idx_venues_location</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

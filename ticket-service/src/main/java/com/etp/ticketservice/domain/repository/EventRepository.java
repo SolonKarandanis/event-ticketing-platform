@@ -57,13 +57,22 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // Native query, so this is plain PostgreSQL CAST syntax, not Hibernate's JPQL one;
     // each :name is its own independent positional parameter per occurrence, so every
     // occurrence needs its own cast, not just the one that happened to fail first.
+    // latitude/longitude/radiusMeters follow the same "all three null -> no-op" shape as
+    // every other optional filter here, just spread across three co-dependent params
+    // instead of one -- if any of the three is absent, the OR chain short-circuits true
+    // and no venue gets excluded on distance grounds. No explicit "v.location IS NOT
+    // NULL" guard is needed: ST_DWithin against a null geography evaluates to NULL, and
+    // a NULL in a WHERE clause is already treated as non-matching, so a venue with no
+    // coordinates is excluded by the same expression that includes nearby ones.
     String PUBLISHED_EVENTS_WHERE = "e.status = 'PUBLISHED' " +
             "AND (CAST(:searchTerm AS text) IS NULL OR to_tsvector('english', COALESCE(e.name, '') || ' ' || COALESCE(v.name, '') || ' ' || COALESCE(v.city, '')) @@ plainto_tsquery('english', CAST(:searchTerm AS text))) " +
             "AND (CAST(:city AS text) IS NULL OR v.city = CAST(:city AS text)) " +
             "AND (CAST(:from AS timestamp) IS NULL OR e.event_start >= CAST(:from AS timestamp)) " +
             "AND (CAST(:to AS timestamp) IS NULL OR e.event_start <= CAST(:to AS timestamp)) " +
             "AND (CAST(:minPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS double precision)) " +
-            "AND (CAST(:maxPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS double precision))";
+            "AND (CAST(:maxPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS double precision)) " +
+            "AND (CAST(:latitude AS double precision) IS NULL OR CAST(:longitude AS double precision) IS NULL OR CAST(:radiusMeters AS double precision) IS NULL " +
+            "OR ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography, CAST(:radiusMeters AS double precision)))";
 
     String PUBLISHED_EVENTS_COUNT_QUERY = "SELECT count(*) FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE;
 
@@ -73,7 +82,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedBySoonest(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice, Pageable pageable);
+            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+            Pageable pageable);
 
     @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
             " ORDER BY (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) ASC",
@@ -81,7 +92,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedByPriceAsc(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice, Pageable pageable);
+            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+            Pageable pageable);
 
     @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
             " ORDER BY (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) DESC",
@@ -89,7 +102,24 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedByPriceDesc(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice, Pageable pageable);
+            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+            Pageable pageable);
+
+    // Only ever invoked once EventServiceImpl#findPublishedEvents has confirmed
+    // latitude/longitude/radiusMeters are all present -- unlike the WHERE clause's
+    // deliberately lenient "any null means no-op" filter, sorting by distance from
+    // nowhere isn't a meaningful fallback, so the guard lives at the call site instead
+    // of here.
+    @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
+            " ORDER BY ST_Distance(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography) ASC",
+            countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
+            nativeQuery = true)
+    Page<Event> findPublishedEventsSortedByDistance(@Param("searchTerm") String searchTerm, @Param("city") String city,
+            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+            Pageable pageable);
 
     // Backs the browse page's City filter -- plain JPQL, not native, since there's no
     // full-text search or nullable-parameter filtering here to force the native-query

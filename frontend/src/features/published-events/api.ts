@@ -24,31 +24,43 @@ export interface ListPublishedEventsParams extends PaginationParams {
   minPrice?: number
   maxPrice?: number
   city?: string
+  // A "near me" origin + radius -- unused until the browse page grows a location
+  // filter, but mirrored here now since the backend already accepts them (see
+  // EventRepository's PUBLISHED_EVENTS_WHERE). All three or none: the backend treats a
+  // partial trio as absent rather than erroring.
+  latitude?: number
+  longitude?: number
+  radiusMeters?: number
   sortBy?: PublishedEventsSort
 }
 
-// Typed directly against ListPublishedEventsParams rather than a generic
-// Record<string, ...> -- an interface without its own index signature (this one)
-// isn't assignable to a Record type, even when every property's type would fit.
-function buildQuery(params: ListPublishedEventsParams): string {
-  const query = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') {
-      query.set(key, String(value))
-    }
-  }
-  return query.toString()
-}
-
+// POST /search, not GET -- nine independent optional filters stopped being a
+// reasonable query string a while ago (see PublishedEventController's own comment on
+// why). Paging and sort both ride inside the body now too, nested under `paging` --
+// matches ListPublishedEventsRequestDto extending SearchRequestDTO server-side. The
+// wire keys (page/limit/sortField) come from AbstractPaging's @JsonProperty mapping,
+// not the Java field names (pagingStart/pagingSize/sortingColumn) -- sortField still
+// carries the same "soonest"/"priceAsc"/"priceDesc"/"distance" values sortBy used to;
+// sortOrder has no equivalent here and is omitted, since each of those is already a
+// named, fixed-direction sort.
 export async function listPublishedEvents(
   params: ListPublishedEventsParams,
 ): Promise<Page<ListPublishedEventResponse>> {
-  const query = buildQuery(params)
-  const response = await apiFetch(`${BASE_URL}?${query}`)
+  const { page, size, sortBy, ...filters } = params
+  const response = await apiFetch(`${BASE_URL}/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...filters,
+      paging: { page, limit: size, sortField: sortBy },
+    }),
+  })
   return parseJsonOrThrow<Page<ListPublishedEventResponse>>(response)
 }
 
-export async function getPublishedEvent(eventId: string): Promise<GetPublishedEventDetailsResponse> {
+export async function getPublishedEvent(
+  eventId: string,
+): Promise<GetPublishedEventDetailsResponse> {
   const response = await apiFetch(`${BASE_URL}/${eventId}`)
   return parseJsonOrThrow<GetPublishedEventDetailsResponse>(response)
 }

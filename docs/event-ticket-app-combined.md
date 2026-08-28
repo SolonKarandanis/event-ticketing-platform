@@ -9703,6 +9703,109 @@ Built as plain divs sized by percentage width, not a charting library -- `rechar
 - Bars follow the skill's fixed anatomy (≤24px, square baseline, 4px rounded tip); every bar direct-labels both revenue and tickets sold, so the chart skips a numeric axis entirely and needs no legend
 - Built with plain HTML/CSS, not a charting library
 
+## Backend: PostGIS Proximity Search
+
+"PostGIS / events near me" had sat in the wayfinder map's Out of scope list since planning, flagged specifically as cheap to add later because `Venue` already stores plain `latitude`/`longitude`. Picking it up meant finding out whether "cheap" actually held up against this project's real Postgres instance, not just the abstract idea of it.
+
+### Installing PostGIS Was the Actual Blocker
+
+`SELECT name FROM pg_available_extensions WHERE name LIKE '%postgis%'` against the live database (Postgres 14.18 on a bare-metal host, not a container) came back with zero rows -- not "disabled," genuinely not installed at the package level. `apt-get install postgresql-14-postgis-3` failed with a wall of unmet dependencies (`libc6 >= 2.35`, `libstdc++6 >= 11`, ...) -- version floors that belong to Ubuntu 22.04 (jammy), not the 20.04 (focal) base this Postgres install actually runs on. The `pgdg.list` apt source was pointed at `jammy-pgdg`, on a machine running elementary OS 6.1 -- whose own `lsb_release -c` reports `jolnir`, not the Ubuntu codename underneath it, which is presumably how the mismatch got there in the first place.
+
+Fixing the codename to `focal-pgdg` didn't immediately work either: `apt.postgresql.org` returned a real, edge-cached `404` for `dists/focal-pgdg/Release` (confirmed via the response headers -- `x-cache: HIT` with hundreds of prior hits and an `age` over 12 hours, not a one-off blip). Fetching PGDG's own `dists/` directory listing confirmed why: `focal-pgdg` isn't in the current set at all (`bookworm`, `jammy`, `noble`, ...) -- PGDG had dropped it from the live repo entirely, following Ubuntu 20.04's end of standard support. It wasn't gone for good, though: `apt-archive.postgresql.org` still serves it, including a `postgresql-14-postgis-3` build (`3.5.3+dfsg-1~exp1.pgdg20.04+1`) whose dependencies (`libgdal26`, `libjson-c4`, `libproj15`, `libc6 >= 2.29`, ...) are genuinely focal-era versions, not jammy's. Swapping the apt source to the archive host, keeping the same `focal-pgdg` codename, installed cleanly.
+
+`CREATE EXTENSION postgis;` still needed a superuser -- the `ticketservice` app role (confirmed non-superuser, and not the `ticketservice` database's owner either, which is `postgres`) can't run it. That step stays a documented manual prerequisite; a fresh environment's own Liquibase run can't set this up for itself, which shapes the migration below.
+
+### The Liquibase Migration
+
+`003-add-venue-geography.xml` adds a `geography(Point,4326)` column to `venues`, backfills it from the existing `latitude`/`longitude` for every row that already has both, and adds a GiST index -- three changesets, continuing the existing changeset-id numbering (`12`/`13`/`14`, after `11-add-ticket-reference-code`):
+
+```java
+<changeSet id="12-add-venue-location" author="event-ticket-platform" dbms="postgresql">
+    <preConditions onFail="HALT" onFailMessage="PostGIS is not enabled on this database -- run `CREATE EXTENSION postgis;` as a superuser first.">
+        <sqlCheck expectedResult="1">SELECT count(*) FROM pg_extension WHERE extname = 'postgis'</sqlCheck>
+    </preConditions>
+    <addColumn tableName="venues">
+        <column name="location" type="geography(Point,4326)"/>
+    </addColumn>
+</changeSet>
+```
+
+The `preConditions`/`sqlCheck` exists because `CREATE EXTENSION` can't safely be a changeset itself (see above) -- without it, a fresh environment missing the extension would fail with a cryptic "type geography does not exist" partway through, instead of a clear halt naming the actual fix. The backfill and index are plain `<sql>` changesets (`ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)`, `CREATE INDEX ... USING GIST (location)`) -- PostGIS functions aren't expressible through Liquibase's portable tags. Verified against the live database afterward, not just trusted: the column, both venues' correctly-backfilled points, the GiST index, and all three changelog rows were all confirmed present via direct queries.
+
+### Keeping `location` in Sync
+
+Mapping the new column onto the entity needed `hibernate-spatial` (`org.hibernate.orm:hibernate-spatial`, unpinned -- Spring Boot's dependency management resolved it to the exact version matching `hibernate-core`, `7.4.1.Final`, confirmed via `./gradlew dependencies`). `Venue` gained a `Point location` field and one new method, rather than leaving `latitude`/`longitude`/`location` as three independently-settable fields that could drift out of sync:
+
+```java
+public void setCoordinates(Double latitude, Double longitude) {
+    this.latitude = latitude;
+    this.longitude = longitude;
+    this.location = (null != latitude && null != longitude)
+            ? GEOMETRY_FACTORY.createPoint(new Coordinate(longitude, latitude))
+            : null;
+}
+```
+
+`Coordinate`'s constructor takes `(x, y)` -- i.e. `(longitude, latitude)` -- matching the migration's own `ST_MakePoint(longitude, latitude)` order exactly; getting this backwards would have silently placed every venue at its coordinates' mirror image. `VenueServiceImpl`'s `createVenue`/`updateVenue` both switched from two separate `setLatitude`/`setLongitude` calls to this one method, so `location` now rides along for free on every future create/update instead of only reflecting the migration's one-time backfill.
+
+`VenueRepository` gained a matching read path, `findWithinRadius` -- a native `ST_DWithin`/`ST_Distance` query, nearest-first, taking plain `latitude`/`longitude` doubles rather than constructing a JTS `Point` at the call site (consistent with how every other geo-adjacent value in this codebase is handled). Confirmed directly against the two real venues: 0m for the origin venue, ~11.87km for the other, correctly ordered.
+
+### Wiring the Geo Filter Into Published Events
+
+The actual "near me" filter lives in `EventRepository.PUBLISHED_EVENTS_WHERE`, extended with the same "any-null-means-no-op" shape every other optional filter there already uses, just spread across three co-dependent parameters instead of one:
+
+```java
+"AND (CAST(:latitude AS double precision) IS NULL OR CAST(:longitude AS double precision) IS NULL OR CAST(:radiusMeters AS double precision) IS NULL " +
+"OR ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography, CAST(:radiusMeters AS double precision)))"
+```
+
+No explicit `v.location IS NOT NULL` guard is needed: `ST_DWithin` against a null geography evaluates to `NULL`, and a `NULL` in a `WHERE` clause already excludes the row, so a venue with no coordinates is filtered out by the same expression that includes nearby ones. A fourth native query variant, `findPublishedEventsSortedByDistance`, joins the existing three (soonest/priceAsc/priceDesc) -- `EventServiceImpl.findPublishedEvents` only routes to it when all three geo parameters are actually present, falling back to the default sort otherwise, the same way an unrecognized `sortBy` value already did, rather than sorting by distance to nowhere.
+
+Tested live against the one real published event, since this endpoint is public and needs no JWT: an origin at the event's own venue with a 1km radius returned it; an origin in New York with the same radius returned nothing; `sortBy=distance` (as it was named before the request-body redesign below) returned it correctly ordered; and a request with no geo parameters at all was unaffected, confirming the filter is additive.
+
+One deliberate boundary: the response DTO doesn't carry a computed distance value. Showing "2.3km away" on a card would mean restructuring the native queries into a projection instead of returning `Event` entities directly -- left for whenever the frontend's actual "Near me" UI gets built, alongside this.
+
+### From Query Params to a Search Request Body
+
+`listPublishedEvents` had grown to nine independent optional filters plus `Pageable` -- past the point a query string stays a reasonable way to call it. The fix: `POST /api/v1/published-events/search` with a JSON body, not `GET` with an ever-longer parameter list. Not a bare `POST /published-events` either -- this codebase's own convention (`VenueController`, `EventController`) already uses `POST` on a collection root to mean "create," which doesn't apply to a public, read-only search; `/search` is a distinct sub-path instead, the same way a POST-based search endpoint is conventionally modeled elsewhere. This needed its own `permitAll` rule in `SecurityConfig` -- the existing one only matched `GET`, and HTTP method is part of what a `requestMatcher` matches on, not just the path; missing this would have silently 401'd every anonymous browse request.
+
+The request body itself became `ListPublishedEventsRequestDto extends SearchRequestDTO`, built on top of a small reusable paging framework rather than a one-off DTO:
+
+```java
+public abstract class AbstractPaging {
+    @JsonProperty("page")
+    protected Integer pagingStart;
+    @JsonProperty("limit")
+    protected Integer pagingSize;
+    @JsonProperty("sortField")
+    protected String sortingColumn;
+    @JsonProperty("sortOrder")
+    protected String sortingDirection;
+}
+```
+
+This raised a real design question rather than a mechanical one: the four named sorts (soonest/priceAsc/priceDesc/distance) aren't a generic column-plus-direction pair -- "distance" only ever makes sense ascending, "soonest" sorts by `event_start`, not a price column -- so `sortField`/`sortOrder` couldn't reproduce them automatically. Resolved by keeping `sortField` (`paging.getSortingColumn()`) carrying the exact same four strings the old standalone `sortBy` field did, leaving `sortOrder` unused for this endpoint, rather than guessing and silently dropping the price/distance sort options the browse page already depends on.
+
+`SearchRequestDTO.paging` wasn't defaulted in its own constructor at first, which would have pushed a null-check onto every future controller built on it. Given a proper home instead:
+
+```java
+public SearchRequestDTO() {
+    this.paging = new Paging();
+}
+```
+
+with `Paging`'s own no-arg constructor already defaulting `page=0`/`limit=10`. `PublishedEventController` no longer needs its own fallback for a missing `paging` object as a result -- confirmed by re-testing both a `{}` body and a request with no body at all, both still returning correctly defaulted, paginated results.
+
+The frontend's `published-events/api.ts` needed matching updates at each step -- GET-with-query-string to POST-with-body, then flattening `page`/`size`/`sortBy` into a nested `paging: { page, limit, sortField }` object -- since leaving it on the old contract would have silently broken the browse page's pagination and sort, not just left a feature unbuilt.
+
+#### Summary
+
+- PostGIS wasn't installed on the live Postgres server at all; fixing it meant correcting a `jammy` vs `focal` apt codename mismatch (traced to elementary OS reporting its own codename, not its Ubuntu base) and then discovering PGDG had moved focal's repo to an archive host after Ubuntu 20.04's EOL
+- `003-add-venue-geography.xml`: a `geography(Point,4326)` column, a backfill from existing `latitude`/`longitude`, and a GiST index -- guarded by a `preConditions` halt naming the fix if PostGIS isn't enabled, since `CREATE EXTENSION` can't safely be a changeset itself (the app's DB role is neither superuser nor the database owner)
+- `Venue.setCoordinates(latitude, longitude)` is now the one path that keeps `latitude`/`longitude`/`location` in sync, replacing two independent setters; `VenueRepository.findWithinRadius` added a nearest-first proximity query, both verified against real venue coordinates
+- `EventRepository`/`EventService`/`PublishedEventController` gained a geo filter (any of latitude/longitude/radiusMeters absent is a no-op, matching every other optional filter's shape) and a fourth sort variant, distance -- tested live against the one real published event from multiple origins
+- Rebuilt `listPublishedEvents` as `POST /published-events/search` with a `ListPublishedEventsRequestDto` body extending a new reusable `SearchRequestDTO`/`Paging`/`AbstractPaging` framework, resolving a real ambiguity (the four named sorts aren't a generic column+direction pair) by keeping `sortField` as their carrier and leaving `sortOrder` unused; updated the frontend to match at each contract change so the browse page kept working throughout
+
 ## Project Status
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
@@ -9719,7 +9822,9 @@ A snapshot of where the real build stands relative to this document, kept here a
 - **Staff ticket validation** (staff, `/scan`) -- continuous camera QR scanning (`qr-scanner`, Web Worker-based) plus a manual reference-code fallback, both funnelling into one full-screen colored ADMIT/ALREADY-USED/NOT-FOUND result per issue #9.
 - **Reports dashboard** (organizer, `/dashboard`) -- a sorted, single-hue horizontal bar chart of revenue by event, each bar direct-labeled with both revenue and tickets sold, per issue #8.
 
-Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, PostGIS proximity search, automated tests, ticket cancellation/refund, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
+Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, automated tests, ticket cancellation/refund, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
+
+PostGIS proximity search (see "Backend: PostGIS Proximity Search") is a partial exception to that list: the backend half is real and live-tested -- `ticket-service`'s published-events search accepts a `latitude`/`longitude`/`radiusMeters` origin and a `distance` sort -- but nothing on `/browse` calls it yet. There's no "Near me" control, no browser Geolocation prompt, and no per-card distance readout (the response DTO doesn't carry a computed distance value yet either). This is genuinely unbuilt frontend work now, not an out-of-scope item.
 
 ### `frontend` loose ends
 
@@ -9738,6 +9843,9 @@ Deliberately not built, matching resolved decisions rather than gaps: `i18next` 
 - CORS was never configured until the frontend's Venues screen needed it (see "A Missing CORS Configuration") -- `SecurityConfig` now allows `http://localhost:3000` across `/**`
 - Hit the same PostgreSQL failure mode twice while wiring up search: a bind parameter used *only* in an `X IS NULL OR ...` comparison (the standard "optional filter" pattern) gives Postgres zero type context to resolve it against, since `IS NULL` is valid for any type. Depending on the rest of the query, this either silently resolves to the wrong type (`VenueRepository.search`'s city `LIKE` picked `bytea`, so `LOWER(bytea)` blew up) or fails outright ("could not determine data type of parameter", `EventRepository`'s published-events native query). Both are fixed the same way: wrap every occurrence of the parameter in an explicit `CAST(:param AS <type>)`. Worth remembering as a standing gotcha for any future nullable-filter query in this stack, not just those two
 - `VenueRepository`/`VenueController`/`VenueService` gained search (`?q=`), and `EventRepository`/`EventService`/`PublishedEventController` gained a `GET /api/v1/published-events/cities` endpoint (distinct cities with at least one published event) -- both purely additive, no existing endpoint's behavior changed
+- PostGIS is now installed and enabled on the live database (`postgis` 3.5.3 -- see "Backend: PostGIS Proximity Search" for what installing it on this specific host actually took); `venues.location` is backfilled and kept in sync via `Venue.setCoordinates()`, and published-events search accepts a geo origin + radius plus a `distance` sort, all live-tested against the one real published event
+- `listPublishedEvents` is now `POST /api/v1/published-events/search` with a JSON body (`ListPublishedEventsRequestDto extends SearchRequestDTO`), not `GET` with query params -- needed its own `permitAll` rule in `SecurityConfig` (the existing one only matched `GET`) and a matching frontend update, both done in the same pass so the browse page never broke
+- Discovered, not fixed: hitting a genuinely nonexistent route (like the now-removed `GET /api/v1/published-events`) returns a generic `500` (`{"error":"An unexpected error occurred"}`) instead of a proper `404` -- `GlobalExceptionHandler` catches `NoResourceFoundException` the same as any other unhandled exception. Pre-existing for any mistyped URL on this API, not introduced by this change
 
 ### `analytics-service` loose ends
 

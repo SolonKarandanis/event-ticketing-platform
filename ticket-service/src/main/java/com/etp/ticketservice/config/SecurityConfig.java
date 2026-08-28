@@ -30,6 +30,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize ->
                         authorize
                                 .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**").permitAll()
+                                // The search endpoint is POST (see PublishedEventController), so the
+                                // GET rule above doesn't cover it -- HTTP method is part of what a
+                                // requestMatcher matches on, not just the path.
+                                .requestMatchers(HttpMethod.POST, "/api/v1/published-events/search").permitAll()
                                 // Ticket purchase lives under /api/v1/events/** but is an attendee
                                 // action, not organizer management -- must be matched before the
                                 // broader ORGANIZER-only rule below.

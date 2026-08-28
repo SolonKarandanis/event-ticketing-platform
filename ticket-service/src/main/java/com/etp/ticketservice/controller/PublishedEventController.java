@@ -1,20 +1,23 @@
 package com.etp.ticketservice.controller;
 
+import com.etp.ticketservice.domain.dto.request.ListPublishedEventsRequestDto;
+import com.etp.ticketservice.domain.dto.request.Paging;
 import com.etp.ticketservice.domain.dto.response.GetPublishedEventDetailsResponseDto;
 import com.etp.ticketservice.domain.dto.response.ListPublishedEventResponseDto;
 import com.etp.ticketservice.domain.entity.Event;
 import com.etp.ticketservice.domain.service.EventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,20 +28,27 @@ public class PublishedEventController {
 
     private final EventService eventService;
 
-    @GetMapping
+    // Paging now rides in the request body too (SearchRequestDTO.paging), not a
+    // Pageable method param -- page/limit map onto Spring's zero-based PageRequest
+    // directly. sortField (paging.getSortingColumn()) carries the same
+    // "soonest"/"priceAsc"/"priceDesc"/"distance" values the old standalone sortBy
+    // field did; sortOrder is unused here, since each of those is already a named,
+    // fixed-direction sort rather than a generic column+direction pair.
+    @PostMapping(path = "/search")
     public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) LocalDateTime from,
-            @RequestParam(required = false) LocalDateTime to,
-            @RequestParam(required = false) Double minPrice,
-            @RequestParam(required = false) Double maxPrice,
-            @RequestParam(required = false) String city,
-            @RequestParam(required = false, defaultValue = "soonest") String sortBy,
-            Pageable pageable) {
+            @RequestBody(required = false) ListPublishedEventsRequestDto request) {
+        ListPublishedEventsRequestDto criteria = (null != request) ? request : new ListPublishedEventsRequestDto();
+        Paging paging = criteria.getPaging();
+        Pageable pageable = PageRequest.of(paging.getPagingStart(), paging.getPagingSize());
+
         // A blank/whitespace-only q means "browse all", same as omitting it -- normalize
         // here so the repository's ":searchTerm IS NULL" check treats both the same way.
+        String q = criteria.getQ();
         String searchTerm = (null != q && !q.trim().isEmpty()) ? q : null;
-        Page<Event> events = eventService.findPublishedEvents(searchTerm, from, to, minPrice, maxPrice, city, sortBy, pageable);
+        Page<Event> events = eventService.findPublishedEvents(
+                searchTerm, criteria.getFrom(), criteria.getTo(), criteria.getMinPrice(), criteria.getMaxPrice(),
+                criteria.getCity(), criteria.getLatitude(), criteria.getLongitude(), criteria.getRadiusMeters(),
+                paging.getSortingColumn(), pageable);
         return ResponseEntity.ok(
                 events.map(eventService::convertToListPublishedEventResponseDto)
         );

@@ -15,6 +15,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
@@ -32,6 +36,10 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class Venue {
+
+    // SRID 4326 (WGS 84) matches the location column's geography(Point,4326) type and
+    // the 003-add-venue-geography migration's backfill (ST_SetSRID(..., 4326)).
+    private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
 
     @Id
     @GeneratedValue(
@@ -76,6 +84,13 @@ public class Venue {
     @Column(name = "longitude")
     private Double longitude;
 
+    // Derived from latitude/longitude, not set directly -- use setCoordinates() so this
+    // never drifts out of sync with them. Existing rows were backfilled once by the
+    // 003-add-venue-geography Liquibase migration; every write since goes through
+    // setCoordinates() instead.
+    @Column(name = "location", columnDefinition = "geography(Point,4326)")
+    private Point location;
+
     @Column(name = "capacity")
     private Integer capacity;
 
@@ -93,6 +108,19 @@ public class Venue {
     @LastModifiedDate
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    // The one way latitude/longitude/location should be set, in create and update
+    // alike -- Point's coordinate order is (x, y), i.e. (longitude, latitude), matching
+    // the migration's own ST_MakePoint(longitude, latitude). Either coordinate missing
+    // (both are optional, per the venue form's design) means no location at all, not a
+    // half-built point.
+    public void setCoordinates(Double latitude, Double longitude) {
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.location = (null != latitude && null != longitude)
+                ? GEOMETRY_FACTORY.createPoint(new Coordinate(longitude, latitude))
+                : null;
+    }
 
     public void addEvent(Event event) {
         this.events.add(event);
@@ -118,6 +146,7 @@ public class Venue {
                Objects.equals(country, venue.country) &&
                Objects.equals(latitude, venue.latitude) &&
                Objects.equals(longitude, venue.longitude) &&
+               Objects.equals(location, venue.location) &&
                Objects.equals(capacity, venue.capacity) &&
                Objects.equals(accessibilityInfo, venue.accessibilityInfo) &&
                Objects.equals(createdAt, venue.createdAt) &&
@@ -127,7 +156,7 @@ public class Venue {
     @Override
     public int hashCode() {
         return Objects.hash(id, domainId, name, addressLine1, addressLine2, city,
-                postalCode, country, latitude, longitude, capacity, accessibilityInfo,
+                postalCode, country, latitude, longitude, location, capacity, accessibilityInfo,
                 createdAt, updatedAt);
     }
 }

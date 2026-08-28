@@ -50,7 +50,9 @@ public interface EventService {
     Event completeEvent(UUID organizerId, UUID id);
 
     Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
-            Double minPrice, Double maxPrice, String city, String sortBy, Pageable pageable);
+            Double minPrice, Double maxPrice, String city,
+            Double latitude, Double longitude, Double radiusMeters,
+            String sortBy, Pageable pageable);
 
     Optional<Event> getPublishedEvent(UUID id);
 

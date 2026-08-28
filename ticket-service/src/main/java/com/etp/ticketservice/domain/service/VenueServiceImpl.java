@@ -36,8 +36,7 @@ public class VenueServiceImpl implements VenueService {
         venueToCreate.setCity(request.getCity());
         venueToCreate.setPostalCode(request.getPostalCode());
         venueToCreate.setCountry(request.getCountry());
-        venueToCreate.setLatitude(request.getLatitude());
-        venueToCreate.setLongitude(request.getLongitude());
+        venueToCreate.setCoordinates(request.getLatitude(), request.getLongitude());
         venueToCreate.setCapacity(request.getCapacity());
         venueToCreate.setAccessibilityInfo(request.getAccessibilityInfo());
 
@@ -64,8 +63,7 @@ public class VenueServiceImpl implements VenueService {
         existingVenue.setCity(request.getCity());
         existingVenue.setPostalCode(request.getPostalCode());
         existingVenue.setCountry(request.getCountry());
-        existingVenue.setLatitude(request.getLatitude());
-        existingVenue.setLongitude(request.getLongitude());
+        existingVenue.setCoordinates(request.getLatitude(), request.getLongitude());
         existingVenue.setCapacity(request.getCapacity());
         existingVenue.setAccessibilityInfo(request.getAccessibilityInfo());
 
