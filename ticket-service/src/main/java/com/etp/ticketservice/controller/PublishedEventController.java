@@ -5,6 +5,7 @@ import com.etp.ticketservice.domain.dto.request.Paging;
 import com.etp.ticketservice.domain.dto.response.GetPublishedEventDetailsResponseDto;
 import com.etp.ticketservice.domain.dto.response.ListPublishedEventResponseDto;
 import com.etp.ticketservice.domain.entity.Event;
+import com.etp.ticketservice.domain.enums.PublishedEventsSortBy;
 import com.etp.ticketservice.domain.service.EventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,13 +34,17 @@ public class PublishedEventController {
     // directly. sortField (paging.getSortingColumn()) carries the same
     // "soonest"/"priceAsc"/"priceDesc"/"distance" values the old standalone sortBy
     // field did; sortOrder is unused here, since each of those is already a named,
-    // fixed-direction sort rather than a generic column+direction pair.
+    // fixed-direction sort rather than a generic column+direction pair. The raw wire
+    // string is converted to PublishedEventsSortBy right here, at the API boundary --
+    // EventService takes the enum, not a String, so an unrecognized value can't
+    // propagate any deeper than this one conversion.
     @PostMapping(path = "/search")
     public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(
             @RequestBody(required = false) ListPublishedEventsRequestDto request) {
         ListPublishedEventsRequestDto criteria = (null != request) ? request : new ListPublishedEventsRequestDto();
         Paging paging = criteria.getPaging();
         Pageable pageable = PageRequest.of(paging.getPagingStart(), paging.getPagingSize());
+        PublishedEventsSortBy sortBy = PublishedEventsSortBy.fromWireValue(paging.getSortingColumn());
 
         // A blank/whitespace-only q means "browse all", same as omitting it -- normalize
         // here so the repository's ":searchTerm IS NULL" check treats both the same way.
@@ -48,7 +53,7 @@ public class PublishedEventController {
         Page<Event> events = eventService.findPublishedEvents(
                 searchTerm, criteria.getFrom(), criteria.getTo(), criteria.getMinPrice(), criteria.getMaxPrice(),
                 criteria.getCity(), criteria.getLatitude(), criteria.getLongitude(), criteria.getRadiusMeters(),
-                paging.getSortingColumn(), pageable);
+                sortBy, pageable);
         return ResponseEntity.ok(
                 events.map(eventService::convertToListPublishedEventResponseDto)
         );

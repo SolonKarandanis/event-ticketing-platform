@@ -19,6 +19,7 @@ import com.etp.ticketservice.domain.dto.response.VenueResponseDto;
 import com.etp.ticketservice.domain.entity.Event;
 import com.etp.ticketservice.domain.entity.TicketType;
 import com.etp.ticketservice.domain.entity.Venue;
+import com.etp.ticketservice.domain.enums.PublishedEventsSortBy;
 import com.etp.ticketservice.domain.model.CreateEventRequest;
 import com.etp.ticketservice.domain.model.CreateTicketTypeRequest;
 import com.etp.ticketservice.domain.model.UpdateEventRequest;
@@ -52,7 +53,7 @@ public interface EventService {
     Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
             Double minPrice, Double maxPrice, String city,
             Double latitude, Double longitude, Double radiusMeters,
-            String sortBy, Pageable pageable);
+            PublishedEventsSortBy sortBy, Pageable pageable);
 
     Optional<Event> getPublishedEvent(UUID id);
 

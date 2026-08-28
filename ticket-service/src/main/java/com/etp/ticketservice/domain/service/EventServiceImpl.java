@@ -21,6 +21,7 @@ import com.etp.ticketservice.domain.entity.TicketType;
 import com.etp.ticketservice.domain.entity.User;
 import com.etp.ticketservice.domain.entity.Venue;
 import com.etp.ticketservice.domain.enums.EventStatusEnum;
+import com.etp.ticketservice.domain.enums.PublishedEventsSortBy;
 import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.EventNotFoundException;
 import com.etp.ticketservice.domain.exception.EventNotPublishableException;
@@ -277,26 +278,29 @@ public class EventServiceImpl implements EventService {
     public Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
             Double minPrice, Double maxPrice, String city,
             Double latitude, Double longitude, Double radiusMeters,
-            String sortBy, Pageable pageable) {
+            PublishedEventsSortBy sortBy, Pageable pageable) {
         // With no explicit date range, default to upcoming events only -- otherwise a
         // PUBLISHED event whose end has already passed but hasn't been manually marked
         // COMPLETED yet would still show up in browse results.
         LocalDateTime effectiveFrom = (null == from && null == to) ? LocalDateTime.now() : from;
 
-        // "distance" only means something with an origin point -- a distance sort with
-        // no coordinates falls through to the default (soonest) instead of sorting by
-        // distance to nowhere, the same way an unrecognized sortBy value already does.
+        // DISTANCE only means something with an origin point -- a distance sort with no
+        // coordinates falls back to SOONEST instead of sorting by distance to nowhere.
         boolean hasOrigin = null != latitude && null != longitude && null != radiusMeters;
-        String effectiveSortBy = ("distance".equals(sortBy) && !hasOrigin) ? "" : sortBy;
+        PublishedEventsSortBy effectiveSortBy =
+                (PublishedEventsSortBy.DISTANCE == sortBy && !hasOrigin) ? PublishedEventsSortBy.SOONEST : sortBy;
 
-        Page<Event> page = switch (null == effectiveSortBy ? "" : effectiveSortBy) {
-            case "priceAsc" -> eventRepository.findPublishedEventsSortedByPriceAsc(
+        // Exhaustive over the enum's four constants -- no default branch, so the
+        // compiler (not a runtime fallthrough) catches a future fifth sort option that
+        // forgets to add its query variant here.
+        Page<Event> page = switch (null == effectiveSortBy ? PublishedEventsSortBy.SOONEST : effectiveSortBy) {
+            case PRICE_ASC -> eventRepository.findPublishedEventsSortedByPriceAsc(
                     searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
-            case "priceDesc" -> eventRepository.findPublishedEventsSortedByPriceDesc(
+            case PRICE_DESC -> eventRepository.findPublishedEventsSortedByPriceDesc(
                     searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
-            case "distance" -> eventRepository.findPublishedEventsSortedByDistance(
+            case DISTANCE -> eventRepository.findPublishedEventsSortedByDistance(
                     searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
-            default -> eventRepository.findPublishedEventsSortedBySoonest(
+            case SOONEST -> eventRepository.findPublishedEventsSortedBySoonest(
                     searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
         };
 
