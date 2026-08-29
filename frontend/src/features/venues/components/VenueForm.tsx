@@ -14,6 +14,7 @@ import { Input } from '#/components/ui/input'
 import { Textarea } from '#/components/ui/textarea'
 import { isDecimalOrEmpty, isIntegerOrEmpty } from '#/lib/validation'
 import type { CreateVenueRequest, Venue } from '../types'
+import { LocationPicker } from './LocationPicker'
 
 // Numeric fields stay strings in form state (native inputs hand back strings) and get
 // converted to numbers only when building the wire request in onSubmit -- simpler than
@@ -25,7 +26,10 @@ const venueFormSchema = z.object({
   city: z.string().trim().min(1, 'City is required'),
   postalCode: z.string().trim().min(1, 'Postal code is required'),
   country: z.string().trim().min(1, 'Country is required'),
-  capacity: z.string().trim().refine(isIntegerOrEmpty, 'Must be a whole number'),
+  capacity: z
+    .string()
+    .trim()
+    .refine(isIntegerOrEmpty, 'Must be a whole number'),
   latitude: z.string().trim().refine(isDecimalOrEmpty, 'Must be a number'),
   longitude: z.string().trim().refine(isDecimalOrEmpty, 'Must be a number'),
   accessibilityInfo: z.string().trim(),
@@ -61,7 +65,9 @@ export function venueToFormValues(venue: Venue): VenueFormValues {
   }
 }
 
-export function formValuesToRequest(values: VenueFormValues): CreateVenueRequest {
+export function formValuesToRequest(
+  values: VenueFormValues,
+): CreateVenueRequest {
   return {
     name: values.name,
     addressLine1: values.addressLine1,
@@ -74,6 +80,14 @@ export function formValuesToRequest(values: VenueFormValues): CreateVenueRequest
     longitude: values.longitude ? Number(values.longitude) : undefined,
     accessibilityInfo: values.accessibilityInfo || undefined,
   }
+}
+
+// Guards against NaN while a latitude/longitude field is mid-typed (e.g. "-") or
+// invalid -- LocationPicker treats "no position yet" as undefined, not NaN, so this
+// keeps a not-yet-valid string from ever reaching it as a number.
+function toNumberOrUndefined(value: string): number | undefined {
+  const parsed = Number(value)
+  return value.trim() !== '' && !Number.isNaN(parsed) ? parsed : undefined
 }
 
 interface VenueFormProps {
@@ -93,10 +107,14 @@ export function VenueForm({
     resolver: zodResolver(venueFormSchema),
     defaultValues: defaultValues ?? emptyValues,
   })
+  const [latitude, longitude] = form.watch(['latitude', 'longitude'])
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="grid max-w-xl gap-5">
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="grid max-w-xl gap-5"
+      >
         <FormField
           control={form.control}
           name="name"
@@ -190,6 +208,20 @@ export function VenueForm({
             </FormItem>
           )}
         />
+        <LocationPicker
+          latitude={toNumberOrUndefined(latitude)}
+          longitude={toNumberOrUndefined(longitude)}
+          onChange={(nextLatitude, nextLongitude) => {
+            form.setValue('latitude', nextLatitude.toFixed(6), {
+              shouldValidate: true,
+              shouldDirty: true,
+            })
+            form.setValue('longitude', nextLongitude.toFixed(6), {
+              shouldValidate: true,
+              shouldDirty: true,
+            })
+          }}
+        />
         <div className="grid grid-cols-2 gap-5">
           <FormField
             control={form.control}
@@ -232,7 +264,11 @@ export function VenueForm({
           )}
         />
 
-        <Button type="submit" disabled={isSubmitting} className="justify-self-start cursor-pointer">
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="justify-self-start cursor-pointer"
+        >
           {isSubmitting ? 'Saving...' : submitLabel}
         </Button>
       </form>
