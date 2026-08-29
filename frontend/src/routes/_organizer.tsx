@@ -1,4 +1,4 @@
-import { Link, Outlet, createFileRoute, redirect } from '@tanstack/react-router'
+import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { getRoleHomeRoute, getRoles } from '#/features/auth/roles'
 import { ROLE_ORGANIZER } from '#/features/auth/types'
 
@@ -26,34 +26,9 @@ export const Route = createFileRoute('/_organizer')({
       throw redirect({ to: getRoleHomeRoute(roles) })
     }
   },
-  component: OrganizerLayout,
+  // Dashboard/Venues/Events used to have their own nav row here, directly below the
+  // header, duplicating the same three links Header.tsx now renders globally for any
+  // organizer -- matching _attendee.tsx/_staff.tsx, which never had a layout-local nav
+  // of their own.
+  component: () => <Outlet />,
 })
-
-function OrganizerLayout() {
-  return (
-    <>
-      <nav className="page-wrap flex gap-4 px-4 pt-6 text-sm font-semibold">
-        <Link to="/dashboard" className="nav-link" activeProps={{ className: 'nav-link is-active' }}>
-          Dashboard
-        </Link>
-        <Link
-          to="/venues"
-          className="nav-link"
-          activeProps={{ className: 'nav-link is-active' }}
-          activeOptions={{ exact: false }}
-        >
-          Venues
-        </Link>
-        <Link
-            to="/events"
-            className="nav-link"
-            activeProps={{ className: 'nav-link is-active' }}
-            activeOptions={{ exact: false }}
-        >
-          Events
-        </Link>
-      </nav>
-      <Outlet />
-    </>
-  )
-}

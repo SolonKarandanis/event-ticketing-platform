@@ -1,9 +1,21 @@
 import { Link } from '@tanstack/react-router'
 import { useAuth } from 'react-oidc-context'
+import { getRoles } from '#/features/auth/roles'
+import {
+  ROLE_ATTENDEE,
+  ROLE_ORGANIZER,
+  ROLE_STAFF,
+} from '#/features/auth/types'
 import ThemeToggle from './ThemeToggle'
 
 export default function Header() {
   const auth = useAuth()
+  // Every role-gated page (dashboard/venues/events, scan, tickets) sits under its own
+  // layout route with a beforeLoad guard, but nothing renders a way back to it once
+  // someone navigates away -- e.g. an organizer clicking "Browse Events" had no link
+  // back to their own section at all. This is the one nav surface every route shares,
+  // so it's where that has to live.
+  const roles = getRoles(auth.user)
 
   return (
     <header className="sticky top-0 z-50 border-b border-(--line) bg-(--header-bg) px-4 backdrop-blur-lg">
@@ -17,6 +29,30 @@ export default function Header() {
             TanStack Start
           </Link>
         </h2>
+
+        {roles.includes(ROLE_ORGANIZER) && (
+          <>
+            <Link to="/dashboard" className="nav-link">
+              Dashboard
+            </Link>
+            <Link to="/venues" className="nav-link">
+              Venues
+            </Link>
+            <Link to="/events" className="nav-link">
+              Events
+            </Link>
+          </>
+        )}
+        {roles.includes(ROLE_STAFF) && (
+          <Link to="/scan" className="nav-link">
+            Scan Tickets
+          </Link>
+        )}
+        {roles.includes(ROLE_ATTENDEE) && (
+          <Link to="/tickets" className="nav-link">
+            My Tickets
+          </Link>
+        )}
 
         <Link to="/browse" className="nav-link">
           Browse Events
