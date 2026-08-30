@@ -12,7 +12,12 @@ export type PricePreset = (typeof PRICE_PRESETS)[number]
 const RADIUS_PRESETS = ['10', '25', '50', '100'] as const
 export type RadiusPreset = (typeof RADIUS_PRESETS)[number]
 
-export const SORT_OPTIONS = ['soonest', 'priceAsc', 'priceDesc', 'distance'] as const
+export const SORT_OPTIONS = [
+  'soonest',
+  'priceAsc',
+  'priceDesc',
+  'distance',
+] as const
 
 // All optional/absent-friendly, same reasoning as #/lib/pagination's schema: a Link to
 // /browse from elsewhere shouldn't have to supply every filter, and .catch(undefined)

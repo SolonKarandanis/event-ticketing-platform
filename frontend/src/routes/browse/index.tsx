@@ -19,17 +19,13 @@ import {
 } from '#/features/published-events/hooks'
 import { useDebouncedValue } from '#/hooks/use-debounced-value'
 import { useMinimumDuration } from '#/hooks/use-minimum-duration'
-import {
-  SORT_OPTIONS,
-  browseSearchSchema,
-  dateRangeFor,
-  priceRangeFor,
-} from './-forms'
+import { browseSearchSchema, dateRangeFor, priceRangeFor } from './-forms'
 import type {
   BrowseSearch,
   DatePreset,
   PricePreset,
   RadiusPreset,
+  SORT_OPTIONS,
 } from './-forms'
 
 export const Route = createFileRoute('/browse/')({
