@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { z } from 'zod'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import {
@@ -20,95 +19,23 @@ import {
 } from '#/features/published-events/hooks'
 import { useDebouncedValue } from '#/hooks/use-debounced-value'
 import { useMinimumDuration } from '#/hooks/use-minimum-duration'
-
-const DATE_PRESETS = ['any', 'today', 'week', 'month'] as const
-type DatePreset = (typeof DATE_PRESETS)[number]
-
-const PRICE_PRESETS = ['any', 'free', 'under25', '25to50', 'over50'] as const
-type PricePreset = (typeof PRICE_PRESETS)[number]
-
-// Kilometers, as strings -- a preset dropdown like every other filter on this page,
-// not a raw number input. Converted to meters (what the backend's radiusMeters param
-// actually expects) at the usePublishedEvents call site.
-const RADIUS_PRESETS = ['10', '25', '50', '100'] as const
-type RadiusPreset = (typeof RADIUS_PRESETS)[number]
-
-const SORT_OPTIONS = ['soonest', 'priceAsc', 'priceDesc', 'distance'] as const
-
-// All optional/absent-friendly, same reasoning as #/lib/pagination's schema: a Link to
-// /browse from elsewhere shouldn't have to supply every filter, and .catch(undefined)
-// recovers a malformed value instead of leaving validateSearch throwing.
-const browseSearchSchema = z.object({
-  q: z.string().optional().catch(undefined),
-  page: z.coerce.number().int().min(1).optional().catch(undefined),
-  city: z.string().optional().catch(undefined),
-  date: z.enum(DATE_PRESETS).optional().catch(undefined),
-  price: z.enum(PRICE_PRESETS).optional().catch(undefined),
-  sort: z.enum(SORT_OPTIONS).optional().catch(undefined),
-  // Set together, from the browser's Geolocation API -- see handleUseMyLocation.
-  // Kept in the URL like every other filter here, so a "near me" search is still
-  // shareable/bookmarkable rather than living only in transient component state.
-  lat: z.coerce.number().optional().catch(undefined),
-  lng: z.coerce.number().optional().catch(undefined),
-  radius: z.enum(RADIUS_PRESETS).optional().catch(undefined),
-})
-
-type BrowseSearch = z.infer<typeof browseSearchSchema>
+import {
+  SORT_OPTIONS,
+  browseSearchSchema,
+  dateRangeFor,
+  priceRangeFor,
+} from './-forms'
+import type {
+  BrowseSearch,
+  DatePreset,
+  PricePreset,
+  RadiusPreset,
+} from './-forms'
 
 export const Route = createFileRoute('/browse/')({
   validateSearch: browseSearchSchema.parse,
   component: BrowseEvents,
 })
-
-// LocalDateTime, not an ISO instant -- Date#toISOString() produces a "Z"-suffixed UTC
-// string, which Spring's default LocalDateTime binder doesn't accept. This formats the
-// same wall-clock components a <input type="datetime-local"> would produce.
-function toLocalDateTimeString(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
-
-function dateRangeFor(preset: DatePreset | undefined): {
-  from?: string
-  to?: string
-} {
-  if (!preset || preset === 'any') {
-    // Omitting both defaults to upcoming-only server-side (EventServiceImpl.findPublishedEvents).
-    return {}
-  }
-
-  const now = new Date()
-  const to = new Date(now)
-  if (preset === 'today') {
-    to.setHours(23, 59, 59, 0)
-  } else if (preset === 'week') {
-    to.setDate(to.getDate() + 7)
-  } else {
-    to.setMonth(to.getMonth() + 1)
-  }
-
-  return { from: toLocalDateTimeString(now), to: toLocalDateTimeString(to) }
-}
-
-// minPrice/maxPrice match an event's cheapest ticket type ("starting from" price), per
-// VenueRepository -- sorry, EventRepository's own comment on the published-events query.
-function priceRangeFor(preset: PricePreset | undefined): {
-  minPrice?: number
-  maxPrice?: number
-} {
-  switch (preset) {
-    case 'free':
-      return { maxPrice: 0 }
-    case 'under25':
-      return { maxPrice: 25 }
-    case '25to50':
-      return { minPrice: 25, maxPrice: 50 }
-    case 'over50':
-      return { minPrice: 50 }
-    default:
-      return {}
-  }
-}
 
 function BrowseEvents() {
   const search = Route.useSearch()

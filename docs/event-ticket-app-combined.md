@@ -9806,6 +9806,104 @@ The frontend's `published-events/api.ts` needed matching updates at each step --
 - `EventRepository`/`EventService`/`PublishedEventController` gained a geo filter (any of latitude/longitude/radiusMeters absent is a no-op, matching every other optional filter's shape) and a fourth sort variant, distance -- tested live against the one real published event from multiple origins
 - Rebuilt `listPublishedEvents` as `POST /published-events/search` with a `ListPublishedEventsRequestDto` body extending a new reusable `SearchRequestDTO`/`Paging`/`AbstractPaging` framework, resolving a real ambiguity (the four named sorts aren't a generic column+direction pair) by keeping `sortField` as their carrier and leaving `sortOrder` unused; updated the frontend to match at each contract change so the browse page kept working throughout
 
+## Frontend: Near Me Search
+
+With the geo filter live on the backend, the remaining piece was actually surfacing it -- a control on `/browse` to request it, and a sort option that means something once it's active.
+
+### Sort Selection Becomes an Enum
+
+Before touching the frontend, `EventServiceImpl.findPublishedEvents`'s sort switch went from a raw `String` to a real enum, on request: a plain `switch (sortBy) { case "priceAsc" -> ...; default -> ... }` was easy to typo and had no compiler backstop if a fifth sort option ever needed a query variant. `PublishedEventsSortBy` (`SOONEST`, `PRICE_ASC`, `PRICE_DESC`, `DISTANCE`) replaced it, converted from the wire-level string exactly once, at the controller boundary:
+
+```java
+PublishedEventsSortBy sortBy = PublishedEventsSortBy.fromWireValue(paging.getSortingColumn());
+```
+
+`EventService.findPublishedEvents` now takes the enum, not a `String` -- `EventServiceImpl`'s switch is exhaustive over all four constants with no `default` branch, so a future fifth sort option that forgets its query variant fails to compile instead of silently falling through at runtime. Verified live across every branch: no sort field, `priceAsc`, `distance` without an origin (falls back to soonest), `distance` with one, and a garbage value (falls back too) -- all `200`, nothing errors on bad input.
+
+### A Real Navigation Gap, Found by Actually Using the App
+
+Testing surfaced a genuine bug, not a missing feature: as an organizer, leaving `/dashboard`, `/venues`, or `/events` for the (now-public, unauthenticated) `/browse` page left no way back -- `Header.tsx` had never carried any role-specific navigation at all, and `_organizer.tsx`'s own layout-local `<nav>` (Dashboard/Venues/Events links) only ever rendered *inside* the organizer section, doing nothing once you'd already left it.
+
+The fix moved that navigation to the one place every route actually shares -- the global header -- reading roles the same way `getRoleHomeRoute` already does:
+
+```tsx
+const roles = getRoles(auth.user)
+// ...
+{roles.includes(ROLE_ORGANIZER) && (
+  <>
+    <Link to="/dashboard">Dashboard</Link>
+    <Link to="/venues">Venues</Link>
+    <Link to="/events">Events</Link>
+  </>
+)}
+```
+
+with matching conditional links for staff (`/scan`) and attendees (`/tickets`), alongside the unconditional "Browse Events" link that already lived there. `_organizer.tsx`'s now-redundant layout-local nav was deleted -- its `component` collapsed back to a plain `() => <Outlet />`, matching `_attendee.tsx`/`_staff.tsx`, which never had a nav row of their own.
+
+### The Browse Page's "Near Me" Control
+
+A "Use my location" button calls the browser's Geolocation API; on success, `lat`/`lng` land in the URL like every other filter on this page (shareable/bookmarkable, not just component state), defaulting the radius to 25km. Once active, the button becomes "Clear location," a radius preset dropdown appears (10/25/50/100km, matching the existing Date/Price preset-dropdown pattern rather than a raw number input), and "Nearest" becomes a selectable Sort option -- hidden until there's an actual origin to measure from, since offering it earlier would silently do nothing:
+
+```tsx
+{hasLocation && <SelectItem value="distance">Nearest</SelectItem>}
+```
+
+One real bug caught before shipping, the same class as `browse/$eventId.tsx`'s staff-scan fix earlier: the first draft guarded `navigator.geolocation` for existence before calling it. ESLint's `no-unnecessary-condition` -- a genuinely active, configured rule here, unlike the couple of unconfigured `jsx-a11y`/`react-hooks` rules hit earlier in this build -- correctly flagged it as dead code: TypeScript's own DOM types declare `navigator.geolocation` as always present. Removed rather than suppressed, per this project's own "don't guard against what can't happen" convention.
+
+### Diagnosing "100km Away, But It's Showing Athens"
+
+A live report -- "I asked for events within 100km and got two results, but I'm in Mytilene, not Athens" -- looked like a filter bug at first glance, so it got investigated rather than assumed. The actual query, tested directly against both venues from genuine Mytilene coordinates, correctly excluded them (271km and 281km away, both `false` for "within 100km"). The reported URL's actual coordinates (`lat=37.9842&lng=23.7353`) told the real story: tested against the same two venues, those coordinates sit 5.3km and 6.6km away -- literally in central Athens, not Mytilene at all.
+
+The filter had done exactly what it was asked; the browser's `getCurrentPosition()` had simply returned a bad fix. Without GPS hardware (a desktop/laptop, most likely), browsers fall back to network-based positioning -- Wi-Fi access point databases or, worst case, the ISP's registered IP address block -- which can be off by hundreds of kilometers, especially over a connection routed through infrastructure registered somewhere else. Nothing in this app's code can correct for that; it only ever sees whatever coordinates the browser reports. (A separate, smaller question from the same report -- the URL's `radius=%22100%22`, with visible quote characters -- turned out to be harmless: TanStack Router's default search serialization JSON-encodes every string search param the same way, and reads them back the same way it writes them, so it round-trips correctly regardless of how it looks in a raw address bar.)
+
+#### Summary
+
+- `EventServiceImpl.findPublishedEvents`'s sort selection is now `PublishedEventsSortBy`, a real enum with an exhaustive switch (no `default` branch) instead of a string switch with no compiler backstop
+- Found and fixed a real navigation gap: no page anywhere linked back to an organizer's own section once they left it for `/browse`. Moved Dashboard/Venues/Events (and Staff/Attendee equivalents) into the global `Header.tsx`, reading roles the same way `getRoleHomeRoute` does; deleted the now-redundant layout-local nav from `_organizer.tsx`
+- `/browse` gained a "Use my location" control -- URL-persisted `lat`/`lng`, a radius preset dropdown matching the page's existing filter style, and a "Nearest" sort option that only appears once it can mean something
+- Caught a real bug pre-ship (an unnecessary, ESLint-flagged `navigator.geolocation` existence check) rather than suppressing the lint rule
+- Investigated a user-reported "wrong location" result down to its actual cause: not a filter bug, but the browser's own network-based (non-GPS) geolocation returning an inaccurate fix -- confirmed by testing the exact reported coordinates directly against the database
+
+## Frontend: Venue Location Picker
+
+The last piece of "PostGIS was flagged as cheap to add a map picker for later" (issue #7's own notes) -- now that a real geography column exists, typing decimal latitude/longitude by hand no longer has to be the only way to set a venue's location.
+
+### A Click-to-Place-Pin Map, Not a Replacement
+
+`LocationPicker` (`features/venues/components/LocationPicker.tsx`) is a Leaflet + OpenStreetMap map added to `VenueForm`, directly above the existing latitude/longitude inputs -- an additional way to fill those same two fields, not a replacement for the ones already there:
+
+```tsx
+<LocationPicker
+  latitude={toNumberOrUndefined(latitude)}
+  longitude={toNumberOrUndefined(longitude)}
+  onChange={(nextLatitude, nextLongitude) => {
+    form.setValue('latitude', nextLatitude.toFixed(6), { shouldValidate: true, shouldDirty: true })
+    form.setValue('longitude', nextLongitude.toFixed(6), { shouldValidate: true, shouldDirty: true })
+  }}
+/>
+```
+
+Clicking the map sets both fields via `form.setValue`; anyone who already knows their venue's exact coordinates can still just type them. `toNumberOrUndefined` guards against a mid-typed or invalid string (e.g. `"-"`) ever reaching the picker as `NaN` -- `LocationPicker` treats "no position yet" as `undefined`, not a number that happens to be broken.
+
+### The Leaflet-in-Vite Gotcha, Checked Rather Than Assumed
+
+Leaflet's default marker icon is a well-known bundler trap: it references relative image paths that resolve fine served as static files but break once a bundler hashes and relocates them. The fix is re-pointing the icon at the actual bundled URLs via Vite's `?url` imports:
+
+```tsx
+import markerIconUrl from 'leaflet/dist/images/marker-icon.png?url'
+// ...
+const markerIcon = L.icon({ iconUrl: markerIconUrl, /* ...retina + shadow variants */ })
+```
+
+Rather than trust that this worked, the production build's actual output got inspected: `VenueForm-*.css` came back as its own code-split chunk (confirming `leaflet/dist/leaflet.css` bundled correctly), and grepping the built `VenueForm-*.js` chunk for `data:image/png;base64` found exactly three matches -- one per marker asset, all under 2.5KB and so base64-inlined by Vite's default asset threshold rather than emitted as separate files. `react-leaflet` 5.0.0 was the deliberate pick for React 19 compatibility (checked before installing, not after); `@types/leaflet` was needed separately since `leaflet` itself ships no types of its own.
+
+#### Summary
+
+- `LocationPicker`: a Leaflet + OpenStreetMap click-to-place-pin map, added to `VenueForm` alongside (not replacing) the existing latitude/longitude number inputs
+- `toNumberOrUndefined` keeps a mid-typed or invalid coordinate string from ever reaching the map as `NaN`
+- Verified the classic Leaflet-in-Vite marker-icon bundling trap actually resolved correctly by inspecting the real build output (a dedicated CSS chunk, three correctly base64-inlined marker images), not by assuming the `?url` import pattern would just work
+- `react-leaflet` 5.0.0 chosen for React 19 compatibility; `@types/leaflet` added since `leaflet` ships no bundled types
+
 ## Project Status
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
@@ -9816,7 +9914,8 @@ A snapshot of where the real build stands relative to this document, kept here a
 
 - **Venues** (organizer, `/venues`) -- list/create/edit, backed by `react-hook-form` + `zod` and `ticket-service`'s `/api/v1/venues`. The list is genuinely paginated (`PaginatedTable`/`PaginationControls`, not the size=100-stands-in-for-everything trick it started with), and the venue count in an event form's picker is now a searchable, infinite-scrolling combobox (`VenueCombobox`, debounced search + `useInfiniteQuery`) rather than a single capped page.
 - **Events** (organizer, `/events`) -- list/create/edit with the full `DRAFT -> PUBLISHED -> {CANCELLED|COMPLETED}` lifecycle: the create page has separate "Save as Draft"/"Publish" actions (publish is a second, chained API call, not a status field); the edit page's action row is status-conditional (Draft: Publish + Delete-with-confirmation; Published: Complete + Cancel-with-confirmation; terminal: the whole form renders read-only, matching the backend rejecting any update on a terminal event). `EventForm`'s ticket-type rows are a real `useFieldArray`, with a "Limited quantity" toggle controlling whether `totalAvailable` is sent at all.
-- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types.
+- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a "Use my location" control (URL-persisted `lat`/`lng`, a radius preset dropdown, a "Nearest" sort option once active), a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types.
+- **Venue location picker** -- `VenueForm` gained a Leaflet + OpenStreetMap click-to-place-pin map alongside the existing latitude/longitude number inputs, per issue #7's own notes flagging this as cheap to add once PostGIS existed.
 - **Purchase flow** (attendee, from `/browse/$eventId`) -- a quantity selector and Buy button per ticket type, looping the single-ticket purchase endpoint sequentially with live "Purchasing... (X of Y)" progress, landing on a dedicated Success/Partial confirmation page (`/browse/confirmation`) per issues #4/#5.
 - **My Tickets** (attendee, `/tickets`) -- a real list/detail pair (`_attendee/tickets/{index,$ticketId}.tsx`) replacing the old auth-check placeholder; the detail page renders the purchased ticket's QR code image and reference code.
 - **Staff ticket validation** (staff, `/scan`) -- continuous camera QR scanning (`qr-scanner`, Web Worker-based) plus a manual reference-code fallback, both funnelling into one full-screen colored ADMIT/ALREADY-USED/NOT-FOUND result per issue #9.
@@ -9824,7 +9923,7 @@ A snapshot of where the real build stands relative to this document, kept here a
 
 Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, automated tests, ticket cancellation/refund, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
 
-PostGIS proximity search (see "Backend: PostGIS Proximity Search") is a partial exception to that list: the backend half is real and live-tested -- `ticket-service`'s published-events search accepts a `latitude`/`longitude`/`radiusMeters` origin and a `distance` sort -- but nothing on `/browse` calls it yet. There's no "Near me" control, no browser Geolocation prompt, and no per-card distance readout (the response DTO doesn't carry a computed distance value yet either). This is genuinely unbuilt frontend work now, not an out-of-scope item.
+PostGIS proximity search is now built end to end -- backend geo filter (see "Backend: PostGIS Proximity Search"), the `/browse` "Use my location" control, and the `VenueForm` map picker (see "Frontend: Near Me Search" and "Frontend: Venue Location Picker"). The one piece still missing is a per-card distance readout ("2.3km away") -- the response DTO doesn't carry a computed distance value, which would mean restructuring the native queries into a projection instead of returning `Event` entities directly. Left for whenever that's actually wanted; the filter and "Nearest" sort work without it.
 
 ### `frontend` loose ends
 
@@ -9835,6 +9934,8 @@ PostGIS proximity search (see "Backend: PostGIS Proximity Search") is a partial 
 - The City filter on `/browse` intentionally does not call `/api/v1/venues` (organizer-only) -- it hits a new public `GET /api/v1/published-events/cities` endpoint instead. An earlier version called the organizer endpoint, which 401'd for anyone not logged in as an organizer and (via `apiFetch`'s automatic 401-handling) silently redirected an anonymous visitor straight to the Keycloak login screen on page load
 - `GetTicketResponse` (the ticket detail DTO) has no ticket-type name field, only description/price -- found while building the My Tickets detail page, not fixed, since it's the backend's existing shape and wasn't reported as a bug
 - The reports dashboard fetches one analytics summary per event (`useEventAnalyticsSummaries`, N requests) rather than one bulk call, since analytics-service has no organizer-wide rollup endpoint -- an accepted tradeoff against the endpoint that actually exists, not an oversight
+- A real navigation gap was found and fixed by actually using the app as an organizer: no page linked back to `/dashboard`/`/venues`/`/events` once you'd left for `/browse`. Role-aware links now live in the global `Header.tsx`; `_organizer.tsx`'s now-redundant layout-local nav was removed
+- The `/browse` "Use my location" control and the `VenueForm` map picker are both confirmed working live in the browser. A user-reported "wrong location" result along the way was diagnosed down to the browser's own network-based geolocation returning an inaccurate fix (confirmed by testing the exact reported coordinates directly against the database), not a bug in the filter itself
 
 ### `ticket-service` loose ends
 

@@ -1,12 +1,9 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ConfirmButton } from '#/components/ConfirmButton'
 import { Button } from '#/components/ui/button'
-import {
-    EventForm,
-    eventToFormValues,
-    formValuesToRequest,
-} from '#/features/events/components/EventForm'
-import type { EventFormValues } from '#/features/events/components/EventForm'
+import { EventForm } from '#/features/events/components/EventForm'
+import { eventToFormValues, formValuesToRequest } from '#/features/events/forms'
+import type { EventFormValues } from '#/features/events/forms'
 import {
     useCancelEvent,
     useCompleteEvent,

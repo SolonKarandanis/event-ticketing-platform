@@ -4,8 +4,9 @@ import { toast } from 'sonner'
 import { toastErrorMessage } from '#/lib/api-client'
 import { publishEvent } from '#/features/events/api'
 import { useCreateEvent } from '#/features/events/hooks'
-import { EventForm, formValuesToRequest } from '#/features/events/components/EventForm'
-import type { EventFormValues } from '#/features/events/components/EventForm'
+import { EventForm } from '#/features/events/components/EventForm'
+import { formValuesToRequest } from '#/features/events/forms'
+import type { EventFormValues } from '#/features/events/forms'
 
 export const Route = createFileRoute('/_organizer/events/new')({
     component: RouteComponent,

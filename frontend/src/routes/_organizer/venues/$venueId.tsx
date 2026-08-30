@@ -1,10 +1,7 @@
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import {
-  VenueForm,
-  formValuesToRequest,
-  venueToFormValues,
-} from '#/features/venues/components/VenueForm'
-import type { VenueFormValues } from '#/features/venues/components/VenueForm'
+import { VenueForm } from '#/features/venues/components/VenueForm'
+import { formValuesToRequest, venueToFormValues } from '#/features/venues/forms'
+import type { VenueFormValues } from '#/features/venues/forms'
 import { useUpdateVenue, useVenue } from '#/features/venues/hooks'
 
 export const Route = createFileRoute('/_organizer/venues/$venueId')({
