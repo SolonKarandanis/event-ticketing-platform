@@ -37,11 +37,22 @@ export const Route = createFileRoute('/browse/')({
   // any filter changes, matching how usePublishedEvents' query key already does.
   loaderDeps: ({ search }) => search,
   // Warms both caches the component reads below (results + the City filter's options)
-  // on navigation/intent-preload. Swallowed -- no errorComponent here, so an uncaught
-  // rejection would bypass the isError message rendered below instead of replacing it;
-  // usePublishedEvents()/usePublishedEventCities() read the same errored cache entries
-  // either way.
+  // on navigation/intent-preload. Client-only: unlike the organizer/attendee/staff
+  // routes, /browse/** doesn't opt out of SSR (this page needs to render without a
+  // login), so this loader also runs server-side -- where apiFetch() unconditionally
+  // calls getUserManager(), a client-only construct that throws off the server (see
+  // lib/oidc.ts). Catching that per-call, as originally written, stopped the throw from
+  // crashing the render, but ensureQueryData still persists the failed attempt as an
+  // *errored* query, and that errored state was getting dehydrated straight into the
+  // SSR'd HTML -- every real visit briefly hydrated showing "Couldn't load events"
+  // before React Query's retry-on-mount corrected it client-side. Skipping the loader
+  // server-side entirely restores the exact pre-existing SSR behavior (queryFn never
+  // runs, the pending/skeleton state renders, the client fetches for real after
+  // hydration) while keeping the win for client-side navigation/intent-preload.
   loader: async ({ context, deps }) => {
+    if (typeof window === 'undefined') {
+      return
+    }
     await Promise.all([
       context.queryClient
         .ensureQueryData(publishedEventsQueryOptions(buildPublishedEventsParams(deps)))

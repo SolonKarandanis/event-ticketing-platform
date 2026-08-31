@@ -23,12 +23,20 @@ export const Route = createFileRoute('/browse/confirmation')({
   // re-run only when it changes, not on requested/purchased/errorMessage too. Usually
   // already warm (the purchase flow on $eventId.tsx reads the same cache entry right
   // before navigating here), but this page is also reachable cold -- a refresh, a
-  // shared/bookmarked confirmation link -- where nothing has fetched it yet. Swallowed
-  // for the same reason as every other loader here: no errorComponent, and the
-  // component already tolerates `event` being undefined (the name/ticket-type line
-  // just doesn't render) rather than needing an explicit isError branch.
+  // shared/bookmarked confirmation link -- where nothing has fetched it yet.
+  //
+  // Client-only, same reason as every other /browse/** loader: this route isn't
+  // ssr:false, so this also runs server-side, where apiFetch() throws via
+  // getUserManager() (client-only). Skipping server-side entirely, not just catching
+  // the throw, is what matters -- ensureQueryData still records a caught failure as an
+  // *errored* query, and that dehydrates into the SSR'd HTML as a false error state on
+  // a cold hit instead of the real pending state. See browse/index.tsx's loader for the
+  // full story.
   loaderDeps: ({ search }) => ({ eventId: search.eventId }),
   loader: async ({ context, deps }) => {
+    if (typeof window === 'undefined') {
+      return
+    }
     await context.queryClient.ensureQueryData(publishedEventQueryOptions(deps.eventId)).catch(() => {
       // Handled by usePublishedEvent()'s data staying undefined below.
     })

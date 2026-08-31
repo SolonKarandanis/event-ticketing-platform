@@ -9,10 +9,18 @@ import { usePurchaseTicket } from '#/features/ticket-types/hooks'
 
 export const Route = createFileRoute('/browse/$eventId')({
   // Warms the cache usePublishedEvent() below reads, on navigation/intent-preload
-  // (hovering an event card on /browse). Swallowed -- no errorComponent here, so an
-  // uncaught rejection would bypass the "Couldn't find this event" message below;
-  // usePublishedEvent() reads the same errored cache entry either way.
+  // (hovering an event card on /browse). Client-only -- this route isn't ssr:false (it's
+  // public, meant to render without a login), so this loader also runs server-side,
+  // where apiFetch() throws via getUserManager() (client-only, see lib/oidc.ts).
+  // Skipping server-side entirely -- not just catching the throw -- matters: catching it
+  // still leaves ensureQueryData's failed attempt as an *errored* query in the cache,
+  // which then dehydrates into the SSR'd HTML and hydrates as a false "Couldn't find
+  // this event" instead of the real pending state a fresh visit should show. See
+  // browse/index.tsx's loader for the full story (found via the dehydrated payload).
   loader: async ({ context, params }) => {
+    if (typeof window === 'undefined') {
+      return
+    }
     try {
       await context.queryClient.ensureQueryData(publishedEventQueryOptions(params.eventId))
     } catch {
