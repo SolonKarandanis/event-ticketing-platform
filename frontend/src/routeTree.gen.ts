@@ -20,7 +20,6 @@ import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as BrowseIndexRouteImport } from './routes/browse/index'
 import { Route as BrowseEventIdRouteImport } from './routes/browse/$eventId'
 import { Route as BrowseConfirmationRouteImport } from './routes/browse/confirmation'
-import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
 import { Route as AttendeeTicketsIndexRouteImport } from './routes/_attendee/tickets/index'
 import { Route as AttendeeTicketsTicketIdRouteImport } from './routes/_attendee/tickets/$ticketId'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
@@ -82,11 +81,6 @@ const BrowseConfirmationRoute = BrowseConfirmationRouteImport.update({
   path: '/browse/confirmation',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
-  id: '/demo/tanstack-query',
-  path: '/demo/tanstack-query',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AttendeeTicketsIndexRoute = AttendeeTicketsIndexRouteImport.update({
   id: '/tickets/',
   path: '/tickets/',
@@ -136,7 +130,6 @@ export interface FileRoutesByFullPath {
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
   '/browse/confirmation': typeof BrowseConfirmationRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse/': typeof BrowseIndexRoute
   '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
@@ -155,7 +148,6 @@ export interface FileRoutesByTo {
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
   '/browse/confirmation': typeof BrowseConfirmationRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse': typeof BrowseIndexRoute
   '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/events/$eventId': typeof OrganizerEventsEventIdRoute
@@ -178,7 +170,6 @@ export interface FileRoutesById {
   '/_staff/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
   '/browse/confirmation': typeof BrowseConfirmationRoute
-  '/demo/tanstack-query': typeof DemoTanstackQueryRoute
   '/browse/': typeof BrowseIndexRoute
   '/_attendee/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/_organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
@@ -199,7 +190,6 @@ export interface FileRouteTypes {
     | '/scan'
     | '/browse/$eventId'
     | '/browse/confirmation'
-    | '/demo/tanstack-query'
     | '/browse/'
     | '/tickets/$ticketId'
     | '/events/$eventId'
@@ -218,7 +208,6 @@ export interface FileRouteTypes {
     | '/scan'
     | '/browse/$eventId'
     | '/browse/confirmation'
-    | '/demo/tanstack-query'
     | '/browse'
     | '/tickets/$ticketId'
     | '/events/$eventId'
@@ -240,7 +229,6 @@ export interface FileRouteTypes {
     | '/_staff/scan'
     | '/browse/$eventId'
     | '/browse/confirmation'
-    | '/demo/tanstack-query'
     | '/browse/'
     | '/_attendee/tickets/$ticketId'
     | '/_organizer/events/$eventId'
@@ -261,7 +249,6 @@ export interface RootRouteChildren {
   CallbackRoute: typeof CallbackRoute
   BrowseEventIdRoute: typeof BrowseEventIdRoute
   BrowseConfirmationRoute: typeof BrowseConfirmationRoute
-  DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
   BrowseIndexRoute: typeof BrowseIndexRoute
 }
 
@@ -342,13 +329,6 @@ declare module '@tanstack/react-router' {
       path: '/browse/confirmation'
       fullPath: '/browse/confirmation'
       preLoaderRoute: typeof BrowseConfirmationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/demo/tanstack-query': {
-      id: '/demo/tanstack-query'
-      path: '/demo/tanstack-query'
-      fullPath: '/demo/tanstack-query'
-      preLoaderRoute: typeof DemoTanstackQueryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_attendee/tickets/': {
@@ -467,7 +447,6 @@ const rootRouteChildren: RootRouteChildren = {
   CallbackRoute: CallbackRoute,
   BrowseEventIdRoute: BrowseEventIdRoute,
   BrowseConfirmationRoute: BrowseConfirmationRoute,
-  DemoTanstackQueryRoute: DemoTanstackQueryRoute,
   BrowseIndexRoute: BrowseIndexRoute,
 }
 export const routeTree = rootRouteImport
