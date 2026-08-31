@@ -1,7 +1,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 import { Button } from '#/components/ui/button'
-import { usePublishedEvent } from '#/features/published-events/hooks'
+import { publishedEventQueryOptions, usePublishedEvent } from '#/features/published-events/hooks'
 
 // Search-param driven (not a path param under $eventId) so this stays a plain sibling
 // route -- $eventId.tsx has no children today, and nesting a route under it would turn
@@ -19,6 +19,20 @@ const confirmationSearchSchema = z.object({
 
 export const Route = createFileRoute('/browse/confirmation')({
   validateSearch: confirmationSearchSchema.parse,
+  // eventId lives in search here, not a path param -- loaderDeps narrows the loader to
+  // re-run only when it changes, not on requested/purchased/errorMessage too. Usually
+  // already warm (the purchase flow on $eventId.tsx reads the same cache entry right
+  // before navigating here), but this page is also reachable cold -- a refresh, a
+  // shared/bookmarked confirmation link -- where nothing has fetched it yet. Swallowed
+  // for the same reason as every other loader here: no errorComponent, and the
+  // component already tolerates `event` being undefined (the name/ticket-type line
+  // just doesn't render) rather than needing an explicit isError branch.
+  loaderDeps: ({ search }) => ({ eventId: search.eventId }),
+  loader: async ({ context, deps }) => {
+    await context.queryClient.ensureQueryData(publishedEventQueryOptions(deps.eventId)).catch(() => {
+      // Handled by usePublishedEvent()'s data staying undefined below.
+    })
+  },
   component: PurchaseConfirmation,
 })
 
