@@ -1,18 +1,40 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Skeleton } from '#/components/ui/skeleton'
-import { useEventAnalyticsSummaries } from '#/features/analytics/hooks'
-import { useEvents } from '#/features/events/hooks'
+import { eventAnalyticsSummaryQueryOptions, useEventAnalyticsSummaries } from '#/features/analytics/hooks'
+import { eventsQueryOptions, useEvents } from '#/features/events/hooks'
 import { useMinimumDuration } from '#/hooks/use-minimum-duration'
-
-export const Route = createFileRoute('/_organizer/dashboard')({
-  component: OrganizerDashboard,
-})
 
 // The largest single page this app's shared pagination allows (see lib/pagination's
 // PAGE_SIZES) -- analytics-service has no organizer-wide rollup endpoint (issue #8's
 // Notes), so this is a client-side chart over "as many events as one page can hold",
 // not a true unpaginated "all events" fetch.
 const EVENTS_PAGE_SIZE = 100
+
+export const Route = createFileRoute('/_organizer/dashboard')({
+  // Two-step warm-cache: fetch the events page first (mirroring the component's own
+  // useEvents({ page: 0, size: EVENTS_PAGE_SIZE }) call), then fan out one summary
+  // prefetch per event -- same shape as useEventAnalyticsSummaries below, just run
+  // ahead of the component mounting instead of from it. Every await is individually
+  // caught: no errorComponent on this route, so an uncaught rejection here would bypass
+  // the "Couldn't load revenue data" message the component already renders on isError,
+  // and one event's summary failing shouldn't stop the others from prefetching.
+  loader: async ({ context }) => {
+    const eventsPage = await context.queryClient
+      .ensureQueryData(eventsQueryOptions({ page: 0, size: EVENTS_PAGE_SIZE }))
+      .catch(() => undefined)
+
+    await Promise.all(
+      (eventsPage?.content ?? []).map((event) =>
+        context.queryClient
+          .ensureQueryData(eventAnalyticsSummaryQueryOptions(event.id))
+          .catch(() => {
+            // Handled by useEventAnalyticsSummaries()'s per-query isError below.
+          }),
+      ),
+    )
+  },
+  component: OrganizerDashboard,
+})
 
 interface EventRevenueRow {
   id: string

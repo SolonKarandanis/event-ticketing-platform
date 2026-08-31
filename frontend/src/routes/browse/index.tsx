@@ -14,12 +14,14 @@ import { Skeleton } from '#/components/ui/skeleton'
 import { EventCard } from '#/features/published-events/components/EventCard'
 import { NumberedPagination } from '#/features/published-events/components/NumberedPagination'
 import {
+  publishedEventCitiesQueryOptions,
+  publishedEventsQueryOptions,
   usePublishedEventCities,
   usePublishedEvents,
 } from '#/features/published-events/hooks'
 import { useDebouncedValue } from '#/hooks/use-debounced-value'
 import { useMinimumDuration } from '#/hooks/use-minimum-duration'
-import { browseSearchSchema, dateRangeFor, priceRangeFor } from './-forms'
+import { browseSearchSchema, buildPublishedEventsParams } from './-forms'
 import type {
   BrowseSearch,
   DatePreset,
@@ -30,6 +32,27 @@ import type {
 
 export const Route = createFileRoute('/browse/')({
   validateSearch: browseSearchSchema.parse,
+  // Every filter field matters to the query (unlike events/venues' plain page/size),
+  // so the whole validated search object is the deps -- re-runs the loader whenever
+  // any filter changes, matching how usePublishedEvents' query key already does.
+  loaderDeps: ({ search }) => search,
+  // Warms both caches the component reads below (results + the City filter's options)
+  // on navigation/intent-preload. Swallowed -- no errorComponent here, so an uncaught
+  // rejection would bypass the isError message rendered below instead of replacing it;
+  // usePublishedEvents()/usePublishedEventCities() read the same errored cache entries
+  // either way.
+  loader: async ({ context, deps }) => {
+    await Promise.all([
+      context.queryClient
+        .ensureQueryData(publishedEventsQueryOptions(buildPublishedEventsParams(deps)))
+        .catch(() => {
+          // Handled by usePublishedEvents()'s isError below.
+        }),
+      context.queryClient.ensureQueryData(publishedEventCitiesQueryOptions()).catch(() => {
+        // Handled by usePublishedEventCities() falling back to an empty city list below.
+      }),
+    ])
+  },
   component: BrowseEvents,
 })
 
@@ -115,22 +138,7 @@ function BrowseEvents() {
   // organizer, which apiFetch turns into an unwanted redirect to Keycloak login.
   const { data: cities = [] } = usePublishedEventCities()
 
-  const { data, isPending, isError } = usePublishedEvents({
-    page: page - 1,
-    size: 12,
-    q: search.q,
-    sortBy: search.sort ?? 'soonest',
-    ...dateRangeFor(search.date),
-    ...priceRangeFor(search.price),
-    city: search.city,
-    ...(hasLocation
-      ? {
-          latitude: search.lat,
-          longitude: search.lng,
-          radiusMeters: Number(search.radius ?? '25') * 1000,
-        }
-      : {}),
-  })
+  const { data, isPending, isError } = usePublishedEvents(buildPublishedEventsParams(search))
   const showSkeleton = useMinimumDuration(isPending, 400)
   // showSkeleton isn't literally isPending (it stays true a bit longer on purpose --
   // see useMinimumDuration), so TS can't narrow `data` from it the way it could from

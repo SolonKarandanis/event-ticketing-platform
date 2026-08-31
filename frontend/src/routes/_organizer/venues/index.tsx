@@ -1,11 +1,27 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button'
 import { PaginatedTable } from '#/components/PaginatedTable'
-import { useVenues } from '#/features/venues/hooks'
+import { useVenues, venuesQueryOptions } from '#/features/venues/hooks'
 import { DEFAULT_PAGE, DEFAULT_SIZE, paginationSearchSchema } from '#/lib/pagination'
 
 export const Route = createFileRoute('/_organizer/venues/')({
   validateSearch: paginationSearchSchema.parse,
+  loaderDeps: ({ search }) => ({
+    page: search.page ?? DEFAULT_PAGE,
+    size: search.size ?? DEFAULT_SIZE,
+  }),
+  // Warms the cache useVenues() below reads on navigation/intent-preload. Swallowed --
+  // no errorComponent here, so an uncaught rejection would bypass PaginatedTable's own
+  // isError message; useVenues() reads the same errored cache entry either way.
+  loader: async ({ context, deps }) => {
+    try {
+      await context.queryClient.ensureQueryData(
+        venuesQueryOptions({ page: deps.page - 1, size: deps.size }),
+      )
+    } catch {
+      // Handled by useVenues()'s isError below.
+    }
+  },
   component: VenuesList,
 })
 

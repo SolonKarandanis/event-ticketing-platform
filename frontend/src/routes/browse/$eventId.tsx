@@ -4,10 +4,21 @@ import { useAuth } from 'react-oidc-context'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { toastErrorMessage } from '#/lib/api-client'
-import { usePublishedEvent } from '#/features/published-events/hooks'
+import { publishedEventQueryOptions, usePublishedEvent } from '#/features/published-events/hooks'
 import { usePurchaseTicket } from '#/features/ticket-types/hooks'
 
 export const Route = createFileRoute('/browse/$eventId')({
+  // Warms the cache usePublishedEvent() below reads, on navigation/intent-preload
+  // (hovering an event card on /browse). Swallowed -- no errorComponent here, so an
+  // uncaught rejection would bypass the "Couldn't find this event" message below;
+  // usePublishedEvent() reads the same errored cache entry either way.
+  loader: async ({ context, params }) => {
+    try {
+      await context.queryClient.ensureQueryData(publishedEventQueryOptions(params.eventId))
+    } catch {
+      // Handled by usePublishedEvent()'s isError below.
+    }
+  },
   component: EventDetails,
 })
 

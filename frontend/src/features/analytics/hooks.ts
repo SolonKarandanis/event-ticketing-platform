@@ -1,17 +1,24 @@
 // Named React Query hooks wrapping api.ts -- see issue #8.
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { queryOptions, useQueries, useQuery } from '@tanstack/react-query'
 import { getEventAnalyticsSummary } from './api'
 
 const analyticsKey = ['analytics'] as const
 
-// Read-only, like every other list/get query hook in this app -- no toast on error,
-// the component reads isError/error itself (toasts are reserved for mutations).
-export function useEventAnalyticsSummary(eventId: string) {
-  return useQuery({
+// Exported so the dashboard route's loader can ensureQueryData against the exact same
+// cache entries useEventAnalyticsSummary/useEventAnalyticsSummaries read -- see
+// features/events/hooks.ts for the pattern this follows.
+export function eventAnalyticsSummaryQueryOptions(eventId: string) {
+  return queryOptions({
     queryKey: [...analyticsKey, 'events', eventId, 'summary'],
     queryFn: () => getEventAnalyticsSummary(eventId),
     enabled: Boolean(eventId),
   })
+}
+
+// Read-only, like every other list/get query hook in this app -- no toast on error,
+// the component reads isError/error itself (toasts are reserved for mutations).
+export function useEventAnalyticsSummary(eventId: string) {
+  return useQuery(eventAnalyticsSummaryQueryOptions(eventId))
 }
 
 // Fans out one summary query per event, in the same order as eventIds -- the Reports
@@ -20,9 +27,6 @@ export function useEventAnalyticsSummary(eventId: string) {
 // them all in a single call.
 export function useEventAnalyticsSummaries(eventIds: string[]) {
   return useQueries({
-    queries: eventIds.map((eventId) => ({
-      queryKey: [...analyticsKey, 'events', eventId, 'summary'],
-      queryFn: () => getEventAnalyticsSummary(eventId),
-    })),
+    queries: eventIds.map((eventId) => eventAnalyticsSummaryQueryOptions(eventId)),
   })
 }

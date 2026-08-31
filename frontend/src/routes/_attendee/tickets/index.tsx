@@ -1,7 +1,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button'
 import { PaginatedTable } from '#/components/PaginatedTable'
-import { useTickets } from '#/features/tickets/hooks'
+import { ticketsQueryOptions, useTickets } from '#/features/tickets/hooks'
 import {
   DEFAULT_PAGE,
   DEFAULT_SIZE,
@@ -10,6 +10,22 @@ import {
 
 export const Route = createFileRoute('/_attendee/tickets/')({
   validateSearch: paginationSearchSchema.parse,
+  loaderDeps: ({ search }) => ({
+    page: search.page ?? DEFAULT_PAGE,
+    size: search.size ?? DEFAULT_SIZE,
+  }),
+  // Warms the cache useTickets() below reads on navigation/intent-preload. Swallowed --
+  // no errorComponent here, so an uncaught rejection would bypass PaginatedTable's own
+  // isError message; useTickets() reads the same errored cache entry either way.
+  loader: async ({ context, deps }) => {
+    try {
+      await context.queryClient.ensureQueryData(
+        ticketsQueryOptions({ page: deps.page - 1, size: deps.size }),
+      )
+    } catch {
+      // Handled by useTickets()'s isError below.
+    }
+  },
   component: MyTickets,
 })
 

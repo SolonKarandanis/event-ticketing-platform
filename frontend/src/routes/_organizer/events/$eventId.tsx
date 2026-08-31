@@ -5,6 +5,7 @@ import { EventForm } from '#/features/events/components/EventForm'
 import { eventToFormValues, formValuesToRequest } from '#/features/events/forms'
 import type { EventFormValues } from '#/features/events/forms'
 import {
+    eventQueryOptions,
     useCancelEvent,
     useCompleteEvent,
     useDeleteEvent,
@@ -13,8 +14,29 @@ import {
     useUpdateEvent,
 } from '#/features/events/hooks'
 import { EventStatus } from '#/features/events/types'
+import { venueSearchInfiniteQueryOptions } from '#/features/venues/hooks'
 
 export const Route = createFileRoute('/_organizer/events/$eventId')({
+    // Two independent prefetches: the event itself (same warm-cache trick as the list
+    // route -- fires on navigation and on intent-preload, hovering an "Edit" link), and
+    // VenueCombobox's own first page (EventForm renders it regardless of read-only
+    // status -- see events/new.tsx for why that's ensureInfiniteQueryData, not
+    // ensureQueryData). Each caught independently: no errorComponent here, so an
+    // uncaught rejection from either would bypass its own component-level handling
+    // (useEvent()'s isError message, VenueCombobox's own loading/empty state) and hit
+    // the router's generic error boundary instead -- and one failing shouldn't cancel
+    // the other's prefetch.
+    loader: ({ context, params }) =>
+        Promise.all([
+            context.queryClient.ensureQueryData(eventQueryOptions(params.eventId)).catch(() => {
+                // Handled by useEvent()'s isError below.
+            }),
+            context.queryClient
+                .ensureInfiniteQueryData(venueSearchInfiniteQueryOptions(''))
+                .catch(() => {
+                    // Handled by VenueCombobox's own isPending/empty-result UI.
+                }),
+        ]),
     component: RouteComponent,
 })
 

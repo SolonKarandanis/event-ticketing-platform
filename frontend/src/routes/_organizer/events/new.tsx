@@ -7,8 +7,19 @@ import { useCreateEvent } from '#/features/events/hooks'
 import { EventForm } from '#/features/events/components/EventForm'
 import { formValuesToRequest } from '#/features/events/forms'
 import type { EventFormValues } from '#/features/events/forms'
+import { venueSearchInfiniteQueryOptions } from '#/features/venues/hooks'
 
 export const Route = createFileRoute('/_organizer/events/new')({
+    // No event to prefetch here (there's nothing to create yet), but EventForm always
+    // renders VenueCombobox, which fires its own useInfiniteVenues('') the moment it
+    // mounts -- this warms that exact first page on navigation/intent-preload instead,
+    // matching the initial (empty-search) state VenueCombobox itself starts in.
+    // Swallowed like every other loader here: no errorComponent, and VenueCombobox
+    // already has its own "Loading..."/empty-result handling for a failed fetch.
+    loader: ({ context }) =>
+        context.queryClient.ensureInfiniteQueryData(venueSearchInfiniteQueryOptions('')).catch(() => {
+            // Handled by VenueCombobox's own isPending/empty-result UI.
+        }),
     component: RouteComponent,
 })
 

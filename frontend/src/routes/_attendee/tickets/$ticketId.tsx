@@ -1,9 +1,31 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { useTicket, useTicketQrCode } from '#/features/tickets/hooks'
+import {
+  ticketQrCodeQueryOptions,
+  ticketQueryOptions,
+  useTicket,
+  useTicketQrCode,
+} from '#/features/tickets/hooks'
 import { TicketStatus } from '#/features/tickets/types'
 import { useObjectUrl } from '#/hooks/use-object-url'
 
 export const Route = createFileRoute('/_attendee/tickets/$ticketId')({
+  // Warms both caches the component below reads -- the ticket and its QR code image
+  // fetch unconditionally today (the component only *renders* the QR conditionally, on
+  // ticket.status), so prefetching both here matches current runtime behavior rather
+  // than introducing a new conditional. Each awaited independently so one failing
+  // doesn't cancel the other; swallowed for the same reason as every other loader here
+  // -- no errorComponent, so useTicket()/useTicketQrCode()'s own isPending/isError
+  // branches below should be what render on failure.
+  loader: async ({ context, params }) => {
+    await Promise.all([
+      context.queryClient.ensureQueryData(ticketQueryOptions(params.ticketId)).catch(() => {
+        // Handled by useTicket()'s isError below.
+      }),
+      context.queryClient.ensureQueryData(ticketQrCodeQueryOptions(params.ticketId)).catch(() => {
+        // Handled by useTicketQrCode()'s isPending staying true / no data below.
+      }),
+    ])
+  },
   component: TicketDetails,
 })
 

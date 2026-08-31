@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { ListPublishedEventsParams } from '#/features/published-events/api'
 
 const DATE_PRESETS = ['any', 'today', 'week', 'month'] as const
 export type DatePreset = (typeof DATE_PRESETS)[number]
@@ -86,5 +87,41 @@ export function priceRangeFor(preset: PricePreset | undefined): {
       return { minPrice: 50 }
     default:
       return {}
+  }
+}
+
+// Fixed page size for the browse grid -- not part of the shared pagination lib, since
+// this page's numbered pagination (issue #10's resolved design) is its own thing,
+// distinct from the organizer tables' Previous/Next + page-size-select pattern.
+const PAGE_SIZE = 12
+
+// Shared by the route's loader (to ensureQueryData against the exact cache entry
+// usePublishedEvents reads) and the component itself -- computing this independently
+// in two places risks two objects that look the same but drift (a stray field, a
+// different PAGE_SIZE) and stop matching as a query key. Note dateRangeFor reads
+// `new Date()` internally, so the loader and the component's own render call this
+// microseconds apart; at a second-boundary that could, in the rarest case, produce a
+// one-second-different `to`/`from` and a cache miss on an otherwise-warm prefetch --
+// not a correctness issue (usePublishedEvents just fetches again), only a missed
+// optimization.
+export function buildPublishedEventsParams(search: BrowseSearch): ListPublishedEventsParams {
+  const page = search.page ?? 1
+  const hasLocation = search.lat !== undefined && search.lng !== undefined
+
+  return {
+    page: page - 1,
+    size: PAGE_SIZE,
+    q: search.q,
+    sortBy: search.sort ?? 'soonest',
+    ...dateRangeFor(search.date),
+    ...priceRangeFor(search.price),
+    city: search.city,
+    ...(hasLocation
+      ? {
+          latitude: search.lat,
+          longitude: search.lng,
+          radiusMeters: Number(search.radius ?? '25') * 1000,
+        }
+      : {}),
   }
 }
