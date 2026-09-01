@@ -9904,6 +9904,124 @@ Rather than trust that this worked, the production build's actual output got ins
 - Verified the classic Leaflet-in-Vite marker-icon bundling trap actually resolved correctly by inspecting the real build output (a dedicated CSS chunk, three correctly base64-inlined marker images), not by assuming the `?url` import pattern would just work
 - `react-leaflet` 5.0.0 chosen for React 19 compatibility; `@types/leaflet` added since `leaflet` ships no bundled types
 
+## Ticket Cancellation & Refund
+
+Issue #1's wayfinder map flagged this explicitly out of scope: `TicketStatusEnum.CANCELLED` had existed since the very first ticket lesson, but nothing ever set it, and a real feature (who's allowed to cancel, what happens to inventory and reporting, how staff at the door find out) was judged well beyond what surfaced it -- issue #16's short reference-code work. Built after that map closed, the same way PostGIS was. There's still no payment gateway (see issue #1's other out-of-scope entry), so "refund" here means an audit trail -- `cancelledAt`/`cancelReason`/`cancelNote` -- not money changing hands.
+
+### Two Cancel Paths, One Shared Guard
+
+An attendee can cancel their own ticket (`POST /api/v1/tickets/{ticketId}/cancel`); an organizer can cancel any ticket sold for one of their events (`POST /api/v1/events/{eventId}/tickets/{ticketId}/cancel`). Both are thin wrappers around the same private `TicketServiceImpl` logic:
+
+```java
+private void guardCancellable(Ticket ticket) {
+    if (TicketStatusEnum.CANCELLED.equals(ticket.getStatus())) {
+        throw new TicketAlreadyCancelledException(ErrorCode.TICKET_ALREADY_CANCELLED, ticket.getDomainId());
+    }
+
+    if (EventStatusEnum.COMPLETED.equals(ticket.getTicketType().getEvent().getStatus())) {
+        throw new TicketEventAlreadyCompletedException(ErrorCode.TICKET_EVENT_ALREADY_COMPLETED, ticket.getDomainId());
+    }
+
+    boolean alreadyValidated = ticket.getValidations().stream()
+            .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
+    if (alreadyValidated) {
+        throw new TicketAlreadyValidatedException(ErrorCode.TICKET_ALREADY_VALIDATED, ticket.getDomainId());
+    }
+}
+
+private Ticket cancelTicket(Ticket ticket, TicketCancelReasonEnum reason, String note) {
+    ticket.setStatus(TicketStatusEnum.CANCELLED);
+    ticket.setCancelledAt(LocalDateTime.now());
+    ticket.setCancelReason(reason);
+    ticket.setCancelNote(note);
+
+    Ticket savedTicket = ticketRepository.save(ticket);
+    ticketEventPublisher.publishTicketCancelled(savedTicket);
+
+    return savedTicket;
+}
+```
+
+Three ways a cancel gets rejected, each its own `ErrorCode` (`409 Conflict`, not `400` -- these are state conflicts, not malformed requests): already cancelled, or the ticket's already gotten someone through the door -- the same "is there already a `VALID` entry in this ticket's validation history" check three different places now make independently (`TicketValidationServiceImpl`'s own ADMIT/ALREADY-USED logic, this guard, and the event-cancellation cascade below, rather than one shared helper), or the event's already `COMPLETED`. `cancelReason` (`ATTENDEE_REQUEST`/`ORGANIZER_ACTION`/`EVENT_CANCELLED`) is never client-supplied -- `CancelTicketRequestDto` carries only an optional `note`, and which reason gets recorded is inferred entirely from which endpoint was called. All three cancellation columns (`Ticket.cancelledAt`/`cancelReason`/`cancelNote`) are set together by `cancelTicket`, and nowhere else -- there's no path that sets one without the others.
+
+### Cancelling an Event Cascades to Its Tickets
+
+Before this, `EventServiceImpl#cancelEvent` was a plain status flip -- an attendee holding a ticket to a cancelled event would never find out from the ticket itself, since nothing about the ticket ever changed. It now cascades:
+
+```java
+private void cancelTicketsForCancelledEvent(Event event) {
+    List<Ticket> cancellableTickets =
+            ticketRepository.findByEventIdAndStatusNotWithValidations(event.getId(), TicketStatusEnum.CANCELLED);
+
+    for (Ticket ticket : cancellableTickets) {
+        boolean alreadyValidated = ticket.getValidations().stream()
+                .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
+        if (alreadyValidated) {
+            continue;
+        }
+
+        ticket.setStatus(TicketStatusEnum.CANCELLED);
+        ticket.setCancelledAt(LocalDateTime.now());
+        ticket.setCancelReason(TicketCancelReasonEnum.EVENT_CANCELLED);
+        Ticket savedTicket = ticketRepository.save(ticket);
+        ticketEventPublisher.publishTicketCancelled(savedTicket);
+    }
+}
+```
+
+An already-validated ticket is skipped, not an error that aborts the whole cascade -- the same "can't cancel after entry" rule `guardCancellable` enforces for a single ticket, just applied per-ticket here so one already-admitted attendee doesn't block every other ticket on the event from being cancelled too.
+
+### Availability and Reporting Both Switch to an "Active" Count
+
+`TicketRepository.countByTicketTypeId` -- the raw, unfiltered count from the very first purchase-flow lesson -- stays exactly as it was, still backing issue #12's ticket-type-removal safeguard: a cancelled ticket is still a real historical sale, and orphan-deleting its ticket type would destroy that row's own cancellation audit trail along with it. A new sibling, `countActiveByTicketTypeId`, excludes `CANCELLED` and takes over everywhere "sold" actually means "still holds a slot":
+
+```java
+@Query("SELECT COUNT(t) FROM Ticket t WHERE t.ticketType.id = :ticketTypeId AND t.status <> :cancelledStatus")
+int countActiveByTicketTypeId(@Param("ticketTypeId") Long ticketTypeId, @Param("cancelledStatus") TicketStatusEnum cancelledStatus);
+```
+
+`TicketTypeServiceImpl#purchaseTicket`'s sold-out check switched to it -- a cancelled ticket now genuinely frees its slot back up for someone else to buy -- and so did the `ticketsSold` figure `EventServiceImpl` shows organizers (issue #12's own field), so a cancelled sale stops counting as sold there too.
+
+### A Distinct Outcome at the Scanner
+
+`TicketValidationStatusEnum` gained a fourth value, `CANCELLED`, checked ahead of the existing VALID/INVALID validation-history logic in `TicketValidationServiceImpl#validateTicket` rather than folded into it -- a cancelled ticket should read as specifically cancelled to staff at the door, not as `INVALID` (which already means something different: "already used"). The frontend's `/scan` screen picked up a matching fourth full-screen result, slate-grey to sit apart from both the amber "ALREADY USED" (a usage conflict) and the red "NOT FOUND" (an error) it's neither of.
+
+### New Organizer Ticket-Sales Screens
+
+Nothing before this let an organizer see who'd bought tickets to their event, let alone cancel one. Two new read endpoints on `EventController` -- `GET /api/v1/events/{eventId}/tickets` (per-event) and `GET /api/v1/events/tickets` (every event the organizer owns) -- share one `TicketSaleResponseDto`, the same reuse-across-endpoints precedent `VenueResponseDto` set back in "Venue Management", rather than one DTO per endpoint: the per-event screen just doesn't render the `eventName` column the cross-event one needs.
+
+The frontend gained its own `features/ticket-sales/` folder, kept apart from the attendee-scoped `features/tickets/` -- the same reasoning that already kept `published-events` separate from `events`: different backend resource, different auth (organizer-only here). Two routes: `/sales` (cross-event -- named that and not `/tickets`, since the attendee-facing "My Tickets" route already owns that pathless URL, `_attendee/tickets/`) and `/events/$eventId/tickets` (per-event, a sibling of the edit page rather than a dot-nested child of it, the same directory-of-siblings shape `browse/index.tsx`/`browse/$eventId.tsx` already uses). That sibling relationship is what forced `events/$eventId.tsx` to become `events/$eventId/index.tsx` -- a dot-nested `$eventId.tickets.tsx` would have made the edit route an implicit layout it was never meant to be, needing an `<Outlet/>` it doesn't have.
+
+### Propagating Cancellation to `analytics-service`
+
+`ticket_sales` gains a nullable `cancelledAt` column. Cancelling a sale is a plain `UPDATE`, not a delete -- the row, and its original `price`/`purchasedAt`, stays exactly as recorded, just marked cancelled, preserving the full history for a later gross-vs-net breakdown without another schema change:
+
+```typescript
+async recordCancellation(event: TicketCancelledEvent): Promise<void> {
+  await this.db
+    .update(ticketSales)
+    .set({ cancelledAt: new Date(event.cancelledAt) })
+    .where(eq(ticketSales.ticketId, event.ticketId));
+}
+```
+
+`getSummaryForEvent` filters cancelled rows out of both `revenue` and `ticketsSold` via `isNull(ticketSales.cancelledAt)`. On the `ticket-service` side, cancellation publishes `ticket.cancelled` onto the same `ticket-platform.events` exchange, through the same in-process-event-then-`AFTER_COMMIT`-listener split "Two Kinds of Event, Not One" already set up for `ticket.purchased`. `analytics-service`'s existing queue just binds a second routing key rather than declaring a second queue, so the consumer's `onModuleInit` now dispatches on `message.fields.routingKey` once a message arrives -- the routing key, not a discriminator field duplicated into the payload, is what tells the two message shapes apart once they land in the same queue, exactly what a topic exchange's routing key is for.
+
+### Attendee and Staff-Facing UI
+
+The attendee ticket-detail page (`_attendee/tickets/$ticketId.tsx`) gets an optional-note textarea and a `ConfirmButton` "Cancel Ticket", shown whenever the ticket isn't already `CANCELLED`. `GetTicketResponse` doesn't expose whether a ticket's already been validated or its event's already completed -- the other two `guardCancellable` checks -- so those two failure modes surface as an error toast on attempt rather than a disabled button up front. The staff scan screen's outcome type and color table both grew the fourth `CANCELLED` case described above.
+
+#### Summary
+
+- `Ticket` gained `cancelledAt`/`cancelReason` (`TicketCancelReasonEnum`: `ATTENDEE_REQUEST`/`ORGANIZER_ACTION`/`EVENT_CANCELLED`)/`cancelNote` -- an audit trail, not a real refund, since no payment gateway exists (Liquibase changeset `15-add-ticket-cancellation`)
+- Two cancel endpoints (`TicketController`/`EventController`) share `TicketServiceImpl#guardCancellable`, rejecting (409) an already-cancelled ticket, an already-validated one, or one whose event has already completed; `cancelReason` is always inferred server-side, never client-supplied
+- `EventServiceImpl#cancelEvent` now cascades onto every un-validated ticket sold for the event, skipping (not erroring on) any ticket that's already gotten someone in
+- A new `countActiveByTicketTypeId` (excludes `CANCELLED`) replaces the old `countByTicketTypeId` in the sold-out check and the `ticketsSold` figure; the old, unfiltered count stays, still guarding issue #12's ticket-type-removal safeguard
+- `TicketValidationStatusEnum` gained `CANCELLED`, checked ahead of the existing VALID/INVALID history logic, so staff at the door see a ticket's cancelled specifically, not merely "already used"
+- New organizer screens, `/sales` (cross-event) and `/events/$eventId/tickets` (per-event), backed by a new `features/ticket-sales/` folder and a shared `TicketSaleResponseDto`; forced `events/$eventId.tsx` to become `events/$eventId/index.tsx` so the per-event ticket-sales route could live as a sibling file
+- `analytics-service` binds its existing queue to a second `ticket.cancelled` routing key on the same exchange, dispatching on the routing key rather than a payload field; `recordCancellation` is an idempotent `UPDATE` that keeps the sale row (not a delete), and `getSummaryForEvent` excludes cancelled rows from revenue/`ticketsSold`
+- Attendee ticket detail page and the staff scan screen both surface cancellation; not yet confirmed live in a browser -- see "`frontend` loose ends" below
+
 ## Project Status
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
@@ -9917,13 +10035,16 @@ A snapshot of where the real build stands relative to this document, kept here a
 - **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a "Use my location" control (URL-persisted `lat`/`lng`, a radius preset dropdown, a "Nearest" sort option once active), a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types.
 - **Venue location picker** -- `VenueForm` gained a Leaflet + OpenStreetMap click-to-place-pin map alongside the existing latitude/longitude number inputs, per issue #7's own notes flagging this as cheap to add once PostGIS existed.
 - **Purchase flow** (attendee, from `/browse/$eventId`) -- a quantity selector and Buy button per ticket type, looping the single-ticket purchase endpoint sequentially with live "Purchasing... (X of Y)" progress, landing on a dedicated Success/Partial confirmation page (`/browse/confirmation`) per issues #4/#5.
-- **My Tickets** (attendee, `/tickets`) -- a real list/detail pair (`_attendee/tickets/{index,$ticketId}.tsx`) replacing the old auth-check placeholder; the detail page renders the purchased ticket's QR code image and reference code.
-- **Staff ticket validation** (staff, `/scan`) -- continuous camera QR scanning (`qr-scanner`, Web Worker-based) plus a manual reference-code fallback, both funnelling into one full-screen colored ADMIT/ALREADY-USED/NOT-FOUND result per issue #9.
+- **My Tickets** (attendee, `/tickets`) -- a real list/detail pair (`_attendee/tickets/{index,$ticketId}.tsx`) replacing the old auth-check placeholder; the detail page renders the purchased ticket's QR code image and reference code, plus (once ticket cancellation shipped -- see "Ticket Cancellation & Refund") an optional-note self-cancel action.
+- **Staff ticket validation** (staff, `/scan`) -- continuous camera QR scanning (`qr-scanner`, Web Worker-based) plus a manual reference-code fallback, both funnelling into one full-screen colored result per issue #9 -- ADMIT/ALREADY-USED/NOT-FOUND, plus a fourth CANCELLED outcome once ticket cancellation shipped.
 - **Reports dashboard** (organizer, `/dashboard`) -- a sorted, single-hue horizontal bar chart of revenue by event, each bar direct-labeled with both revenue and tickets sold, per issue #8.
+- **Ticket sales & cancellation** (organizer, `/sales` cross-event, `/events/{id}/tickets` per-event) -- paginated tables of every ticket sold, with an inline per-row Cancel action; not part of the original wayfinder map, built afterward alongside the rest of ticket cancellation -- see "Ticket Cancellation & Refund".
 
-Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, automated tests, ticket cancellation/refund, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
+Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, automated tests, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
 
 PostGIS proximity search is now built end to end -- backend geo filter (see "Backend: PostGIS Proximity Search"), the `/browse` "Use my location" control, and the `VenueForm` map picker (see "Frontend: Near Me Search" and "Frontend: Venue Location Picker"). The one piece still missing is a per-card distance readout ("2.3km away") -- the response DTO doesn't carry a computed distance value, which would mean restructuring the native queries into a projection instead of returning `Event` entities directly. Left for whenever that's actually wanted; the filter and "Nearest" sort work without it.
+
+Ticket cancellation/refund (also originally out of scope) is now built too -- see "Ticket Cancellation & Refund" above for the full build: both an attendee self-cancel and an organizer-cancel path, an event-cancellation cascade onto its own tickets, freed-up inventory, a distinct scanner outcome, and `analytics-service` excluding cancelled sales from reporting. There's still no real payment gateway, so this is audit-trail bookkeeping (`cancelledAt`/`cancelReason`/`cancelNote`), not money movement -- that half of "cancellation/refund" remains genuinely out of scope.
 
 ### `frontend` loose ends
 
@@ -9936,6 +10057,7 @@ PostGIS proximity search is now built end to end -- backend geo filter (see "Bac
 - The reports dashboard fetches one analytics summary per event (`useEventAnalyticsSummaries`, N requests) rather than one bulk call, since analytics-service has no organizer-wide rollup endpoint -- an accepted tradeoff against the endpoint that actually exists, not an oversight
 - A real navigation gap was found and fixed by actually using the app as an organizer: no page linked back to `/dashboard`/`/venues`/`/events` once you'd left for `/browse`. Role-aware links now live in the global `Header.tsx`; `_organizer.tsx`'s now-redundant layout-local nav was removed
 - The `/browse` "Use my location" control and the `VenueForm` map picker are both confirmed working live in the browser. A user-reported "wrong location" result along the way was diagnosed down to the browser's own network-based geolocation returning an inaccurate fix (confirmed by testing the exact reported coordinates directly against the database), not a bug in the filter itself
+- Ticket cancellation's frontend surfaces -- the attendee self-cancel action, the staff scan screen's new CANCELLED outcome, and both new organizer ticket-sales screens (`/sales`, `/events/{id}/tickets`) -- haven't been confirmed live in a browser yet
 
 ### `ticket-service` loose ends
 
@@ -9947,11 +10069,13 @@ PostGIS proximity search is now built end to end -- backend geo filter (see "Bac
 - PostGIS is now installed and enabled on the live database (`postgis` 3.5.3 -- see "Backend: PostGIS Proximity Search" for what installing it on this specific host actually took); `venues.location` is backfilled and kept in sync via `Venue.setCoordinates()`, and published-events search accepts a geo origin + radius plus a `distance` sort, all live-tested against the one real published event
 - `listPublishedEvents` is now `POST /api/v1/published-events/search` with a JSON body (`ListPublishedEventsRequestDto extends SearchRequestDTO`), not `GET` with query params -- needed its own `permitAll` rule in `SecurityConfig` (the existing one only matched `GET`) and a matching frontend update, both done in the same pass so the browse page never broke
 - Discovered, not fixed: hitting a genuinely nonexistent route (like the now-removed `GET /api/v1/published-events`) returns a generic `500` (`{"error":"An unexpected error occurred"}`) instead of a proper `404` -- `GlobalExceptionHandler` catches `NoResourceFoundException` the same as any other unhandled exception. Pre-existing for any mistyped URL on this API, not introduced by this change
+- Ticket cancellation (see "Ticket Cancellation & Refund") added a new Liquibase changeset (`004-add-ticket-cancellation.xml`, `15-add-ticket-cancellation`) and four new endpoints across `TicketController`/`EventController` -- purely additive; the only existing behavior it changes is the sold-out check and the `ticketsSold` figure now excluding cancelled tickets
 
 ### `analytics-service` loose ends
 
 - A message has never actually been watched flowing publish → consume → DB row end-to-end -- the consumer's setup (exchange/queue/binding) is confirmed via the RabbitMQ management API, but a live message hasn't been traced through `recordSale` yet; this is expected to get exercised naturally once real purchases are flowing through `ticket-service`
 - The reporting endpoint is now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard"), but that screen hasn't been confirmed live in a browser yet -- so it's still only been directly confirmed rejecting an unauthenticated/bad-token request (`401`), not returning real summary data end-to-end through the UI
+- Ticket cancellation (see "Ticket Cancellation & Refund") added a second `ticket.cancelled` binding to the existing queue and a nullable `cancelled_at` column on `ticket_sales` (migration `0002_lean_black_tarantula`); like the original `ticket.purchased` flow, a cancellation hasn't been watched flowing publish -> consume -> DB row end-to-end yet either
 - No automated tests
 
 ### Explicitly out of scope, not oversights

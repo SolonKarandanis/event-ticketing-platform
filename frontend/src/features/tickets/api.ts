@@ -4,6 +4,8 @@ import type {PaginationParams} from "#/lib/pagination.ts";
 import {apiFetch, parseBlobOrThrow, parseJsonOrThrow} from "#/lib/api-client.ts";
 import type {Page} from "#/lib/api-client.ts";
 import type {
+    CancelTicketRequest,
+    CancelTicketResponse,
     GetTicketResponse,
     ListTicketResponse,
     TicketValidationRequest,
@@ -25,6 +27,15 @@ export async function getTicket(ticketId: string):Promise<GetTicketResponse>{
 export async function getTicketQrCode(ticketId: string): Promise<Blob> {
     const response = await apiFetch(`${BASE_URL}/${ticketId}/qr-codes`);
     return parseBlobOrThrow(response);
+}
+
+export async function cancelTicket(ticketId: string, request: CancelTicketRequest): Promise<CancelTicketResponse> {
+    const response = await apiFetch(`${BASE_URL}/${ticketId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+    });
+    return parseJsonOrThrow<CancelTicketResponse>(response);
 }
 
 export async function validateTicket(request:TicketValidationRequest):Promise<TicketValidationResponse>{

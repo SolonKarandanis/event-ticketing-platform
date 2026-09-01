@@ -1,8 +1,9 @@
 // Named React Query hooks wrapping api.ts -- query keys and invalidation live here
 // once, not duplicated at call sites. See issue #9.
 import type {PaginationParams} from "#/lib/pagination.ts";
-import {queryOptions, useMutation, useQuery} from "@tanstack/react-query";
-import {getTicket, getTicketQrCode, listTickets, validateTicket} from "#/features/tickets/api.ts";
+import {queryOptions, useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
+import {cancelTicket, getTicket, getTicketQrCode, listTickets, validateTicket} from "#/features/tickets/api.ts";
+import type {CancelTicketRequest} from "#/features/tickets/types.ts";
 import {toast} from "sonner";
 import {toastErrorMessage} from "#/lib/api-client.ts";
 
@@ -57,6 +58,20 @@ export function useValidateTicket() {
         mutationFn: validateTicket,
         onError: (error) => {
             toast.error(toastErrorMessage(error, "Couldn't validate ticket"));
+        },
+    });
+}
+
+export function useCancelTicket(ticketId: string) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (request: CancelTicketRequest) => cancelTicket(ticketId, request),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ticketsKey });
+            toast.success('Ticket cancelled');
+        },
+        onError: (error) => {
+            toast.error(toastErrorMessage(error, "Couldn't cancel ticket"));
         },
     });
 }

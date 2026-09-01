@@ -5,6 +5,7 @@ import com.etp.ticketservice.domain.entity.QrCode;
 import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.entity.TicketValidation;
 import com.etp.ticketservice.domain.enums.QrCodeStatusEnum;
+import com.etp.ticketservice.domain.enums.TicketStatusEnum;
 import com.etp.ticketservice.domain.enums.TicketValidationMethod;
 import com.etp.ticketservice.domain.enums.TicketValidationStatusEnum;
 import com.etp.ticketservice.domain.exception.ErrorCode;
@@ -53,11 +54,20 @@ public class TicketValidationServiceImpl implements TicketValidationService {
     }
 
     private TicketValidation validateTicket(Ticket ticket, TicketValidationMethod method) {
-        TicketValidationStatusEnum ticketValidationStatus = ticket.getValidations().stream()
-                .filter(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()))
-                .findFirst()
-                .map(v -> TicketValidationStatusEnum.INVALID)
-                .orElse(TicketValidationStatusEnum.VALID);
+        // Checked before the VALID/INVALID history logic below, not folded into it --
+        // a cancelled ticket should read as specifically CANCELLED to staff at the door,
+        // not INVALID (which means "already used"), regardless of what its validation
+        // history looks like.
+        TicketValidationStatusEnum ticketValidationStatus;
+        if (TicketStatusEnum.CANCELLED.equals(ticket.getStatus())) {
+            ticketValidationStatus = TicketValidationStatusEnum.CANCELLED;
+        } else {
+            ticketValidationStatus = ticket.getValidations().stream()
+                    .filter(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()))
+                    .findFirst()
+                    .map(v -> TicketValidationStatusEnum.INVALID)
+                    .orElse(TicketValidationStatusEnum.VALID);
+        }
 
         TicketValidation ticketValidation = new TicketValidation();
         ticketValidation.setDomainId(UUID.randomUUID());

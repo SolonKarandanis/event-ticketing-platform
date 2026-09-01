@@ -48,8 +48,10 @@ public class TicketTypeServiceImpl implements TicketTypeService {
                 .orElseThrow(() -> new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketTypeId));
 
         // ticketType.getId() here is the resolved entity's internal sequential id, used
-        // purely as an internal join key against tickets.ticket_type_id.
-        int purchasedTickets = ticketRepository.countByTicketTypeId(ticketType.getId());
+        // purely as an internal join key against tickets.ticket_type_id. Active count,
+        // not the raw historical one -- a cancelled ticket freed its slot back up, so
+        // it shouldn't count against a new purchase the same way a live one does.
+        int purchasedTickets = ticketRepository.countActiveByTicketTypeId(ticketType.getId(), TicketStatusEnum.CANCELLED);
         Integer totalAvailable = ticketType.getTotalAvailable();
 
         // A null totalAvailable means this ticket type is unlimited -- only enforce the cap

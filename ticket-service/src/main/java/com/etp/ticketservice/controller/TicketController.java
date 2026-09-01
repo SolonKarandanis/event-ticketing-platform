@@ -1,7 +1,10 @@
 package com.etp.ticketservice.controller;
 
+import com.etp.ticketservice.domain.dto.request.CancelTicketRequestDto;
+import com.etp.ticketservice.domain.dto.response.CancelTicketResponseDto;
 import com.etp.ticketservice.domain.dto.response.GetTicketResponseDto;
 import com.etp.ticketservice.domain.dto.response.ListTicketResponseDto;
+import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.service.QrCodeService;
 import com.etp.ticketservice.domain.service.TicketService;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +19,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -48,6 +53,17 @@ public class TicketController {
                 .map(ticketService::convertToGetTicketResponseDto)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping(path = "/{ticketId}/cancel")
+    public ResponseEntity<CancelTicketResponseDto> cancelTicket(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID ticketId,
+            @RequestBody(required = false) CancelTicketRequestDto cancelTicketRequestDto) {
+        log.info("TicketController --> cancelTicket --> id: {}", ticketId);
+        String note = null != cancelTicketRequestDto ? cancelTicketRequestDto.getNote() : null;
+        Ticket cancelledTicket = ticketService.cancelTicketForUser(parseUserId(jwt), ticketId, note);
+        return ResponseEntity.ok(ticketService.convertToCancelTicketResponseDto(cancelledTicket));
     }
 
     @GetMapping(path = "/{ticketId}/qr-codes")

@@ -18,6 +18,11 @@ export const ticketSales = pgTable('ticket_sales', {
   recordedAt: timestamp('recorded_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
+  // Nullable -- the row is kept, not deleted, on cancellation (see recordCancellation).
+  // A cancelled sale still happened; getSummaryForEvent filters it out of revenue/
+  // ticketsSold via `IS NULL` rather than the row's absence, preserving the full
+  // history for a later gross-vs-net breakdown without another schema change.
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
 });
 
 export type TicketSale = typeof ticketSales.$inferSelect;

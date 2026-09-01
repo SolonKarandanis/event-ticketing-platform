@@ -17,7 +17,7 @@ export const Route = createFileRoute('/_staff/scan')({
 // Issue #9: full-screen colored result, auto-resumes scanning after this long.
 const RESULT_DISPLAY_MS = 2000
 
-type ScanOutcome = 'ADMIT' | 'ALREADY_USED' | 'NOT_FOUND'
+type ScanOutcome = 'ADMIT' | 'ALREADY_USED' | 'CANCELLED' | 'NOT_FOUND'
 
 interface ScanResultState {
   outcome: ScanOutcome
@@ -30,6 +30,9 @@ const OUTCOME_STYLES: Record<
 > = {
   ADMIT: { label: 'ADMIT', className: 'bg-emerald-600' },
   ALREADY_USED: { label: 'ALREADY USED', className: 'bg-amber-600' },
+  // Distinct from both ALREADY_USED (amber, a usage conflict) and NOT_FOUND (red, an
+  // error) -- a cancelled ticket is neither, just no longer valid.
+  CANCELLED: { label: 'CANCELLED', className: 'bg-slate-700' },
   NOT_FOUND: { label: 'NOT FOUND', className: 'bg-red-700' },
 }
 
@@ -55,14 +58,19 @@ function StaffScan() {
 
     try {
       const response = await validateTicket.mutateAsync({ id, method })
-      setResult(
-        response.status === TicketValidationStatus.VALID
-          ? { outcome: 'ADMIT', message: 'Ticket admitted' }
-          : {
-              outcome: 'ALREADY_USED',
-              message: 'This ticket has already been used',
-            },
-      )
+      if (response.status === TicketValidationStatus.VALID) {
+        setResult({ outcome: 'ADMIT', message: 'Ticket admitted' })
+      } else if (response.status === TicketValidationStatus.CANCELLED) {
+        setResult({
+          outcome: 'CANCELLED',
+          message: 'This ticket has been cancelled',
+        })
+      } else {
+        setResult({
+          outcome: 'ALREADY_USED',
+          message: 'This ticket has already been used',
+        })
+      }
     } catch (error) {
       // useValidateTicket's own onError already toasts this -- the full-screen result
       // below is what staff are actually meant to react to at a glance.

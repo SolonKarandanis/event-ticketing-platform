@@ -1,5 +1,6 @@
 package com.etp.ticketservice.domain.entity;
 
+import com.etp.ticketservice.domain.enums.TicketCancelReasonEnum;
 import com.etp.ticketservice.domain.enums.TicketStatusEnum;
 import jakarta.persistence.Basic;
 import jakarta.persistence.CascadeType;
@@ -76,6 +77,20 @@ public class Ticket {
     @JoinColumn(name = "purchaser_id")
     private User purchaser;
 
+    // Bookkeeping for a cancelled ticket -- no real payment gateway exists (see issue #1),
+    // so there's nothing to actually refund; this is the audit trail a future refund
+    // process (or reporting) would read. All three are null until cancelTicket sets them
+    // together, and never independently.
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "cancel_reason")
+    @Enumerated(EnumType.STRING)
+    private TicketCancelReasonEnum cancelReason;
+
+    @Column(name = "cancel_note")
+    private String cancelNote;
+
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
     @Builder.Default
     private Set<TicketValidation> validations = new LinkedHashSet<>();
@@ -120,12 +135,15 @@ public class Ticket {
                Objects.equals(domainId, ticket.domainId) &&
                Objects.equals(referenceCode, ticket.referenceCode) &&
                status == ticket.status &&
+               Objects.equals(cancelledAt, ticket.cancelledAt) &&
+               cancelReason == ticket.cancelReason &&
+               Objects.equals(cancelNote, ticket.cancelNote) &&
                Objects.equals(createdAt, ticket.createdAt) &&
                Objects.equals(updatedAt, ticket.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, referenceCode, status, createdAt, updatedAt);
+        return Objects.hash(id, domainId, referenceCode, status, cancelledAt, cancelReason, cancelNote, createdAt, updatedAt);
     }
 }

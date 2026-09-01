@@ -1,15 +1,20 @@
 package com.etp.ticketservice.controller;
 
+import com.etp.ticketservice.domain.dto.request.CancelTicketRequestDto;
 import com.etp.ticketservice.domain.dto.request.CreateEventRequestDto;
 import com.etp.ticketservice.domain.dto.request.UpdateEventRequestDto;
+import com.etp.ticketservice.domain.dto.response.CancelTicketResponseDto;
 import com.etp.ticketservice.domain.dto.response.CreateEventResponseDto;
 import com.etp.ticketservice.domain.dto.response.GetEventDetailsResponseDto;
 import com.etp.ticketservice.domain.dto.response.ListEventResponseDto;
+import com.etp.ticketservice.domain.dto.response.TicketSaleResponseDto;
 import com.etp.ticketservice.domain.dto.response.UpdateEventResponseDto;
 import com.etp.ticketservice.domain.entity.Event;
+import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.model.CreateEventRequest;
 import com.etp.ticketservice.domain.model.UpdateEventRequest;
 import com.etp.ticketservice.domain.service.EventService;
+import com.etp.ticketservice.domain.service.TicketService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -39,6 +44,7 @@ public class EventController {
     private static final Logger log = LoggerFactory.getLogger(EventController.class);
 
     private final EventService eventService;
+    private final TicketService ticketService;
 
     @PostMapping
     public ResponseEntity<CreateEventResponseDto> createEvent(@AuthenticationPrincipal Jwt jwt,
@@ -121,6 +127,42 @@ public class EventController {
         log.info("EventController --> completeEvent --> id: {}", eventId);
         eventService.completeEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
+    }
+
+    // Cross-event ticket-sales view, across every event this organizer owns. Placed
+    // ahead of getEvent's /{eventId} in this file for readability -- Spring's request
+    // matching already prioritizes this literal path over the {eventId} variable one
+    // regardless of declaration order (same reason /api/v1/published-events/cities
+    // didn't collide with /{eventId} there).
+    @GetMapping(path = "/tickets")
+    public ResponseEntity<Page<TicketSaleResponseDto>> listTicketsForOrganizer(
+            @AuthenticationPrincipal Jwt jwt, Pageable pageable) {
+        log.info("EventController --> listTicketsForOrganizer");
+        UUID userId = parseUserId(jwt);
+        Page<Ticket> tickets = ticketService.listTicketsForOrganizer(userId, pageable);
+        return ResponseEntity.ok(tickets.map(ticketService::convertToTicketSaleResponseDto));
+    }
+
+    @GetMapping(path = "/{eventId}/tickets")
+    public ResponseEntity<Page<TicketSaleResponseDto>> listTicketsForEvent(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId, Pageable pageable) {
+        log.info("EventController --> listTicketsForEvent --> eventId: {}", eventId);
+        UUID userId = parseUserId(jwt);
+        Page<Ticket> tickets = ticketService.listTicketsForEvent(userId, eventId, pageable);
+        return ResponseEntity.ok(tickets.map(ticketService::convertToTicketSaleResponseDto));
+    }
+
+    @PostMapping(path = "/{eventId}/tickets/{ticketId}/cancel")
+    public ResponseEntity<CancelTicketResponseDto> cancelTicketForOrganizer(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID eventId,
+            @PathVariable UUID ticketId,
+            @RequestBody(required = false) CancelTicketRequestDto cancelTicketRequestDto) {
+        log.info("EventController --> cancelTicketForOrganizer --> eventId: {}, ticketId: {}", eventId, ticketId);
+        UUID userId = parseUserId(jwt);
+        String note = null != cancelTicketRequestDto ? cancelTicketRequestDto.getNote() : null;
+        Ticket cancelledTicket = ticketService.cancelTicketForOrganizer(userId, eventId, ticketId, note);
+        return ResponseEntity.ok(ticketService.convertToCancelTicketResponseDto(cancelledTicket));
     }
 
     private UUID parseUserId(Jwt jwt) {

@@ -16,7 +16,7 @@ import {
 import { EventStatus } from '#/features/events/types'
 import { venueSearchInfiniteQueryOptions } from '#/features/venues/hooks'
 
-export const Route = createFileRoute('/_organizer/events/$eventId')({
+export const Route = createFileRoute('/_organizer/events/$eventId/')({
     // Two independent prefetches: the event itself (same warm-cache trick as the list
     // route -- fires on navigation and on intent-preload, hovering an "Edit" link), and
     // VenueCombobox's own first page (EventForm renders it regardless of read-only
@@ -71,9 +71,14 @@ function RouteComponent() {
             <Link to="/events" className="nav-link mb-4 inline-block">
                 &larr; Back to Events
             </Link>
-            <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
-                Edit Event
-            </h1>
+            <div className="mb-6 flex items-center justify-between">
+                <h1 className="display-title text-3xl font-bold text-(--sea-ink)">
+                    Edit Event
+                </h1>
+                <Link to="/events/$eventId/tickets" params={{ eventId }} className="nav-link">
+                    Ticket Sales
+                </Link>
+            </div>
             {isPending && <p className="text-sm text-(--sea-ink-soft)">Loading event...</p>}
             {!isPending && isError && <p className="text-sm text-destructive">Couldn't load this event.</p>}
             {!isPending && !isError && (
@@ -141,7 +146,7 @@ function RouteComponent() {
                             <ConfirmButton
                                 label={cancelEvent.isPending ? 'Cancelling...' : 'Cancel Event'}
                                 title="Cancel this event?"
-                                description="Attendees who already have tickets aren't notified automatically -- this only changes the event's status. This can't be undone."
+                                description="Every ticket already sold for this event is cancelled too (already-admitted attendees are left alone). Attendees aren't notified automatically. This can't be undone."
                                 confirmLabel="Cancel Event"
                                 variant="destructive"
                                 disabled={cancelEvent.isPending}

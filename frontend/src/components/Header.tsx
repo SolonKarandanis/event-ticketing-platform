@@ -41,6 +41,9 @@ export default function Header() {
             <Link to="/events" className="nav-link">
               Events
             </Link>
+            <Link to="/sales" className="nav-link">
+              Ticket Sales
+            </Link>
           </>
         )}
         {roles.includes(ROLE_STAFF) && (

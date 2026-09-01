@@ -23,11 +23,13 @@ import { Route as BrowseConfirmationRouteImport } from './routes/browse/confirma
 import { Route as AttendeeTicketsIndexRouteImport } from './routes/_attendee/tickets/index'
 import { Route as AttendeeTicketsTicketIdRouteImport } from './routes/_attendee/tickets/$ticketId'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
-import { Route as OrganizerEventsEventIdRouteImport } from './routes/_organizer/events/$eventId'
 import { Route as OrganizerEventsNewRouteImport } from './routes/_organizer/events/new'
+import { Route as OrganizerSalesIndexRouteImport } from './routes/_organizer/sales/index'
 import { Route as OrganizerVenuesIndexRouteImport } from './routes/_organizer/venues/index'
 import { Route as OrganizerVenuesVenueIdRouteImport } from './routes/_organizer/venues/$venueId'
 import { Route as OrganizerVenuesNewRouteImport } from './routes/_organizer/venues/new'
+import { Route as OrganizerEventsEventIdIndexRouteImport } from './routes/_organizer/events/$eventId/index'
+import { Route as OrganizerEventsEventIdTicketsRouteImport } from './routes/_organizer/events/$eventId/tickets'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -96,14 +98,14 @@ const OrganizerEventsIndexRoute = OrganizerEventsIndexRouteImport.update({
   path: '/events/',
   getParentRoute: () => OrganizerRoute,
 } as any)
-const OrganizerEventsEventIdRoute = OrganizerEventsEventIdRouteImport.update({
-  id: '/events/$eventId',
-  path: '/events/$eventId',
-  getParentRoute: () => OrganizerRoute,
-} as any)
 const OrganizerEventsNewRoute = OrganizerEventsNewRouteImport.update({
   id: '/events/new',
   path: '/events/new',
+  getParentRoute: () => OrganizerRoute,
+} as any)
+const OrganizerSalesIndexRoute = OrganizerSalesIndexRouteImport.update({
+  id: '/sales/',
+  path: '/sales/',
   getParentRoute: () => OrganizerRoute,
 } as any)
 const OrganizerVenuesIndexRoute = OrganizerVenuesIndexRouteImport.update({
@@ -121,6 +123,18 @@ const OrganizerVenuesNewRoute = OrganizerVenuesNewRouteImport.update({
   path: '/venues/new',
   getParentRoute: () => OrganizerRoute,
 } as any)
+const OrganizerEventsEventIdIndexRoute =
+  OrganizerEventsEventIdIndexRouteImport.update({
+    id: '/events/$eventId/',
+    path: '/events/$eventId/',
+    getParentRoute: () => OrganizerRoute,
+  } as any)
+const OrganizerEventsEventIdTicketsRoute =
+  OrganizerEventsEventIdTicketsRouteImport.update({
+    id: '/events/$eventId/tickets',
+    path: '/events/$eventId/tickets',
+    getParentRoute: () => OrganizerRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -132,13 +146,15 @@ export interface FileRoutesByFullPath {
   '/browse/confirmation': typeof BrowseConfirmationRoute
   '/browse/': typeof BrowseIndexRoute
   '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
-  '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/venues/new': typeof OrganizerVenuesNewRoute
   '/tickets/': typeof AttendeeTicketsIndexRoute
   '/events/': typeof OrganizerEventsIndexRoute
+  '/sales/': typeof OrganizerSalesIndexRoute
   '/venues/': typeof OrganizerVenuesIndexRoute
+  '/events/$eventId/tickets': typeof OrganizerEventsEventIdTicketsRoute
+  '/events/$eventId/': typeof OrganizerEventsEventIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -150,13 +166,15 @@ export interface FileRoutesByTo {
   '/browse/confirmation': typeof BrowseConfirmationRoute
   '/browse': typeof BrowseIndexRoute
   '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
-  '/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
   '/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/venues/new': typeof OrganizerVenuesNewRoute
   '/tickets': typeof AttendeeTicketsIndexRoute
   '/events': typeof OrganizerEventsIndexRoute
+  '/sales': typeof OrganizerSalesIndexRoute
   '/venues': typeof OrganizerVenuesIndexRoute
+  '/events/$eventId/tickets': typeof OrganizerEventsEventIdTicketsRoute
+  '/events/$eventId': typeof OrganizerEventsEventIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -172,13 +190,15 @@ export interface FileRoutesById {
   '/browse/confirmation': typeof BrowseConfirmationRoute
   '/browse/': typeof BrowseIndexRoute
   '/_attendee/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
-  '/_organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/_organizer/events/new': typeof OrganizerEventsNewRoute
   '/_organizer/venues/$venueId': typeof OrganizerVenuesVenueIdRoute
   '/_organizer/venues/new': typeof OrganizerVenuesNewRoute
   '/_attendee/tickets/': typeof AttendeeTicketsIndexRoute
   '/_organizer/events/': typeof OrganizerEventsIndexRoute
+  '/_organizer/sales/': typeof OrganizerSalesIndexRoute
   '/_organizer/venues/': typeof OrganizerVenuesIndexRoute
+  '/_organizer/events/$eventId/tickets': typeof OrganizerEventsEventIdTicketsRoute
+  '/_organizer/events/$eventId/': typeof OrganizerEventsEventIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -192,13 +212,15 @@ export interface FileRouteTypes {
     | '/browse/confirmation'
     | '/browse/'
     | '/tickets/$ticketId'
-    | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
     | '/venues/new'
     | '/tickets/'
     | '/events/'
+    | '/sales/'
     | '/venues/'
+    | '/events/$eventId/tickets'
+    | '/events/$eventId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -210,13 +232,15 @@ export interface FileRouteTypes {
     | '/browse/confirmation'
     | '/browse'
     | '/tickets/$ticketId'
-    | '/events/$eventId'
     | '/events/new'
     | '/venues/$venueId'
     | '/venues/new'
     | '/tickets'
     | '/events'
+    | '/sales'
     | '/venues'
+    | '/events/$eventId/tickets'
+    | '/events/$eventId'
   id:
     | '__root__'
     | '/'
@@ -231,13 +255,15 @@ export interface FileRouteTypes {
     | '/browse/confirmation'
     | '/browse/'
     | '/_attendee/tickets/$ticketId'
-    | '/_organizer/events/$eventId'
     | '/_organizer/events/new'
     | '/_organizer/venues/$venueId'
     | '/_organizer/venues/new'
     | '/_attendee/tickets/'
     | '/_organizer/events/'
+    | '/_organizer/sales/'
     | '/_organizer/venues/'
+    | '/_organizer/events/$eventId/tickets'
+    | '/_organizer/events/$eventId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -352,18 +378,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrganizerEventsIndexRouteImport
       parentRoute: typeof OrganizerRoute
     }
-    '/_organizer/events/$eventId': {
-      id: '/_organizer/events/$eventId'
-      path: '/events/$eventId'
-      fullPath: '/events/$eventId'
-      preLoaderRoute: typeof OrganizerEventsEventIdRouteImport
-      parentRoute: typeof OrganizerRoute
-    }
     '/_organizer/events/new': {
       id: '/_organizer/events/new'
       path: '/events/new'
       fullPath: '/events/new'
       preLoaderRoute: typeof OrganizerEventsNewRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/_organizer/sales/': {
+      id: '/_organizer/sales/'
+      path: '/sales'
+      fullPath: '/sales/'
+      preLoaderRoute: typeof OrganizerSalesIndexRouteImport
       parentRoute: typeof OrganizerRoute
     }
     '/_organizer/venues/': {
@@ -387,6 +413,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrganizerVenuesNewRouteImport
       parentRoute: typeof OrganizerRoute
     }
+    '/_organizer/events/$eventId/': {
+      id: '/_organizer/events/$eventId/'
+      path: '/events/$eventId'
+      fullPath: '/events/$eventId/'
+      preLoaderRoute: typeof OrganizerEventsEventIdIndexRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
+    '/_organizer/events/$eventId/tickets': {
+      id: '/_organizer/events/$eventId/tickets'
+      path: '/events/$eventId/tickets'
+      fullPath: '/events/$eventId/tickets'
+      preLoaderRoute: typeof OrganizerEventsEventIdTicketsRouteImport
+      parentRoute: typeof OrganizerRoute
+    }
   }
 }
 
@@ -406,22 +446,26 @@ const AttendeeRouteWithChildren = AttendeeRoute._addFileChildren(
 
 interface OrganizerRouteChildren {
   OrganizerDashboardRoute: typeof OrganizerDashboardRoute
-  OrganizerEventsEventIdRoute: typeof OrganizerEventsEventIdRoute
   OrganizerEventsNewRoute: typeof OrganizerEventsNewRoute
   OrganizerVenuesVenueIdRoute: typeof OrganizerVenuesVenueIdRoute
   OrganizerVenuesNewRoute: typeof OrganizerVenuesNewRoute
   OrganizerEventsIndexRoute: typeof OrganizerEventsIndexRoute
+  OrganizerSalesIndexRoute: typeof OrganizerSalesIndexRoute
   OrganizerVenuesIndexRoute: typeof OrganizerVenuesIndexRoute
+  OrganizerEventsEventIdTicketsRoute: typeof OrganizerEventsEventIdTicketsRoute
+  OrganizerEventsEventIdIndexRoute: typeof OrganizerEventsEventIdIndexRoute
 }
 
 const OrganizerRouteChildren: OrganizerRouteChildren = {
   OrganizerDashboardRoute: OrganizerDashboardRoute,
-  OrganizerEventsEventIdRoute: OrganizerEventsEventIdRoute,
   OrganizerEventsNewRoute: OrganizerEventsNewRoute,
   OrganizerVenuesVenueIdRoute: OrganizerVenuesVenueIdRoute,
   OrganizerVenuesNewRoute: OrganizerVenuesNewRoute,
   OrganizerEventsIndexRoute: OrganizerEventsIndexRoute,
+  OrganizerSalesIndexRoute: OrganizerSalesIndexRoute,
   OrganizerVenuesIndexRoute: OrganizerVenuesIndexRoute,
+  OrganizerEventsEventIdTicketsRoute: OrganizerEventsEventIdTicketsRoute,
+  OrganizerEventsEventIdIndexRoute: OrganizerEventsEventIdIndexRoute,
 }
 
 const OrganizerRouteWithChildren = OrganizerRoute._addFileChildren(

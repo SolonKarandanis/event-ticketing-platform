@@ -3,6 +3,7 @@ import * as amqp from 'amqp-connection-manager';
 import { ConfirmChannel, ConsumeMessage } from 'amqplib';
 import { TicketSalesService } from '../ticket-sales/ticket-sales.service';
 import { TicketPurchasedEvent } from '../ticket-sales/ticket-purchased.event';
+import { TicketCancelledEvent } from '../ticket-sales/ticket-cancelled.event';
 
 const EVENTS_EXCHANGE = 'ticket-platform.events';
 const QUEUE_NAME = 'analytics-service.ticket-events';
@@ -29,6 +30,11 @@ export class RabbitMqConsumerService implements OnModuleInit {
           EVENTS_EXCHANGE,
           'ticket.purchased',
         );
+        await channel.bindQueue(
+          QUEUE_NAME,
+          EVENTS_EXCHANGE,
+          'ticket.cancelled',
+        );
 
         await channel.consume(
           QUEUE_NAME,
@@ -47,14 +53,26 @@ export class RabbitMqConsumerService implements OnModuleInit {
       return;
     }
 
+    // Both bindings land in the same queue, so the exchange's own routing key (not a
+    // discriminator field duplicated into the payload) is what tells the two apart --
+    // exactly what a topic exchange's routing key is for.
+    const routingKey = message.fields.routingKey;
+
     try {
-      const event = JSON.parse(
-        message.content.toString(),
-      ) as TicketPurchasedEvent;
-      await this.ticketSalesService.recordSale(event);
+      if (routingKey === 'ticket.cancelled') {
+        const event = JSON.parse(
+          message.content.toString(),
+        ) as TicketCancelledEvent;
+        await this.ticketSalesService.recordCancellation(event);
+      } else {
+        const event = JSON.parse(
+          message.content.toString(),
+        ) as TicketPurchasedEvent;
+        await this.ticketSalesService.recordSale(event);
+      }
       channel.ack(message);
     } catch (error) {
-      this.logger.error('Failed to process ticket.purchased message', error);
+      this.logger.error(`Failed to process ${routingKey} message`, error);
       channel.nack(message, false, false);
     }
   }

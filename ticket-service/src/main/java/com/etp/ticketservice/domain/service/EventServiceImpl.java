@@ -17,11 +17,15 @@ import com.etp.ticketservice.domain.dto.response.UpdateEventResponseDto;
 import com.etp.ticketservice.domain.dto.response.UpdateTicketTypeResponseDto;
 import com.etp.ticketservice.domain.dto.response.VenueResponseDto;
 import com.etp.ticketservice.domain.entity.Event;
+import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.entity.TicketType;
 import com.etp.ticketservice.domain.entity.User;
 import com.etp.ticketservice.domain.entity.Venue;
 import com.etp.ticketservice.domain.enums.EventStatusEnum;
 import com.etp.ticketservice.domain.enums.PublishedEventsSortBy;
+import com.etp.ticketservice.domain.enums.TicketCancelReasonEnum;
+import com.etp.ticketservice.domain.enums.TicketStatusEnum;
+import com.etp.ticketservice.domain.enums.TicketValidationStatusEnum;
 import com.etp.ticketservice.domain.exception.ErrorCode;
 import com.etp.ticketservice.domain.exception.EventNotFoundException;
 import com.etp.ticketservice.domain.exception.EventNotPublishableException;
@@ -60,6 +64,7 @@ public class EventServiceImpl implements EventService {
     private final VenueRepository venueRepository;
     private final EventRepository eventRepository;
     private final TicketRepository ticketRepository;
+    private final TicketEventPublisher ticketEventPublisher;
 
     @Override
     @Transactional
@@ -240,7 +245,36 @@ public class EventServiceImpl implements EventService {
         }
 
         event.setStatus(EventStatusEnum.CANCELLED);
-        return eventRepository.save(event);
+        Event cancelledEvent = eventRepository.save(event);
+
+        cancelTicketsForCancelledEvent(cancelledEvent);
+
+        return cancelledEvent;
+    }
+
+    // Cascades the event's own cancellation onto every ticket sold for it -- otherwise
+    // every attendee's ticket would silently sit PURCHASED for an event that no longer
+    // exists. An already-validated ticket (someone was already admitted) is left alone
+    // rather than erroring the whole cascade over it -- same "can't cancel after entry"
+    // rule TicketServiceImpl#guardCancellable enforces for an individually-cancelled
+    // ticket, just applied per-ticket here instead of failing the whole operation.
+    private void cancelTicketsForCancelledEvent(Event event) {
+        List<Ticket> cancellableTickets =
+                ticketRepository.findByEventIdAndStatusNotWithValidations(event.getId(), TicketStatusEnum.CANCELLED);
+
+        for (Ticket ticket : cancellableTickets) {
+            boolean alreadyValidated = ticket.getValidations().stream()
+                    .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
+            if (alreadyValidated) {
+                continue;
+            }
+
+            ticket.setStatus(TicketStatusEnum.CANCELLED);
+            ticket.setCancelledAt(LocalDateTime.now());
+            ticket.setCancelReason(TicketCancelReasonEnum.EVENT_CANCELLED);
+            Ticket savedTicket = ticketRepository.save(ticket);
+            ticketEventPublisher.publishTicketCancelled(savedTicket);
+        }
     }
 
     @Override
@@ -484,7 +518,9 @@ public class EventServiceImpl implements EventService {
         dto.setPrice(ticketType.getPrice());
         dto.setDescription(ticketType.getDescription());
         dto.setTotalAvailable(ticketType.getTotalAvailable());
-        dto.setTicketsSold(ticketRepository.countByTicketTypeId(ticketType.getId()));
+        // Active count, not the raw historical one -- a cancelled ticket freed its slot
+        // back up, so "sold" here should mean the same thing it means for availability.
+        dto.setTicketsSold(ticketRepository.countActiveByTicketTypeId(ticketType.getId(), TicketStatusEnum.CANCELLED));
         dto.setCreatedAt(ticketType.getCreatedAt());
         dto.setUpdatedAt(ticketType.getUpdatedAt());
         return dto;

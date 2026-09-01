@@ -1,7 +1,11 @@
+import { useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
+import { ConfirmButton } from '#/components/ConfirmButton'
+import { Textarea } from '#/components/ui/textarea'
 import {
   ticketQrCodeQueryOptions,
   ticketQueryOptions,
+  useCancelTicket,
   useTicket,
   useTicketQrCode,
 } from '#/features/tickets/hooks'
@@ -44,6 +48,8 @@ function TicketDetails() {
   const { data: ticket, isPending, isError } = useTicket(ticketId)
   const { data: qrCodeBlob, isPending: isQrPending } = useTicketQrCode(ticketId)
   const qrCodeUrl = useObjectUrl(qrCodeBlob)
+  const cancelTicket = useCancelTicket(ticketId)
+  const [cancelNote, setCancelNote] = useState('')
 
   return (
     <main className="page-wrap px-4 py-12">
@@ -96,6 +102,34 @@ function TicketDetails() {
             <p className="mb-1">Price: ${ticket.price.toFixed(2)}</p>
             <p>Reference: {ticket.referenceCode}</p>
           </div>
+
+          {/* Always offered once not already cancelled -- GetTicketResponse doesn't
+              expose whether the ticket's already been validated or its event's already
+              completed (the other two guards TicketServiceImpl#guardCancellable
+              enforces), so those surface as an error toast on attempt rather than a
+              disabled button here. */}
+          {ticket.status !== TicketStatus.CANCELLED && (
+            <div className="mt-4 border-t border-(--line) pt-4 text-left">
+              <Textarea
+                placeholder="Reason for cancelling (optional)"
+                value={cancelNote}
+                onChange={(event) => setCancelNote(event.target.value)}
+                disabled={cancelTicket.isPending}
+                className="mb-3"
+              />
+              <ConfirmButton
+                label={cancelTicket.isPending ? 'Cancelling...' : 'Cancel Ticket'}
+                title="Cancel this ticket?"
+                description="This can't be undone. You'll need to purchase a new ticket if you change your mind."
+                confirmLabel="Cancel Ticket"
+                variant="destructive"
+                disabled={cancelTicket.isPending}
+                onConfirm={() =>
+                  cancelTicket.mutate({ note: cancelNote.trim() || undefined })
+                }
+              />
+            </div>
+          )}
         </div>
       )}
     </main>

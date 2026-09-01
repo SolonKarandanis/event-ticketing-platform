@@ -23,15 +23,29 @@ export type TicketValidationMethod =
   (typeof TicketValidationMethod)[keyof typeof TicketValidationMethod]
 
 // EXPIRED is part of the backend's enum but nothing ever sets it yet (flagged for
-// future in issue #16) -- validateTicket only ever actually resolves VALID or INVALID.
+// future in issue #16) -- validateTicket only ever actually resolves VALID, INVALID, or
+// (now that ticket cancellation exists) CANCELLED.
 export const TicketValidationStatus = {
   VALID: 'VALID',
   INVALID: 'INVALID',
   EXPIRED: 'EXPIRED',
+  CANCELLED: 'CANCELLED',
 } as const
 
 export type TicketValidationStatus =
   (typeof TicketValidationStatus)[keyof typeof TicketValidationStatus]
+
+// Mirrors TicketCancelReasonEnum. Not client-supplied -- the backend infers this from
+// which cancel endpoint was called -- but the frontend still needs the type to read
+// cancelReason back off CancelTicketResponse/TicketSaleResponse.
+export const TicketCancelReason = {
+  ATTENDEE_REQUEST: 'ATTENDEE_REQUEST',
+  ORGANIZER_ACTION: 'ORGANIZER_ACTION',
+  EVENT_CANCELLED: 'EVENT_CANCELLED',
+} as const
+
+export type TicketCancelReason =
+  (typeof TicketCancelReason)[keyof typeof TicketCancelReason]
 
 export interface ListTicketTicketTypeResponse {
   id: string
@@ -67,4 +81,18 @@ export interface TicketValidationRequest {
 export interface TicketValidationResponse {
   ticketId: string
   status: TicketValidationStatus
+}
+
+// note is the only client-supplied input -- cancelReason is inferred server-side from
+// which endpoint was called (ATTENDEE_REQUEST here), not sent by the client.
+export interface CancelTicketRequest {
+  note?: string
+}
+
+export interface CancelTicketResponse {
+  id: string
+  status: TicketStatus
+  cancelledAt: string
+  cancelReason: TicketCancelReason
+  cancelNote: string | null
 }
