@@ -22,7 +22,10 @@ public enum ErrorCode {
     EVENT_INVALID_DATES("error.event.invalid-dates", HttpStatus.BAD_REQUEST),
     TICKET_ALREADY_CANCELLED("error.ticket.already-cancelled", HttpStatus.CONFLICT),
     TICKET_ALREADY_VALIDATED("error.ticket.already-validated", HttpStatus.CONFLICT),
-    TICKET_EVENT_ALREADY_COMPLETED("error.ticket.event-already-completed", HttpStatus.CONFLICT);
+    TICKET_EVENT_ALREADY_COMPLETED("error.ticket.event-already-completed", HttpStatus.CONFLICT),
+    EVENT_IMAGE_NOT_FOUND("error.event.image-not-found", HttpStatus.BAD_REQUEST),
+    EVENT_TOO_MANY_IMAGES("error.event.too-many-images", HttpStatus.CONFLICT),
+    EVENT_IMAGE_INVALID_FILE("error.event.image-invalid-file", HttpStatus.BAD_REQUEST);
 
     private final String messageKey;
     private final HttpStatus httpStatus;

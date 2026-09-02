@@ -23,6 +23,7 @@ public class GetEventDetailsResponseDto {
     private LocalDateTime salesEnd;
     private EventStatusEnum status;
     private List<GetEventDetailsTicketTypesResponseDto> ticketTypes = new ArrayList<>();
+    private List<EventImageResponseDto> images = new ArrayList<>();
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

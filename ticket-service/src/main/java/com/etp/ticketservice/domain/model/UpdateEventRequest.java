@@ -21,4 +21,5 @@ public class UpdateEventRequest {
     private LocalDateTime salesStart;
     private LocalDateTime salesEnd;
     private List<UpdateTicketTypeRequest> ticketTypes = new ArrayList<>();
+    private List<EventImageRequest> images = new ArrayList<>();
 }

@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -32,8 +33,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -46,15 +51,21 @@ public class EventController {
     private final EventService eventService;
     private final TicketService ticketService;
 
-    @PostMapping
+    // Multipart, not JSON -- "event" carries everything this endpoint used to accept as
+    // a plain @RequestBody (including the images list's metadata), and "newImages" holds
+    // the actual bytes for every images[].newImageIndex reference in it, since JSON can't
+    // carry binary data inline. required = false on newImages so an event with zero
+    // images doesn't need an empty file part.
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CreateEventResponseDto> createEvent(@AuthenticationPrincipal Jwt jwt,
-            @Valid @RequestBody CreateEventRequestDto createEventRequestDto) {
+            @Valid @RequestPart("event") CreateEventRequestDto createEventRequestDto,
+            @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages) {
         log.info("EventController --> createEvent");
         CreateEventRequest createEventRequest = eventService.convertFromDto(createEventRequestDto);
 
         UUID userId = parseUserId(jwt);
 
-        Event createdEvent = eventService.createEvent(userId, createEventRequest);
+        Event createdEvent = eventService.createEvent(userId, createEventRequest, resolveNewImages(newImages));
 
         CreateEventResponseDto createEventResponseDto = eventService.convertToCreateEventResponseDto(createdEvent);
 
@@ -84,20 +95,28 @@ public class EventController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @PutMapping(path = "/{eventId}")
+    @PutMapping(path = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UpdateEventResponseDto> updateEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId,
-            @Valid @RequestBody UpdateEventRequestDto updateEventRequestDto) {
+            @Valid @RequestPart("event") UpdateEventRequestDto updateEventRequestDto,
+            @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages) {
         log.info("EventController --> updateEvent --> id: {}", eventId);
         UpdateEventRequest updateEventRequest = eventService.convertFromDto(updateEventRequestDto);
         UUID userId = parseUserId(jwt);
 
         Event updatedEvent = eventService.updateEventForOrganizer(
-                userId, eventId, updateEventRequest
+                userId, eventId, updateEventRequest, resolveNewImages(newImages)
         );
 
         UpdateEventResponseDto updateEventResponseDto = eventService.convertToUpdateEventResponseDto(updatedEvent);
 
         return ResponseEntity.ok(updateEventResponseDto);
+    }
+
+    // required = false above means a null list is the normal "no new images this call"
+    // case, not a missing/malformed request -- normalized to an empty list here so
+    // EventServiceImpl never has to null-check it.
+    private List<MultipartFile> resolveNewImages(List<MultipartFile> newImages) {
+        return null != newImages ? newImages : Collections.emptyList();
     }
 
     @DeleteMapping(path = "/{eventId}")
@@ -163,6 +182,20 @@ public class EventController {
         String note = null != cancelTicketRequestDto ? cancelTicketRequestDto.getNote() : null;
         Ticket cancelledTicket = ticketService.cancelTicketForOrganizer(userId, eventId, ticketId, note);
         return ResponseEntity.ok(ticketService.convertToCancelTicketResponseDto(cancelledTicket));
+    }
+
+    // Organizer-facing raw image bytes -- works for a still-DRAFT event, unlike
+    // PublishedEventController's equivalent, which only ever resolves an image
+    // belonging to a PUBLISHED event. Needed so the edit page can show its own gallery's
+    // thumbnails before the event (and its images) are ever publicly visible.
+    @GetMapping(path = "/{eventId}/images/{imageId}")
+    public ResponseEntity<byte[]> getEventImage(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID eventId, @PathVariable UUID imageId) {
+        log.info("EventController --> getEventImage --> eventId: {}, imageId: {}", eventId, imageId);
+        UUID userId = parseUserId(jwt);
+        return eventService.getEventImageForOrganizer(userId, eventId, imageId)
+                .map(bytes -> ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(bytes))
+                .orElse(ResponseEntity.notFound().build());
     }
 
     private UUID parseUserId(Jwt jwt) {

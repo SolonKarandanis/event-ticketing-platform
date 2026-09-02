@@ -16,4 +16,8 @@ public class ListPublishedEventResponseDto {
     private LocalDateTime start;
     private LocalDateTime end;
     private VenueResponseDto venue;
+    // The image at position 0, or null if the event has none -- a browse card shows one
+    // image, not a whole gallery, so only the cover rides along here (see
+    // GetPublishedEventDetailsResponseDto.images for the full ordered gallery).
+    private UUID coverImageId;
 }

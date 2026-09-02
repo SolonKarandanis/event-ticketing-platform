@@ -30,10 +30,13 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.ticketTypes WHERE e.id IN :ids")
     List<Event> findByIdInWithTicketTypes(@Param("ids") Collection<Long> ids);
 
-    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes WHERE e.domainId = :domainId AND e.organizer.domainId = :organizerDomainId")
+    // ticketTypes and images are both @OneToMany, but both Set-backed -- combining two
+    // to-many fetch joins in one query is exactly what that Set-over-List choice (see
+    // "Relationship Collections: Set, Not List") avoids MultipleBagFetchException for.
+    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes LEFT JOIN FETCH e.images WHERE e.domainId = :domainId AND e.organizer.domainId = :organizerDomainId")
     Optional<Event> findByDomainIdAndOrganizerDomainId(@Param("domainId") UUID domainId, @Param("organizerDomainId") UUID organizerDomainId);
 
-    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes WHERE e.domainId = :domainId AND e.status = :status")
+    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes LEFT JOIN FETCH e.images WHERE e.domainId = :domainId AND e.status = :status")
     Optional<Event> findByDomainIdAndStatus(@Param("domainId") UUID domainId, @Param("status") EventStatusEnum status);
 
     // Published-events browse/search, filtering, and sort all live here as native queries --

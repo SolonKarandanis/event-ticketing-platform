@@ -2,10 +2,12 @@ package com.etp.ticketservice.domain.service;
 
 import com.etp.ticketservice.domain.dto.request.CreateEventRequestDto;
 import com.etp.ticketservice.domain.dto.request.CreateTicketTypeRequestDto;
+import com.etp.ticketservice.domain.dto.request.EventImageRequestDto;
 import com.etp.ticketservice.domain.dto.request.UpdateEventRequestDto;
 import com.etp.ticketservice.domain.dto.request.UpdateTicketTypeRequestDto;
 import com.etp.ticketservice.domain.dto.response.CreateEventResponseDto;
 import com.etp.ticketservice.domain.dto.response.CreateTicketTypeResponseDto;
+import com.etp.ticketservice.domain.dto.response.EventImageResponseDto;
 import com.etp.ticketservice.domain.dto.response.GetEventDetailsResponseDto;
 import com.etp.ticketservice.domain.dto.response.GetEventDetailsTicketTypesResponseDto;
 import com.etp.ticketservice.domain.dto.response.GetPublishedEventDetailsResponseDto;
@@ -17,6 +19,7 @@ import com.etp.ticketservice.domain.dto.response.UpdateEventResponseDto;
 import com.etp.ticketservice.domain.dto.response.UpdateTicketTypeResponseDto;
 import com.etp.ticketservice.domain.dto.response.VenueResponseDto;
 import com.etp.ticketservice.domain.entity.Event;
+import com.etp.ticketservice.domain.entity.EventImage;
 import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.entity.TicketType;
 import com.etp.ticketservice.domain.entity.User;
@@ -27,19 +30,24 @@ import com.etp.ticketservice.domain.enums.TicketCancelReasonEnum;
 import com.etp.ticketservice.domain.enums.TicketStatusEnum;
 import com.etp.ticketservice.domain.enums.TicketValidationStatusEnum;
 import com.etp.ticketservice.domain.exception.ErrorCode;
+import com.etp.ticketservice.domain.exception.EventImageNotFoundException;
 import com.etp.ticketservice.domain.exception.EventNotFoundException;
 import com.etp.ticketservice.domain.exception.EventNotPublishableException;
 import com.etp.ticketservice.domain.exception.EventUpdateException;
 import com.etp.ticketservice.domain.exception.InvalidEventDatesException;
+import com.etp.ticketservice.domain.exception.InvalidEventImageException;
 import com.etp.ticketservice.domain.exception.InvalidEventStatusTransitionException;
 import com.etp.ticketservice.domain.exception.TicketTypeHasSoldTicketsException;
 import com.etp.ticketservice.domain.exception.TicketTypeNotFoundException;
+import com.etp.ticketservice.domain.exception.TooManyEventImagesException;
 import com.etp.ticketservice.domain.exception.UserNotFoundException;
 import com.etp.ticketservice.domain.exception.VenueNotFoundException;
 import com.etp.ticketservice.domain.model.CreateEventRequest;
 import com.etp.ticketservice.domain.model.CreateTicketTypeRequest;
+import com.etp.ticketservice.domain.model.EventImageRequest;
 import com.etp.ticketservice.domain.model.UpdateEventRequest;
 import com.etp.ticketservice.domain.model.UpdateTicketTypeRequest;
+import com.etp.ticketservice.domain.repository.EventImageRepository;
 import com.etp.ticketservice.domain.repository.EventRepository;
 import com.etp.ticketservice.domain.repository.TicketRepository;
 import com.etp.ticketservice.domain.repository.UserRepository;
@@ -51,6 +59,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -60,15 +69,22 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class EventServiceImpl implements EventService {
+
+    // An event with more than this many images is rejected -- 409, not a Bean Validation
+    // 400, since it's a state/quota conflict rather than a malformed request.
+    private static final int MAX_EVENT_IMAGES = 8;
+
     private final UserRepository userRepository;
     private final VenueRepository venueRepository;
     private final EventRepository eventRepository;
     private final TicketRepository ticketRepository;
+    private final EventImageRepository eventImageRepository;
     private final TicketEventPublisher ticketEventPublisher;
+    private final EventImageService eventImageService;
 
     @Override
     @Transactional
-    public Event createEvent(UUID organizerId, CreateEventRequest event) {
+    public Event createEvent(UUID organizerId, CreateEventRequest event, List<MultipartFile> newImages) {
         User organizer = userRepository.findByDomainId(organizerId)
                 .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, organizerId));
 
@@ -102,7 +118,43 @@ public class EventServiceImpl implements EventService {
             eventToCreate.addTicketType(ticketTypeToCreate);
         });
 
+        validateImageCount(event.getImages().size());
+
+        // Every entry here is necessarily "new" -- nothing exists yet to keep -- so
+        // every id is null and every newImageIndex is expected to be set. Array order in
+        // event.getImages() becomes gallery position; there's no separate reorder step.
+        int position = 0;
+        for (EventImageRequest imageRequest : event.getImages()) {
+            MultipartFile file = resolveNewImageFile(newImages, imageRequest.getNewImageIndex());
+            EventImage imageToCreate = new EventImage();
+            imageToCreate.setDomainId(UUID.randomUUID());
+            imageToCreate.setPosition(position++);
+            imageToCreate.setAltText(imageRequest.getAltText());
+            eventImageService.storeImage(file, imageToCreate.getDomainId());
+            eventToCreate.addImage(imageToCreate);
+        }
+
         return eventRepository.save(eventToCreate);
+    }
+
+    // A cap enforced here, once, rather than duplicated across createEvent and
+    // updateEventForOrganizer's own loops.
+    private void validateImageCount(int count) {
+        if (count > MAX_EVENT_IMAGES) {
+            throw new TooManyEventImagesException(ErrorCode.EVENT_TOO_MANY_IMAGES, count);
+        }
+    }
+
+    // JSON can't carry the actual file bytes -- an EventImageRequest with a null id
+    // points at its file via newImageIndex, an index into the separate "newImages"
+    // multipart parts sent alongside the JSON body. An out-of-range or missing index
+    // means the request itself is inconsistent (a new-image entry with nothing to
+    // upload), not a normal validation failure on a single field.
+    private MultipartFile resolveNewImageFile(List<MultipartFile> newImages, Integer newImageIndex) {
+        if (null == newImageIndex || null == newImages || newImageIndex < 0 || newImageIndex >= newImages.size()) {
+            throw new InvalidEventImageException(ErrorCode.EVENT_IMAGE_INVALID_FILE, "newImageIndex " + newImageIndex + " has no matching file");
+        }
+        return newImages.get(newImageIndex);
     }
 
     @Override
@@ -129,7 +181,7 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional
-    public Event updateEventForOrganizer(UUID organizerId, UUID id, UpdateEventRequest event) {
+    public Event updateEventForOrganizer(UUID organizerId, UUID id, UpdateEventRequest event, List<MultipartFile> newImages) {
         if (null == event.getId()) {
             throw new EventUpdateException(ErrorCode.EVENT_ID_REQUIRED);
         }
@@ -207,13 +259,80 @@ public class EventServiceImpl implements EventService {
             }
         }
 
+        applyImageChanges(existingEvent, event.getImages(), newImages);
+
         return eventRepository.save(existingEvent);
+    }
+
+    // Same create/keep/delete-by-id shape as the ticket-type diffing above, plus a
+    // position assignment ticketTypes doesn't need: every image in the submitted list is
+    // kept (or created) at its array index, and array order IS gallery order -- there's
+    // no separate reorder endpoint, resubmitting the list in a new order is a reorder.
+    private void applyImageChanges(Event existingEvent, List<EventImageRequest> requestedImages, List<MultipartFile> newImages) {
+        validateImageCount(requestedImages.size());
+
+        Set<UUID> requestImageDomainIds = requestedImages.stream()
+                .map(EventImageRequest::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Set<EventImage> imagesToRemove = existingEvent.getImages().stream()
+                .filter(existingImage -> !requestImageDomainIds.contains(existingImage.getDomainId()))
+                .collect(Collectors.toSet());
+        for (EventImage imageToRemove : imagesToRemove) {
+            eventImageService.deleteImage(imageToRemove.getDomainId());
+            existingEvent.removeImage(imageToRemove);
+        }
+
+        Map<UUID, EventImage> existingImagesIndex = existingEvent.getImages().stream()
+                .collect(Collectors.toMap(EventImage::getDomainId, Function.identity()));
+
+        int position = 0;
+        for (EventImageRequest imageRequest : requestedImages) {
+            if (null == imageRequest.getId()) {
+                // Create
+                MultipartFile file = resolveNewImageFile(newImages, imageRequest.getNewImageIndex());
+                EventImage imageToCreate = new EventImage();
+                imageToCreate.setDomainId(UUID.randomUUID());
+                imageToCreate.setPosition(position);
+                imageToCreate.setAltText(imageRequest.getAltText());
+                eventImageService.storeImage(file, imageToCreate.getDomainId());
+                existingEvent.addImage(imageToCreate);
+            } else if (existingImagesIndex.containsKey(imageRequest.getId())) {
+                // Keep -- possibly at a new position and/or with new alt text
+                EventImage existingImage = existingImagesIndex.get(imageRequest.getId());
+                existingImage.setPosition(position);
+                existingImage.setAltText(imageRequest.getAltText());
+            } else {
+                throw new EventImageNotFoundException(ErrorCode.EVENT_IMAGE_NOT_FOUND, imageRequest.getId());
+            }
+            position++;
+        }
     }
 
     @Override
     @Transactional
     public void deleteEventForOrganizer(UUID organizerId, UUID id) {
-        getEventForOrganizer(organizerId, id).ifPresent(eventRepository::delete);
+        // Cascade handles the EventImage rows; it doesn't touch the filesystem, so each
+        // image's file is deleted explicitly here before the event itself goes.
+        getEventForOrganizer(organizerId, id).ifPresent(event -> {
+            event.getImages().forEach(image -> eventImageService.deleteImage(image.getDomainId()));
+            eventRepository.delete(event);
+        });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<byte[]> getEventImageForOrganizer(UUID organizerId, UUID eventId, UUID imageId) {
+        return eventImageRepository.findByDomainIdAndEventDomainIdAndEventOrganizerDomainId(imageId, eventId, organizerId)
+                .map(image -> eventImageService.readImage(image.getDomainId()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<byte[]> getPublishedEventImage(UUID eventId, UUID imageId) {
+        return eventImageRepository.findByDomainIdAndEventDomainIdAndEventStatus(imageId, eventId, EventStatusEnum.PUBLISHED)
+                .map(image -> eventImageService.readImage(image.getDomainId()));
     }
 
     @Override
@@ -338,11 +457,15 @@ public class EventServiceImpl implements EventService {
                     searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
         };
 
-        // Native query -- JOIN FETCH isn't expressible here, so venue (the only association
-        // ListPublishedEventResponseDto needs) is force-initialized while the session is
-        // still open, so it's a real object rather than a lazy proxy by the time this
+        // Native query -- JOIN FETCH isn't expressible here, so venue and images (the two
+        // associations ListPublishedEventResponseDto needs, the latter for
+        // coverImageId) are force-initialized while the session is still open, so
+        // they're real objects/collections rather than lazy proxies by the time this
         // detaches and reaches the controller's DTO conversion.
-        page.getContent().forEach(event -> Hibernate.initialize(event.getVenue()));
+        page.getContent().forEach(event -> {
+            Hibernate.initialize(event.getVenue());
+            Hibernate.initialize(event.getImages());
+        });
 
         return page;
     }
@@ -371,6 +494,7 @@ public class EventServiceImpl implements EventService {
         request.setTicketTypes(dto.getTicketTypes().stream()
                 .map(this::convertFromDto)
                 .toList());
+        request.setImages(convertFromEventImageDtoList(dto.getImages()));
         return request;
     }
 
@@ -416,7 +540,27 @@ public class EventServiceImpl implements EventService {
         request.setSalesStart(dto.getSalesStart());
         request.setSalesEnd(dto.getSalesEnd());
         request.setTicketTypes(convertFromDtoList(dto.getTicketTypes()));
+        request.setImages(convertFromEventImageDtoList(dto.getImages()));
         return request;
+    }
+
+    @Override
+    public EventImageRequest convertFromDto(EventImageRequestDto dto) {
+        EventImageRequest request = new EventImageRequest();
+        request.setId(dto.getId());
+        request.setNewImageIndex(dto.getNewImageIndex());
+        request.setAltText(dto.getAltText());
+        return request;
+    }
+
+    @Override
+    public List<EventImageRequest> convertFromEventImageDtoList(List<EventImageRequestDto> dtoList) {
+        if (CollectionUtils.isEmpty(dtoList)) {
+            return Collections.emptyList();
+        }
+        return dtoList.stream()
+                .map(this::convertFromDto)
+                .toList();
     }
 
     @Override
@@ -469,6 +613,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
         dto.setTicketTypes(convertToCreateTicketTypeResponseDtoList(event.getTicketTypes()));
+        dto.setImages(convertToEventImageResponseDtoList(event.getImages()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
         return dto;
@@ -548,6 +693,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
         dto.setTicketTypes(convertToGetEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
+        dto.setImages(convertToEventImageResponseDtoList(event.getImages()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
         return dto;
@@ -588,6 +734,7 @@ public class EventServiceImpl implements EventService {
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
         dto.setTicketTypes(convertToUpdateTicketTypeResponseDtoList(event.getTicketTypes()));
+        dto.setImages(convertToEventImageResponseDtoList(event.getImages()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
         return dto;
@@ -601,7 +748,15 @@ public class EventServiceImpl implements EventService {
         dto.setStart(event.getStart());
         dto.setEnd(event.getEnd());
         dto.setVenue(convertToVenueResponseDto(event.getVenue()));
+        dto.setCoverImageId(findCoverImageId(event.getImages()));
         return dto;
+    }
+
+    private UUID findCoverImageId(Set<EventImage> images) {
+        return images.stream()
+                .min(Comparator.comparing(EventImage::getPosition))
+                .map(EventImage::getDomainId)
+                .orElse(null);
     }
 
     @Override
@@ -633,6 +788,30 @@ public class EventServiceImpl implements EventService {
         dto.setEnd(event.getEnd());
         dto.setVenue(convertToVenueResponseDto(event.getVenue()));
         dto.setTicketTypes(convertToGetPublishedEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
+        dto.setImages(convertToEventImageResponseDtoList(event.getImages()));
         return dto;
+    }
+
+    @Override
+    public EventImageResponseDto convertToEventImageResponseDto(EventImage image) {
+        EventImageResponseDto dto = new EventImageResponseDto();
+        dto.setId(image.getDomainId());
+        dto.setAltText(image.getAltText());
+        return dto;
+    }
+
+    @Override
+    public List<EventImageResponseDto> convertToEventImageResponseDtoList(Set<EventImage> images) {
+        if (CollectionUtils.isEmpty(images)) {
+            return Collections.emptyList();
+        }
+        // images is a LinkedHashSet in insertion order, not position order -- an update
+        // can change an existing image's position without changing when it was first
+        // added to the set, so this sorts by position explicitly rather than trusting
+        // iteration order to already match the gallery's intended display order.
+        return images.stream()
+                .sorted(Comparator.comparing(EventImage::getPosition))
+                .map(this::convertToEventImageResponseDto)
+                .toList();
     }
 }

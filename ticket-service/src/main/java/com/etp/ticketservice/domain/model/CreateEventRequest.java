@@ -20,4 +20,5 @@ public class CreateEventRequest {
     private LocalDateTime salesStart;
     private LocalDateTime salesEnd;
     private List<CreateTicketTypeRequest> ticketTypes = new ArrayList<>();
+    private List<EventImageRequest> images = new ArrayList<>();
 }

@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -74,6 +75,17 @@ public class PublishedEventController {
         return eventService.getPublishedEvent(eventId)
                 .map(eventService::convertToGetPublishedEventDetailsResponseDto)
                 .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // Public raw image bytes -- covers both the browse card's coverImageId and the
+    // detail page's full images gallery. Only ever resolves an image belonging to a
+    // PUBLISHED event; no SecurityConfig change needed, since GET /api/v1/published-events/**
+    // is already permitAll.
+    @GetMapping(path = "/{eventId}/images/{imageId}")
+    public ResponseEntity<byte[]> getPublishedEventImage(@PathVariable UUID eventId, @PathVariable UUID imageId) {
+        return eventService.getPublishedEventImage(eventId, imageId)
+                .map(bytes -> ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(bytes))
                 .orElse(ResponseEntity.notFound().build());
     }
 }

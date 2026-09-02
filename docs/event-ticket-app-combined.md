@@ -9971,6 +9971,8 @@ private void cancelTicketsForCancelledEvent(Event event) {
 
 An already-validated ticket is skipped, not an error that aborts the whole cascade -- the same "can't cancel after entry" rule `guardCancellable` enforces for a single ticket, just applied per-ticket here so one already-admitted attendee doesn't block every other ticket on the event from being cancelled too.
 
+Confirmed live: cancelling an event flips its own sold tickets to `CANCELLED` too.
+
 ### Availability and Reporting Both Switch to an "Active" Count
 
 `TicketRepository.countByTicketTypeId` -- the raw, unfiltered count from the very first purchase-flow lesson -- stays exactly as it was, still backing issue #12's ticket-type-removal safeguard: a cancelled ticket is still a real historical sale, and orphan-deleting its ticket type would destroy that row's own cancellation audit trail along with it. A new sibling, `countActiveByTicketTypeId`, excludes `CANCELLED` and takes over everywhere "sold" actually means "still holds a slot":
@@ -9992,6 +9994,8 @@ Nothing before this let an organizer see who'd bought tickets to their event, le
 
 The frontend gained its own `features/ticket-sales/` folder, kept apart from the attendee-scoped `features/tickets/` -- the same reasoning that already kept `published-events` separate from `events`: different backend resource, different auth (organizer-only here). Two routes: `/sales` (cross-event -- named that and not `/tickets`, since the attendee-facing "My Tickets" route already owns that pathless URL, `_attendee/tickets/`) and `/events/$eventId/tickets` (per-event, a sibling of the edit page rather than a dot-nested child of it, the same directory-of-siblings shape `browse/index.tsx`/`browse/$eventId.tsx` already uses). That sibling relationship is what forced `events/$eventId.tsx` to become `events/$eventId/index.tsx` -- a dot-nested `$eventId.tickets.tsx` would have made the edit route an implicit layout it was never meant to be, needing an `<Outlet/>` it doesn't have.
 
+Confirmed live: an organizer can cancel a sold ticket end-to-end from both `/sales` and `/events/{id}/tickets`.
+
 ### Propagating Cancellation to `analytics-service`
 
 `ticket_sales` gains a nullable `cancelledAt` column. Cancelling a sale is a plain `UPDATE`, not a delete -- the row, and its original `price`/`purchasedAt`, stays exactly as recorded, just marked cancelled, preserving the full history for a later gross-vs-net breakdown without another schema change:
@@ -10011,6 +10015,8 @@ async recordCancellation(event: TicketCancelledEvent): Promise<void> {
 
 The attendee ticket-detail page (`_attendee/tickets/$ticketId.tsx`) gets an optional-note textarea and a `ConfirmButton` "Cancel Ticket", shown whenever the ticket isn't already `CANCELLED`. `GetTicketResponse` doesn't expose whether a ticket's already been validated or its event's already completed -- the other two `guardCancellable` checks -- so those two failure modes surface as an error toast on attempt rather than a disabled button up front. The staff scan screen's outcome type and color table both grew the fourth `CANCELLED` case described above.
 
+Confirmed live: an attendee can cancel their own ticket end-to-end from this page.
+
 #### Summary
 
 - `Ticket` gained `cancelledAt`/`cancelReason` (`TicketCancelReasonEnum`: `ATTENDEE_REQUEST`/`ORGANIZER_ACTION`/`EVENT_CANCELLED`)/`cancelNote` -- an audit trail, not a real refund, since no payment gateway exists (Liquibase changeset `15-add-ticket-cancellation`)
@@ -10020,7 +10026,7 @@ The attendee ticket-detail page (`_attendee/tickets/$ticketId.tsx`) gets an opti
 - `TicketValidationStatusEnum` gained `CANCELLED`, checked ahead of the existing VALID/INVALID history logic, so staff at the door see a ticket's cancelled specifically, not merely "already used"
 - New organizer screens, `/sales` (cross-event) and `/events/$eventId/tickets` (per-event), backed by a new `features/ticket-sales/` folder and a shared `TicketSaleResponseDto`; forced `events/$eventId.tsx` to become `events/$eventId/index.tsx` so the per-event ticket-sales route could live as a sibling file
 - `analytics-service` binds its existing queue to a second `ticket.cancelled` routing key on the same exchange, dispatching on the routing key rather than a payload field; `recordCancellation` is an idempotent `UPDATE` that keeps the sale row (not a delete), and `getSummaryForEvent` excludes cancelled rows from revenue/`ticketsSold`
-- Attendee ticket detail page and the staff scan screen both surface cancellation; not yet confirmed live in a browser -- see "`frontend` loose ends" below
+- Confirmed live: attendee self-cancel (`/tickets/{id}`), organizer cancel (`/sales`, `/events/{id}/tickets`), and the event-cancellation cascade (cancelling an event flips its own tickets to `CANCELLED` too) all work end-to-end in the browser. Not yet confirmed live: the scan screen's `CANCELLED` outcome, and whether `analytics-service` actually picks the cancellation up -- see "`frontend`"/"`analytics-service` loose ends" below
 
 ## Project Status
 
@@ -10057,7 +10063,7 @@ Ticket cancellation/refund (also originally out of scope) is now built too -- se
 - The reports dashboard fetches one analytics summary per event (`useEventAnalyticsSummaries`, N requests) rather than one bulk call, since analytics-service has no organizer-wide rollup endpoint -- an accepted tradeoff against the endpoint that actually exists, not an oversight
 - A real navigation gap was found and fixed by actually using the app as an organizer: no page linked back to `/dashboard`/`/venues`/`/events` once you'd left for `/browse`. Role-aware links now live in the global `Header.tsx`; `_organizer.tsx`'s now-redundant layout-local nav was removed
 - The `/browse` "Use my location" control and the `VenueForm` map picker are both confirmed working live in the browser. A user-reported "wrong location" result along the way was diagnosed down to the browser's own network-based geolocation returning an inaccurate fix (confirmed by testing the exact reported coordinates directly against the database), not a bug in the filter itself
-- Ticket cancellation's frontend surfaces -- the attendee self-cancel action, the staff scan screen's new CANCELLED outcome, and both new organizer ticket-sales screens (`/sales`, `/events/{id}/tickets`) -- haven't been confirmed live in a browser yet
+- Attendee self-cancel (`/tickets/{id}`), organizer cancel (`/sales`, `/events/{id}/tickets`), and the event-cancellation cascade (cancelling a whole event and watching its tickets flip to CANCELLED too) are all confirmed working live in the browser. The staff scan screen's new CANCELLED outcome hasn't been triggered against a real cancelled ticket yet
 
 ### `ticket-service` loose ends
 
@@ -10069,7 +10075,7 @@ Ticket cancellation/refund (also originally out of scope) is now built too -- se
 - PostGIS is now installed and enabled on the live database (`postgis` 3.5.3 -- see "Backend: PostGIS Proximity Search" for what installing it on this specific host actually took); `venues.location` is backfilled and kept in sync via `Venue.setCoordinates()`, and published-events search accepts a geo origin + radius plus a `distance` sort, all live-tested against the one real published event
 - `listPublishedEvents` is now `POST /api/v1/published-events/search` with a JSON body (`ListPublishedEventsRequestDto extends SearchRequestDTO`), not `GET` with query params -- needed its own `permitAll` rule in `SecurityConfig` (the existing one only matched `GET`) and a matching frontend update, both done in the same pass so the browse page never broke
 - Discovered, not fixed: hitting a genuinely nonexistent route (like the now-removed `GET /api/v1/published-events`) returns a generic `500` (`{"error":"An unexpected error occurred"}`) instead of a proper `404` -- `GlobalExceptionHandler` catches `NoResourceFoundException` the same as any other unhandled exception. Pre-existing for any mistyped URL on this API, not introduced by this change
-- Ticket cancellation (see "Ticket Cancellation & Refund") added a new Liquibase changeset (`004-add-ticket-cancellation.xml`, `15-add-ticket-cancellation`) and four new endpoints across `TicketController`/`EventController` -- purely additive; the only existing behavior it changes is the sold-out check and the `ticketsSold` figure now excluding cancelled tickets
+- Ticket cancellation (see "Ticket Cancellation & Refund") added a new Liquibase changeset (`004-add-ticket-cancellation.xml`, `15-add-ticket-cancellation`) and four new endpoints across `TicketController`/`EventController` -- purely additive; the only existing behavior it changes is the sold-out check and the `ticketsSold` figure now excluding cancelled tickets. Both direct cancel endpoints and `EventServiceImpl#cancelEvent`'s cascade onto its own tickets are confirmed working live
 
 ### `analytics-service` loose ends
 

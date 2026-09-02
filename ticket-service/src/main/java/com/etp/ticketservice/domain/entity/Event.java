@@ -99,6 +99,10 @@ public class Event {
     @Builder.Default
     private Set<TicketType> ticketTypes = new LinkedHashSet<>();
 
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<EventImage> images = new LinkedHashSet<>();
+
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
     private LocalDateTime createdAt;
@@ -115,6 +119,16 @@ public class Event {
     public void removeTicketType(TicketType ticketType) {
         this.ticketTypes.remove(ticketType);
         ticketType.setEvent(null);
+    }
+
+    public void addImage(EventImage image) {
+        this.images.add(image);
+        image.setEvent(this);
+    }
+
+    public void removeImage(EventImage image) {
+        this.images.remove(image);
+        image.setEvent(null);
     }
 
     @Override

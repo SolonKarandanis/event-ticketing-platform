@@ -14,6 +14,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.List;
 
@@ -62,6 +63,20 @@ public class GlobalExceptionHandler {
                 .orElse(resolve("error.validation-failed"));
 
         errorDto.setError(errorMessage);
+        return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
+    }
+
+    // Spring throws this itself once a multipart request exceeds
+    // spring.servlet.multipart.max-file-size/max-request-size -- without this handler it
+    // falls through to the generic Exception handler above and comes back as a 500
+    // "unknown error", which is wrong for something the client actually caused. The only
+    // multipart endpoints in this app are create/update event's image uploads, so this
+    // message is safe to be specific rather than generic.
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorDto> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        log.error("Caught MaxUploadSizeExceededException", ex);
+        ErrorDto errorDto = new ErrorDto();
+        errorDto.setError(resolve("error.event.image-invalid-file"));
         return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);
     }
 

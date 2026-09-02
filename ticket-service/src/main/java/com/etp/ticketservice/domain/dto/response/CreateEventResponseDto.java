@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,6 +23,7 @@ public class CreateEventResponseDto {
     private LocalDateTime salesEnd;
     private EventStatusEnum status;
     private List<CreateTicketTypeResponseDto> ticketTypes;
+    private List<EventImageResponseDto> images = new ArrayList<>();
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -9,6 +9,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,4 +38,10 @@ public class UpdateEventRequestDto {
     @NotEmpty(message = "{validation.event.ticket-types.required}")
     @Valid
     private List<UpdateTicketTypeRequestDto> ticketTypes;
+
+    // Every image the event should end up with, in the desired gallery order -- an
+    // existing image (has an id) not present here gets deleted, the same
+    // create/keep/delete-by-id pattern ticketTypes already uses. Optional -- 0 is fine.
+    @Valid
+    private List<EventImageRequestDto> images = new ArrayList<>();
 }
