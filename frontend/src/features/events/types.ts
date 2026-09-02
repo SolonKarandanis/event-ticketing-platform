@@ -15,10 +15,10 @@ import type { Venue } from '#/features/venues/types'
 // type and the value share the name on purpose: `EventStatus` works as both a type
 // annotation and a value/namespace, the same way a real enum would.
 export const EventStatus = {
-    DRAFT: 'DRAFT',
-    PUBLISHED: 'PUBLISHED',
-    CANCELLED: 'CANCELLED',
-    COMPLETED: 'COMPLETED',
+  DRAFT: 'DRAFT',
+  PUBLISHED: 'PUBLISHED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED',
 } as const
 
 export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus]
@@ -32,6 +32,17 @@ export interface CreateTicketTypeRequest {
   totalAvailable?: number
 }
 
+// Two shapes in one, mirroring EventImageRequestDto server-side: id present means keep
+// this existing image (possibly at a new position/altText, since array order in the
+// parent images list IS gallery order); id absent means new, and newImageIndex points
+// at its bytes among the request's separate file parts (JSON can't carry the file
+// itself inline -- see api.ts's createEvent/updateEvent for where that split happens).
+export interface EventImageRequest {
+  id?: string
+  newImageIndex?: number
+  altText?: string
+}
+
 export interface CreateEventRequest {
   name: string
   start?: string
@@ -40,6 +51,7 @@ export interface CreateEventRequest {
   salesStart?: string
   salesEnd?: string
   ticketTypes: CreateTicketTypeRequest[]
+  images: EventImageRequest[]
 }
 
 export interface UpdateTicketTypeRequest {
@@ -61,9 +73,19 @@ export interface UpdateEventRequest {
   salesStart?: string
   salesEnd?: string
   ticketTypes: UpdateTicketTypeRequest[]
+  images: EventImageRequest[]
 }
 
 // ---- Responses ----
+
+// No url field -- same as the backend's EventImageResponseDto. The frontend already
+// knows how to build a byte-serving fetch URL from an id it has (an eventId already in
+// scope, plus this image's own id) -- see api.ts's getEventImage, the same pattern
+// getTicketQrCode already uses for a ticket's QR image.
+export interface EventImageResponse {
+  id: string
+  altText: string | null
+}
 
 export interface CreateTicketTypeResponse {
   id: string
@@ -83,6 +105,7 @@ export interface CreateEventResponse {
   salesEnd: string | null
   status: EventStatus
   ticketTypes: CreateTicketTypeResponse[]
+  images: EventImageResponse[]
   createdAt: string
   updatedAt: string
 }
@@ -107,6 +130,7 @@ export interface UpdateEventResponse {
   salesEnd: string | null
   status: EventStatus
   ticketTypes: UpdateTicketTypeResponse[]
+  images: EventImageResponse[]
   createdAt: string
   updatedAt: string
 }
@@ -134,6 +158,9 @@ export interface GetEventDetailsResponse {
   salesEnd: string | null
   status: EventStatus
   ticketTypes: GetEventDetailsTicketTypesResponse[]
+  // Already ordered by position server-side (see EventServiceImpl#convertToEventImageResponseDtoList) --
+  // array order is gallery order, index 0 is the cover.
+  images: EventImageResponse[]
   createdAt: string
   updatedAt: string
 }

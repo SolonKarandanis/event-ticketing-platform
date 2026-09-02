@@ -18,6 +18,10 @@ export interface ListPublishedEventResponse {
   start: string | null
   end: string | null
   venue: Venue
+  // The image at gallery position 0, or null if the event has none -- a browse card
+  // shows one image, not the whole gallery. Build its fetch URL with
+  // publishedEventImageUrl(event.id, event.coverImageId) from api.ts.
+  coverImageId: string | null
 }
 
 export interface GetPublishedEventDetailsTicketTypesResponse {
@@ -27,6 +31,14 @@ export interface GetPublishedEventDetailsTicketTypesResponse {
   description: string | null
 }
 
+// No url field -- same as the backend's EventImageResponseDto and features/events'
+// own EventImageResponse. Build the fetch URL from (eventId, id) via
+// publishedEventImageUrl in api.ts.
+export interface PublishedEventImageResponse {
+  id: string
+  altText: string | null
+}
+
 export interface GetPublishedEventDetailsResponse {
   id: string
   name: string
@@ -34,4 +46,7 @@ export interface GetPublishedEventDetailsResponse {
   end: string | null
   venue: Venue
   ticketTypes: GetPublishedEventDetailsTicketTypesResponse[]
+  // Already ordered by gallery position server-side -- index 0 is the same image
+  // ListPublishedEventResponse.coverImageId points at.
+  images: PublishedEventImageResponse[]
 }

@@ -73,3 +73,14 @@ export async function listPublishedEventCities(): Promise<string[]> {
   const response = await apiFetch(`${BASE_URL}/cities`)
   return parseJsonOrThrow<string[]>(response)
 }
+
+// Public raw image bytes -- unlike features/events' organizer-facing getEventImage,
+// this needs no Authorization header and no Blob/useObjectUrl wrapping: it's just a
+// plain URL, usable directly as an <img src> (GET /api/v1/published-events/**  is
+// permitAll in SecurityConfig, same as the rest of this controller).
+export function publishedEventImageUrl(
+  eventId: string,
+  imageId: string,
+): string {
+  return `${BASE_URL}/${eventId}/images/${imageId}`
+}

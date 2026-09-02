@@ -4,7 +4,11 @@ import { useAuth } from 'react-oidc-context'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { toastErrorMessage } from '#/lib/api-client'
-import { publishedEventQueryOptions, usePublishedEvent } from '#/features/published-events/hooks'
+import { publishedEventImageUrl } from '#/features/published-events/api'
+import {
+  publishedEventQueryOptions,
+  usePublishedEvent,
+} from '#/features/published-events/hooks'
 import { usePurchaseTicket } from '#/features/ticket-types/hooks'
 
 export const Route = createFileRoute('/browse/$eventId')({
@@ -22,7 +26,9 @@ export const Route = createFileRoute('/browse/$eventId')({
       return
     }
     try {
-      await context.queryClient.ensureQueryData(publishedEventQueryOptions(params.eventId))
+      await context.queryClient.ensureQueryData(
+        publishedEventQueryOptions(params.eventId),
+      )
     } catch {
       // Handled by usePublishedEvent()'s isError below.
     }
@@ -104,7 +110,9 @@ function EventDetails() {
       <Link to="/browse" className="nav-link mb-4 inline-block">
         &larr; Back to Events
       </Link>
-      {isPending && <p className="text-sm text-(--sea-ink-soft)">Loading event...</p>}
+      {isPending && (
+        <p className="text-sm text-(--sea-ink-soft)">Loading event...</p>
+      )}
 
       {!isPending && isError && (
         <p className="text-sm text-destructive">
@@ -123,6 +131,19 @@ function EventDetails() {
           <p className="mb-8 text-sm text-(--sea-ink-soft)">
             {event.venue.name}, {event.venue.addressLine1}, {event.venue.city}
           </p>
+
+          {event.images.length > 0 && (
+            <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {event.images.map((image) => (
+                <img
+                  key={image.id}
+                  src={publishedEventImageUrl(event.id, image.id)}
+                  alt={image.altText ?? ''}
+                  className="aspect-square w-full rounded-lg object-cover"
+                />
+              ))}
+            </div>
+          )}
 
           <h2 className="mb-4 text-lg font-semibold text-(--sea-ink)">
             Ticket Types
