@@ -10028,6 +10028,129 @@ Confirmed live: an attendee can cancel their own ticket end-to-end from this pag
 - `analytics-service` binds its existing queue to a second `ticket.cancelled` routing key on the same exchange, dispatching on the routing key rather than a payload field; `recordCancellation` is an idempotent `UPDATE` that keeps the sale row (not a delete), and `getSummaryForEvent` excludes cancelled rows from revenue/`ticketsSold`
 - Confirmed live: attendee self-cancel (`/tickets/{id}`), organizer cancel (`/sales`, `/events/{id}/tickets`), and the event-cancellation cascade (cancelling an event flips its own tickets to `CANCELLED` too) all work end-to-end in the browser. Not yet confirmed live: the scan screen's `CANCELLED` outcome, and whether `analytics-service` actually picks the cancellation up -- see "`frontend`"/"`analytics-service` loose ends" below
 
+## Event Images
+
+Another item flagged out of scope in issue #1's wayfinder map, resurfaced while resolving issue #17 ("Backend: published events filtering + reliable sort"): `Event` had no image field at all, and the `/browse` card grid was explicitly text-only by design. Built after that map closed, the same way PostGIS and ticket cancellation were.
+
+### A New Entity, Not a New Column on Event
+
+An event can have up to eight images, not one -- so this isn't a single `imageUrl` column, it's a real child entity:
+
+```java
+@Entity
+@Table(name = "event_images")
+public class EventImage {
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "eventImageGenerator")
+    private Long id;
+
+    @NaturalId
+    @Column(name = "domain_id", nullable = false, updatable = false, unique = true)
+    private UUID domainId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "event_id", nullable = false)
+    private Event event;
+
+    @Column(name = "position", nullable = false)
+    private Integer position;
+
+    @Column(name = "alt_text")
+    private String altText;
+    // ... createdAt/updatedAt, same as every other entity
+}
+```
+
+No `filename`/`content-type` column -- every upload gets re-encoded to JPEG on the way in (see below), so the file on disk is always deterministically `{domainId}.jpg`; there's nothing else about it worth storing. `position` is the gallery's display order (0 is the cover image `/browse` shows), and `altText` is organizer-supplied and optional -- never derived from the original filename, which gets discarded entirely. `Event` gained a matching `images: Set<EventImage>` with `cascade = ALL, orphanRemoval = true` and `addImage`/`removeImage` helpers, the exact same shape `ticketTypes` already has.
+
+### One Multipart Request, Not a Separate Upload Endpoint
+
+The first design draft had dedicated `POST`/`DELETE`/`PUT reorder` endpoints under `/events/{eventId}/images`. That got replaced with something more consistent with how this form already works: `createEvent`/`updateEvent` themselves became multipart requests, carrying the image files alongside the same JSON body they always sent. An image entry is one of two shapes, the same "id present = keep, absent = create" pattern `UpdateTicketTypeRequestDto` already established:
+
+```java
+public class EventImageRequestDto {
+    private UUID id;             // present: keep this existing image
+    private Integer newImageIndex; // absent id: index into the request's "newImages" file parts
+    private String altText;
+}
+```
+
+There's no `position` field at all -- an entry's index in the submitted `images` array *is* its gallery position, and there's no separate field for it. `updateEventForOrganizer` diffs the submitted list against what's already there, the same shape the ticket-type diffing right above it in the file already uses:
+
+```java
+private void applyImageChanges(Event existingEvent, List<EventImageRequest> requestedImages, List<MultipartFile> newImages) {
+    Set<UUID> requestImageDomainIds = requestedImages.stream()
+            .map(EventImageRequest::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+
+    Set<EventImage> imagesToRemove = existingEvent.getImages().stream()
+            .filter(existingImage -> !requestImageDomainIds.contains(existingImage.getDomainId()))
+            .collect(Collectors.toSet());
+    for (EventImage imageToRemove : imagesToRemove) {
+        eventImageService.deleteImage(imageToRemove.getDomainId());
+        existingEvent.removeImage(imageToRemove);
+    }
+
+    int position = 0;
+    for (EventImageRequest imageRequest : requestedImages) {
+        if (null == imageRequest.getId()) {
+            // Create -- resolveNewImageFile pulls the actual bytes out of newImages
+        } else if (existingImagesIndex.containsKey(imageRequest.getId())) {
+            // Keep -- possibly at a new position and/or with new alt text
+        } else {
+            throw new EventImageNotFoundException(ErrorCode.EVENT_IMAGE_NOT_FOUND, imageRequest.getId());
+        }
+        position++;
+    }
+}
+```
+
+An existing image not present in the resubmitted list gets its file deleted and the row orphan-removed; resubmitting the same ids in a different order already *is* a reorder, since position is just array index. `createEvent`'s version is simpler -- every entry is necessarily new, since nothing exists yet to keep.
+
+### Resizing, Re-Encoding, and Storage
+
+A new `EventImageService`/`EventImageServiceImpl`, deliberately narrow -- pure filesystem I/O and image processing, no database or entity knowledge at all. Uploads are validated (declared `Content-Type` as a fast-path rejection, a 5MB cap), resized to a 1600px bounding box, and re-encoded to JPEG via a new `thumbnailator` dependency:
+
+```java
+Thumbnails.of(file.getInputStream())
+        .size(MAX_DIMENSION, MAX_DIMENSION)
+        .outputFormat("jpg")
+        .toFile(target.toFile());
+```
+
+The declared-header check is only a fast path -- the real content-sniffing check is Thumbnailator itself failing to decode bytes that aren't actually an image, regardless of what a spoofed header claimed. Storage is the local filesystem, at a path from a new `app.event-images.storage-dir` property (defaulting to `./data/event-images`) -- matching this project's "no deployment plan, local dev only" scope, the same reasoning that put PostGIS on this same bare-metal host rather than a managed service.
+
+### Two Raw-Bytes Endpoints, Mirroring the Existing Public/Organizer Split
+
+Serving the bytes back out needed the same public/organizer duality `EventController`/`PublishedEventController` already have for event data itself: `GET /api/v1/events/{eventId}/images/{imageId}` (organizer-only, works on a still-DRAFT event, for the edit page's own gallery) and `GET /api/v1/published-events/{eventId}/images/{imageId}` (public, only ever resolves an image belonging to a `PUBLISHED` event). No `SecurityConfig` change needed for either -- both already fall under existing wildcard rules. Response DTOs (`GetEventDetailsResponseDto`, `GetPublishedEventDetailsResponseDto`, `ListPublishedEventResponseDto`'s `coverImageId`) carry only `{id, altText}` per image, no `url` field -- the frontend already knows how to build a fetch URL from an id it has, the same precedent the ticket QR code endpoint already set.
+
+### Frontend: EventForm Becomes a Two-Step Form
+
+`EventForm` gained a local `step` state: step 1 is every field it already had, step 2 is a new `EventImageGallery`. Switching steps is a pure view toggle -- it never touches the server, and it's independent of Save as Draft/Publish/Save Changes, which stay visible on both steps and submit the whole form regardless of which one is currently showing. Nothing about images hits the backend until that submit: picking a file just appends a row holding the raw `File` object to a `useFieldArray`, and removing an existing row just drops it from the array. Reordering is drag-and-drop via `@dnd-kit` (a new dependency -- nothing in this frontend did drag-and-drop before), keyed off `useFieldArray`'s own generated `field.id` rather than a redundant custom key.
+
+### Frontend: Building the Multipart Request
+
+`formValuesToRequest` now returns `{ request, newImageFiles }` instead of just a request body -- it walks the staged `images` array once, turning a row with a `File` into `{newImageIndex, altText}` (pushing the file onto `newImageFiles`) and a row without one into `{id, altText}`. `api.ts`'s `createEvent`/`updateEvent` build a `FormData` from that pair:
+
+```typescript
+const formData = new FormData()
+formData.append('event', new Blob([JSON.stringify(request)], { type: 'application/json' }))
+newImageFiles.forEach((file) => formData.append('newImages', file))
+```
+
+The JSON part has to be a `Blob` with an explicit `application/json` type, not a raw string -- a raw string part arrives at Spring tagged `text/plain`, which `@RequestPart` can't deserialize into the DTO. An existing image's thumbnail on the edit page is fetched authenticated (`getEventImage` + a new `useEventImage` hook, the same `Blob` + `useObjectUrl` shape the ticket QR code image already uses); a public image is just a plain `<img src>` pointing at `publishedEventImageUrl(eventId, imageId)`, no fetch wrapper needed since that endpoint requires no auth.
+
+Confirmed working live: creating and editing an event with images, and seeing them show up on the `/browse` card grid and the event detail page.
+
+#### Summary
+
+- New `EventImage` entity (`id`/`domainId`/`event`/`position`/`altText`), up to 8 per event, `cascade = ALL, orphanRemoval = true` on `Event.images` -- no new column on `Event` itself
+- `createEvent`/`updateEvent` became multipart requests carrying image files alongside the existing JSON body, rather than a separate upload/delete/reorder endpoint trio; images are diffed create/keep/delete-by-`id` the same way `ticketTypes` already are, with array order doubling as gallery position
+- Uploads are resized to a 1600px bounding box and re-encoded to JPEG via a new `thumbnailator` dependency; the real content-type check is Thumbnailator failing to decode non-image bytes, not just trusting the declared header
+- Local filesystem storage (`app.event-images.storage-dir`), matching this project's local-dev-only scope
+- Two raw-bytes GET endpoints mirror the existing `EventController`/`PublishedEventController` organizer/public split; no `SecurityConfig` changes needed
+- `EventForm` became a two-step form (core fields, then an image gallery), with `@dnd-kit` powering drag-to-reorder; nothing about images hits the server until the form's real submit button is clicked
+- Confirmed working live end-to-end: creating/editing an event with images, and seeing them on both the `/browse` card grid and the event detail page
+
 ## Project Status
 
 A snapshot of where the real build stands relative to this document, kept here as a running reference rather than a lesson -- update it as items get resolved.
@@ -10037,8 +10160,8 @@ A snapshot of where the real build stands relative to this document, kept here a
 `frontend/` is a real, running TanStack Start app with Tailwind, shadcn/ui, and React Query wired in, a working login against Keycloak (session-storage-backed tokens, refresh-token silent renewal, role-guarded routing for organizer/attendee/staff), and a shared `apiFetch()` wrapper every feature calls into. Every feature area on the wayfinder map (issue #1) is now built, not a placeholder:
 
 - **Venues** (organizer, `/venues`) -- list/create/edit, backed by `react-hook-form` + `zod` and `ticket-service`'s `/api/v1/venues`. The list is genuinely paginated (`PaginatedTable`/`PaginationControls`, not the size=100-stands-in-for-everything trick it started with), and the venue count in an event form's picker is now a searchable, infinite-scrolling combobox (`VenueCombobox`, debounced search + `useInfiniteQuery`) rather than a single capped page.
-- **Events** (organizer, `/events`) -- list/create/edit with the full `DRAFT -> PUBLISHED -> {CANCELLED|COMPLETED}` lifecycle: the create page has separate "Save as Draft"/"Publish" actions (publish is a second, chained API call, not a status field); the edit page's action row is status-conditional (Draft: Publish + Delete-with-confirmation; Published: Complete + Cancel-with-confirmation; terminal: the whole form renders read-only, matching the backend rejecting any update on a terminal event). `EventForm`'s ticket-type rows are a real `useFieldArray`, with a "Limited quantity" toggle controlling whether `totalAvailable` is sent at all.
-- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a "Use my location" control (URL-persisted `lat`/`lng`, a radius preset dropdown, a "Nearest" sort option once active), a text-only event-card grid, and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types.
+- **Events** (organizer, `/events`) -- list/create/edit with the full `DRAFT -> PUBLISHED -> {CANCELLED|COMPLETED}` lifecycle: the create page has separate "Save as Draft"/"Publish" actions (publish is a second, chained API call, not a status field); the edit page's action row is status-conditional (Draft: Publish + Delete-with-confirmation; Published: Complete + Cancel-with-confirmation; terminal: the whole form renders read-only, matching the backend rejecting any update on a terminal event). `EventForm`'s ticket-type rows are a real `useFieldArray`, with a "Limited quantity" toggle controlling whether `totalAvailable` is sent at all. `EventForm` is now a two-step form (see "Event Images") -- step 2 is an up-to-8-image gallery with drag-to-reorder, staged locally until the same submit that saves everything else.
+- **Published events browse** (public, `/browse` -- deliberately *not* behind the `_attendee` login guard, since the backend endpoint never required one) -- debounced search, Date/Price/City/Sort filter selects, a "Use my location" control (URL-persisted `lat`/`lng`, a radius preset dropdown, a "Nearest" sort option once active), an event-card grid (each card showing its cover image, once event images shipped -- see "Event Images"), and *numbered* pagination (a second, distinct pagination component from the organizer tables' Previous/Next one, per the resolved UX design), plus an event detail page listing ticket types and its own image gallery.
 - **Venue location picker** -- `VenueForm` gained a Leaflet + OpenStreetMap click-to-place-pin map alongside the existing latitude/longitude number inputs, per issue #7's own notes flagging this as cheap to add once PostGIS existed.
 - **Purchase flow** (attendee, from `/browse/$eventId`) -- a quantity selector and Buy button per ticket type, looping the single-ticket purchase endpoint sequentially with live "Purchasing... (X of Y)" progress, landing on a dedicated Success/Partial confirmation page (`/browse/confirmation`) per issues #4/#5.
 - **My Tickets** (attendee, `/tickets`) -- a real list/detail pair (`_attendee/tickets/{index,$ticketId}.tsx`) replacing the old auth-check placeholder; the detail page renders the purchased ticket's QR code image and reference code, plus (once ticket cancellation shipped -- see "Ticket Cancellation & Refund") an optional-note self-cancel action.
@@ -10052,6 +10175,8 @@ PostGIS proximity search is now built end to end -- backend geo filter (see "Bac
 
 Ticket cancellation/refund (also originally out of scope) is now built too -- see "Ticket Cancellation & Refund" above for the full build: both an attendee self-cancel and an organizer-cancel path, an event-cancellation cascade onto its own tickets, freed-up inventory, a distinct scanner outcome, and `analytics-service` excluding cancelled sales from reporting. There's still no real payment gateway, so this is audit-trail bookkeeping (`cancelledAt`/`cancelReason`/`cancelNote`), not money movement -- that half of "cancellation/refund" remains genuinely out of scope.
 
+Event images (also originally out of scope, flagged while resolving issue #17) are built too -- see "Event Images" above: a real `EventImage` gallery (up to 8 per event, resized/re-encoded on upload, local filesystem storage), `createEvent`/`updateEvent` carrying the files as part of one multipart request rather than a separate upload endpoint, and both the `/browse` card grid and the event detail page rendering real images now.
+
 ### `frontend` loose ends
 
 - No automated tests, matching the rest of this project's all-manual-verification pattern
@@ -10064,6 +10189,7 @@ Ticket cancellation/refund (also originally out of scope) is now built too -- se
 - A real navigation gap was found and fixed by actually using the app as an organizer: no page linked back to `/dashboard`/`/venues`/`/events` once you'd left for `/browse`. Role-aware links now live in the global `Header.tsx`; `_organizer.tsx`'s now-redundant layout-local nav was removed
 - The `/browse` "Use my location" control and the `VenueForm` map picker are both confirmed working live in the browser. A user-reported "wrong location" result along the way was diagnosed down to the browser's own network-based geolocation returning an inaccurate fix (confirmed by testing the exact reported coordinates directly against the database), not a bug in the filter itself
 - Attendee self-cancel (`/tickets/{id}`), organizer cancel (`/sales`, `/events/{id}/tickets`), and the event-cancellation cascade (cancelling a whole event and watching its tickets flip to CANCELLED too) are all confirmed working live in the browser. The staff scan screen's new CANCELLED outcome hasn't been triggered against a real cancelled ticket yet
+- Event images (see "Event Images") -- creating/editing an event with images, drag-to-reorder, and both the `/browse` card grid and the event detail page rendering them are all confirmed working live in the browser
 
 ### `ticket-service` loose ends
 
@@ -10076,6 +10202,7 @@ Ticket cancellation/refund (also originally out of scope) is now built too -- se
 - `listPublishedEvents` is now `POST /api/v1/published-events/search` with a JSON body (`ListPublishedEventsRequestDto extends SearchRequestDTO`), not `GET` with query params -- needed its own `permitAll` rule in `SecurityConfig` (the existing one only matched `GET`) and a matching frontend update, both done in the same pass so the browse page never broke
 - Discovered, not fixed: hitting a genuinely nonexistent route (like the now-removed `GET /api/v1/published-events`) returns a generic `500` (`{"error":"An unexpected error occurred"}`) instead of a proper `404` -- `GlobalExceptionHandler` catches `NoResourceFoundException` the same as any other unhandled exception. Pre-existing for any mistyped URL on this API, not introduced by this change
 - Ticket cancellation (see "Ticket Cancellation & Refund") added a new Liquibase changeset (`004-add-ticket-cancellation.xml`, `15-add-ticket-cancellation`) and four new endpoints across `TicketController`/`EventController` -- purely additive; the only existing behavior it changes is the sold-out check and the `ticketsSold` figure now excluding cancelled tickets. Both direct cancel endpoints and `EventServiceImpl#cancelEvent`'s cascade onto its own tickets are confirmed working live
+- Event images (see "Event Images") added a new Liquibase changeset (`005-add-event-images.xml`, `16-add-event-images`), a new `thumbnailator` dependency, and changed `createEvent`/`updateEvent` from JSON to multipart requests -- the one existing-behavior change of consequence, since every other client of those two endpoints needs to send multipart now too. Confirmed working live end-to-end
 
 ### `analytics-service` loose ends
 
