@@ -13,8 +13,11 @@ import com.etp.ticketservice.domain.entity.Event;
 import com.etp.ticketservice.domain.entity.Ticket;
 import com.etp.ticketservice.domain.model.CreateEventRequest;
 import com.etp.ticketservice.domain.model.UpdateEventRequest;
+import com.etp.ticketservice.domain.model.antivirus.VirusScannable;
 import com.etp.ticketservice.domain.service.EventService;
 import com.etp.ticketservice.domain.service.TicketService;
+import com.etp.ticketservice.domain.service.antivirus.AntivirusService;
+import com.etp.ticketservice.util.MultipartFileUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -50,6 +53,7 @@ public class EventController {
 
     private final EventService eventService;
     private final TicketService ticketService;
+    private final AntivirusService antivirusService;
 
     // Multipart, not JSON -- "event" carries everything this endpoint used to accept as
     // a plain @RequestBody (including the images list's metadata), and "newImages" holds
@@ -62,13 +66,10 @@ public class EventController {
             @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages) {
         log.info("EventController --> createEvent");
         CreateEventRequest createEventRequest = eventService.convertFromDto(createEventRequestDto);
-
         UUID userId = parseUserId(jwt);
-
+        scanNewImages(newImages);
         Event createdEvent = eventService.createEvent(userId, createEventRequest, resolveNewImages(newImages));
-
         CreateEventResponseDto createEventResponseDto = eventService.convertToCreateEventResponseDto(createdEvent);
-
         return new ResponseEntity<>(createEventResponseDto, HttpStatus.CREATED);
     }
 
@@ -88,7 +89,6 @@ public class EventController {
             @PathVariable UUID eventId) {
         log.info("EventController --> getEvent --> id: {}", eventId);
         UUID userId = parseUserId(jwt);
-
         return eventService.getEventForOrganizer(userId, eventId)
                 .map(eventService::convertToGetEventDetailsResponseDto)
                 .map(ResponseEntity::ok)
@@ -102,14 +102,19 @@ public class EventController {
         log.info("EventController --> updateEvent --> id: {}", eventId);
         UpdateEventRequest updateEventRequest = eventService.convertFromDto(updateEventRequestDto);
         UUID userId = parseUserId(jwt);
-
+        scanNewImages(newImages);
         Event updatedEvent = eventService.updateEventForOrganizer(
                 userId, eventId, updateEventRequest, resolveNewImages(newImages)
         );
-
         UpdateEventResponseDto updateEventResponseDto = eventService.convertToUpdateEventResponseDto(updatedEvent);
-
         return ResponseEntity.ok(updateEventResponseDto);
+    }
+
+    private void scanNewImages(List<MultipartFile> newImages) {
+        for(MultipartFile image : newImages){
+            VirusScannable scannableFile = MultipartFileUtil.toVirusScannable(image);
+            antivirusService.scan(scannableFile);
+        }
     }
 
     // required = false above means a null list is the normal "no new images this call"
