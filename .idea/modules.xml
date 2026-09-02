@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/event-ticket-platform.iml" filepath="$PROJECT_DIR$/.idea/event-ticket-platform.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/ticket-service.main.iml" filepath="$PROJECT_DIR$/.idea/modules/ticket-service.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/ticket-service.test.iml" filepath="$PROJECT_DIR$/.idea/modules/ticket-service.test.iml" />
     </modules>
   </component>
 </project>
