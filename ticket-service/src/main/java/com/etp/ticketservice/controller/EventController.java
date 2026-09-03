@@ -67,7 +67,7 @@ public class EventController {
         log.info("EventController --> createEvent");
         CreateEventRequest createEventRequest = eventService.convertFromDto(createEventRequestDto);
         UUID userId = parseUserId(jwt);
-        scanNewImages(newImages);
+        scanNewImages(resolveNewImages(newImages));
         Event createdEvent = eventService.createEvent(userId, createEventRequest, resolveNewImages(newImages));
         CreateEventResponseDto createEventResponseDto = eventService.convertToCreateEventResponseDto(createdEvent);
         return new ResponseEntity<>(createEventResponseDto, HttpStatus.CREATED);
@@ -102,7 +102,7 @@ public class EventController {
         log.info("EventController --> updateEvent --> id: {}", eventId);
         UpdateEventRequest updateEventRequest = eventService.convertFromDto(updateEventRequestDto);
         UUID userId = parseUserId(jwt);
-        scanNewImages(newImages);
+        scanNewImages(resolveNewImages(newImages));
         Event updatedEvent = eventService.updateEventForOrganizer(
                 userId, eventId, updateEventRequest, resolveNewImages(newImages)
         );
