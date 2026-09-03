@@ -35,3 +35,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Runtime data ###
+# app.event-images.storage-dir's default (./data/event-images) -- uploaded event
+# images, local runtime state, never source.
+/data/
