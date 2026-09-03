@@ -10127,6 +10127,21 @@ Serving the bytes back out needed the same public/organizer duality `EventContro
 
 `EventForm` gained a local `step` state: step 1 is every field it already had, step 2 is a new `EventImageGallery`. Switching steps is a pure view toggle -- it never touches the server, and it's independent of Save as Draft/Publish/Save Changes, which stay visible on both steps and submit the whole form regardless of which one is currently showing. Nothing about images hits the backend until that submit: picking a file just appends a row holding the raw `File` object to a `useFieldArray`, and removing an existing row just drops it from the array. Reordering is drag-and-drop via `@dnd-kit` (a new dependency -- nothing in this frontend did drag-and-drop before), keyed off `useFieldArray`'s own generated `field.id` rather than a redundant custom key.
 
+### A Live FileList, Not a Snapshot
+
+Shipped, then broken on first real use: picking a file in step 2 silently did nothing -- no thumbnail, no new row, no console error, no network request. No error and no request together were the useful clue -- they ruled out a thrown exception and a stale-dependency-cache issue (the boring first guess, since `@dnd-kit` had just been installed mid-session), narrowing it down to "the file gets picked, but the field array never actually grows."
+
+The cause was in the picker's own reset logic. `handleFilesSelected` read `event.target.files` into a `const`, then immediately reset `event.target.value = ''` -- needed so picking the exact same file twice in a row still fires a second `change` event. The original code's own comment claimed capturing the reference first made that reset safe. It doesn't: `event.target.files` is a *live* `FileList` tied to the input element, not a snapshot, and resetting `.value` clears that same object in place rather than replacing it with a fresh one.
+
+Diagnosed with temporary `console.log`s rather than guessed at a third time, and the two logged values told the whole story on the first try: `fileCount: files?.length` (a primitive, evaluated the instant the log ran) read `1`, while that same log's `files: FileList {length: 0}` (an object reference, which Chrome's console only renders lazily once expanded -- by which point `.value` had already been reset) read `0`. Same object, two different moments, one showing what was true and one showing what was left.
+
+Fix: `Array.from(event.target.files)` into a real, independent array *before* touching `.value`, so the reset can't reach back and empty out what's already been read:
+
+```typescript
+const selectedFiles = event.target.files ? Array.from(event.target.files) : []
+event.target.value = ''
+```
+
 ### Frontend: Building the Multipart Request
 
 `formValuesToRequest` now returns `{ request, newImageFiles }` instead of just a request body -- it walks the staged `images` array once, turning a row with a `File` into `{newImageIndex, altText}` (pushing the file onto `newImageFiles`) and a row without one into `{id, altText}`. `api.ts`'s `createEvent`/`updateEvent` build a `FormData` from that pair:
@@ -10149,6 +10164,7 @@ Confirmed working live: creating and editing an event with images, and seeing th
 - Local filesystem storage (`app.event-images.storage-dir`), matching this project's local-dev-only scope
 - Two raw-bytes GET endpoints mirror the existing `EventController`/`PublishedEventController` organizer/public split; no `SecurityConfig` changes needed
 - `EventForm` became a two-step form (core fields, then an image gallery), with `@dnd-kit` powering drag-to-reorder; nothing about images hits the server until the form's real submit button is clicked
+- Caught and fixed a real bug on first live use: `event.target.files` is a live `FileList`, not a snapshot -- resetting `event.target.value` (needed so re-picking the same file still fires a change event) was silently clearing it before the code ever read its length. Diagnosed with temporary logging, not guessed; fixed by snapshotting to a real array (`Array.from`) before the reset
 - Confirmed working live end-to-end: creating/editing an event with images, and seeing them on both the `/browse` card grid and the event detail page
 
 ## Project Status
@@ -10189,7 +10205,7 @@ Event images (also originally out of scope, flagged while resolving issue #17) a
 - A real navigation gap was found and fixed by actually using the app as an organizer: no page linked back to `/dashboard`/`/venues`/`/events` once you'd left for `/browse`. Role-aware links now live in the global `Header.tsx`; `_organizer.tsx`'s now-redundant layout-local nav was removed
 - The `/browse` "Use my location" control and the `VenueForm` map picker are both confirmed working live in the browser. A user-reported "wrong location" result along the way was diagnosed down to the browser's own network-based geolocation returning an inaccurate fix (confirmed by testing the exact reported coordinates directly against the database), not a bug in the filter itself
 - Attendee self-cancel (`/tickets/{id}`), organizer cancel (`/sales`, `/events/{id}/tickets`), and the event-cancellation cascade (cancelling a whole event and watching its tickets flip to CANCELLED too) are all confirmed working live in the browser. The staff scan screen's new CANCELLED outcome hasn't been triggered against a real cancelled ticket yet
-- Event images (see "Event Images") -- creating/editing an event with images, drag-to-reorder, and both the `/browse` card grid and the event detail page rendering them are all confirmed working live in the browser
+- Event images (see "Event Images") -- creating/editing an event with images, drag-to-reorder, and both the `/browse` card grid and the event detail page rendering them are all confirmed working live in the browser. A real bug surfaced by that testing (picking a file did nothing at all -- see "A Live FileList, Not a Snapshot") is fixed and re-confirmed, not just assumed working from the build/type/lint checks
 
 ### `ticket-service` loose ends
 

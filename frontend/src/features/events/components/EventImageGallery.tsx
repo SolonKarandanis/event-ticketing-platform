@@ -56,20 +56,24 @@ export function EventImageGallery({
   const remainingSlots = MAX_EVENT_IMAGES - images.fields.length
 
   function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files
+    // event.target.files is a *live* FileList tied to the input element, not a
+    // snapshot -- resetting event.target.value below clears this same object in
+    // place. Array.from(...) copies the File references into a real, independent
+    // array first, so the reset can't wipe out what we already read.
+    const selectedFiles = event.target.files ? Array.from(event.target.files) : []
     // Reset immediately, not just on the happy path -- without this, picking the
     // exact same file twice in a row wouldn't fire a second change event at all.
     event.target.value = ''
-    if (!files || files.length === 0) {
+    if (selectedFiles.length === 0) {
       return
     }
 
-    const filesToAdd = Array.from(files).slice(0, remainingSlots)
+    const filesToAdd = selectedFiles.slice(0, remainingSlots)
     filesToAdd.forEach((file) => {
       images.append({ file, altText: '' })
     })
 
-    if (files.length > filesToAdd.length) {
+    if (selectedFiles.length > filesToAdd.length) {
       toast.error(
         `Only ${remainingSlots} more image(s) can be added (max ${MAX_EVENT_IMAGES}).`,
       )
