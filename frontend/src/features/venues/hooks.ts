@@ -2,6 +2,7 @@
 // success/failure toasts all live here once, not duplicated at call sites. See issue #7.
 import {
   infiniteQueryOptions,
+  keepPreviousData,
   queryOptions,
   useInfiniteQuery,
   useMutation,
@@ -55,8 +56,18 @@ export function venueSearchInfiniteQueryOptions(searchTerm: string) {
   })
 }
 
+// placeholderData: keepPreviousData -- so each new keystroke's search term swaps the
+// query key without VenueCombobox's result list ever going blank first: the previous
+// term's pages stay put (isPlaceholderData/isFetching true) until the new ones land,
+// instead of isPending flipping true again on every debounced key change. A
+// useSuspenseInfiniteQuery + useDeferredValue version reaches the same
+// stale-while-revalidate UX but was rejected -- not worth introducing Suspense and
+// ErrorBoundary to a codebase that has neither anywhere else yet.
 export function useInfiniteVenues(searchTerm: string) {
-  return useInfiniteQuery(venueSearchInfiniteQueryOptions(searchTerm))
+  return useInfiniteQuery({
+    ...venueSearchInfiniteQueryOptions(searchTerm),
+    placeholderData: keepPreviousData,
+  })
 }
 
 export function useVenue(venueId: string) {

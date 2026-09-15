@@ -27,14 +27,21 @@ interface VenueComboboxProps {
 // own history before it had real pagination). shouldFilter={false} on Command turns off
 // cmdk's own client-side filtering: filtering is the server's job here, driven by the
 // debounced search term in the query key.
+//
+// isStale dims the list instead of blanking it while a new debounced term is in flight
+// -- useInfiniteVenues' placeholderData: keepPreviousData keeps the previous term's
+// results mounted (isFetching true, isPending false) rather than emptying the list on
+// every keystroke. isPending itself only fires once, on this combobox's very first
+// open, before there's any previous data to fall back on.
 export function VenueCombobox({ value, onChange, disabled }: VenueComboboxProps) {
     const [open, setOpen] = useState(false)
     const [search, setSearch] = useState('')
     const debouncedSearch = useDebouncedValue(search, 300)
 
-    const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending } =
+    const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isPending, isFetching } =
         useInfiniteVenues(debouncedSearch)
     const venues = data?.pages.flatMap((page) => page.content) ?? []
+    const isStale = isFetching && !isFetchingNextPage
 
     // The selected venue may not be in the current (possibly filtered) result set at
     // all, so its display name is fetched independently by id.
@@ -74,7 +81,12 @@ export function VenueCombobox({ value, onChange, disabled }: VenueComboboxProps)
                         {isPending ? (
                             <div className="p-4 text-sm text-(--sea-ink-soft)">Loading...</div>
                         ) : (
-                            <>
+                            <div
+                                className={cn(
+                                    'transition-opacity duration-150',
+                                    isStale && 'opacity-50',
+                                )}
+                            >
                                 <CommandEmpty>
                                     {venues.length === 0 && !search ? (
                                         <span>
@@ -117,7 +129,7 @@ export function VenueCombobox({ value, onChange, disabled }: VenueComboboxProps)
                                         Loading more...
                                     </div>
                                 ) : null}
-                            </>
+                            </div>
                         )}
                     </CommandList>
                 </Command>
