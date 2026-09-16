@@ -1,0 +1,48 @@
+name: analytics-service CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'analytics-service/**'
+      - '.github/workflows/analytics-service-ci.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'analytics-service/**'
+      - '.github/workflows/analytics-service-ci.yml'
+
+defaults:
+  run:
+    working-directory: analytics-service
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: analytics-service/package-lock.json
+
+      - run: npm ci
+
+      # npm run lint bakes in --fix (Nest's own scaffold default) -- fine for local dev,
+      # but --fix in CI would auto-correct fixable issues in the ephemeral checkout and
+      # still exit 0 without that fix ever reaching the repo, silently defeating the
+      # gate. Calling eslint directly here, without --fix, makes this a real check.
+      - name: Lint
+        run: npx eslint "{src,apps,libs,test}/**/*.ts"
+
+      - name: Build
+        run: npm run build
+
+      # TicketSalesService's spec pulls a real Postgres via Testcontainers -- ubuntu
+      # runners have Docker running by default, same as ticket-service's DataJpaTest
+      # slices, so no extra service/setup is needed for that.
+      - name: Test
+        run: npm test

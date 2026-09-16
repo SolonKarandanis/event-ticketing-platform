@@ -44,7 +44,13 @@ export class TicketSalesService {
   async getSummaryForEvent(eventId: string, organizerId: string) {
     const [summary] = await this.db
       .select({
-        ticketsSold: sql<number>`count(*)`,
+        // count(*) alone comes back as Postgres bigint, which postgres.js
+        // deserializes as a *string* to avoid silently losing precision above
+        // Number.MAX_SAFE_INTEGER -- sql<number>() is a compile-time-only type
+        // assertion, it doesn't cast anything at runtime. ::int makes Postgres do the
+        // narrowing itself, so the driver hands back a real JS number (a ticket count
+        // safely fits in 4 bytes).
+        ticketsSold: sql<number>`count(*)::int`,
         revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
       })
       .from(ticketSales)
