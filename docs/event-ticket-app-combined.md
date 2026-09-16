@@ -9819,6 +9819,88 @@ One accessibility piece the bar chart didn't need: a table-view toggle. The bar 
 - Issue #1's "richer analytics endpoints" item is now fully resolved -- both halves (rollup, sales-over-time) are built
 - Confirmed live, logged in as a real organizer: the KPI row, the sales-over-time line chart, and its "View as table" toggle all render correctly on `/dashboard`. Not yet independently confirmed: the crosshair/tooltip hover interaction, and whether the numbers themselves match expected sales data
 
+## OpenAPI Specs for Both Backend Services
+
+Another issue #1 out-of-scope item, picked up after the map closed -- but only half of it. The item bundled two things together: an OpenAPI spec for each backend service, and a generated frontend API client built from those specs. Only the specs got built here; generating a client to replace the hand-written `api.ts` files per feature is a much bigger, more invasive change (it would touch nearly every feature folder, and this codebase has already hit real, subtle FormData/multipart behavior differences during testing -- see "Automated Testing" -- that a generated client's request handling isn't guaranteed to reproduce), so it's left as its own separate, still-open decision rather than folded into this pass.
+
+### `ticket-service`: springdoc, Not the 2.x Line
+
+Spring Boot 4 is recent enough that the obvious dependency choice needed checking rather than assuming: springdoc-openapi's major versions track Spring Boot's own, so the 2.x line (everyone's default muscle memory) only supports Boot 3 -- this project needed the 3.x line, `springdoc-openapi-starter-webmvc-ui:3.1.1`, confirmed against Boot 4 compatibility before adding it rather than guessing and finding out from a failed build.
+
+```gradle
+implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+```
+
+Springdoc's autoconfiguration registers `/v3/api-docs` and `/swagger-ui/**` on its own -- no controller changes needed for a baseline spec, since it reflects the existing Spring MVC annotations already on every controller. Both paths needed a new `SecurityConfig` rule, or they'd fall through to the existing `anyRequest().authenticated()` catch-all:
+
+```java
+.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+```
+
+Same reasoning as the CORS origin already hardcoded to `http://localhost:3000` elsewhere in this same class: local-dev-only scope, so the docs are left open rather than gated behind a role.
+
+#### Verified Over Real HTTP, Not Just a Context-Loads Check
+
+`TicketServiceApplicationTests`'s existing `@SpringBootTest` uses the default `webEnvironment = MOCK` -- it proves the Spring context (including springdoc's autoconfigured beans) constructs without error, but never binds a real port, so it can't prove the actual HTTP response is right. A new `OpenApiDocsIntegrationTest` uses `webEnvironment = RANDOM_PORT` instead, hitting both endpoints with the JDK's own `java.net.http.HttpClient`:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class OpenApiDocsIntegrationTest {
+    @LocalServerPort
+    private int port;
+    // GET /ticket-service/v3/api-docs -> 200, body contains "openapi" and a known
+    // path (/api/v1/events)
+    // GET /ticket-service/swagger-ui/index.html -> 200
+}
+```
+
+Plain `HttpClient` rather than `TestRestTemplate` -- this project has no generic `spring-boot-starter-test` bundle (every other test dependency is one of Boot 4's split per-feature test starters, confirmed by grepping `build.gradle`), and pulling in whichever split module owns `TestRestTemplate` wasn't worth it for one test class when the JDK's own client already does the job.
+
+Writing this test caught a real, if mundane, thing worth recording: an actual `ticket-service` instance was already running locally (from live-testing the analytics dashboard earlier) on the same port 4005 this test's first draft tried to `bootRun` manually against. `RANDOM_PORT` sidesteps the whole class of problem -- a test that needs a specific port can always collide with whatever's already running on a developer's machine.
+
+### `analytics-service`: `@nestjs/swagger`, Pinned Below Its Latest
+
+`@nestjs/swagger`'s newest major (12.x) requires `@nestjs/common@^12`, but this project is on Nest 11 -- installing the bare package resolves to 12.x and fails immediately on a peer dependency conflict. Checked the actual peer requirements before picking a version rather than reaching for `--legacy-peer-deps` to paper over a real mismatch: `@nestjs/swagger@11.4.7` peers on `@nestjs/common@^11.0.1`, matching exactly.
+
+```bash
+npm install @nestjs/swagger@11.4.7
+```
+
+The setup itself is a small, separate module, `src/swagger.ts`, rather than being inlined into `main.ts`:
+
+```typescript
+export function setupSwagger(app: INestApplication): void {
+  const document = SwaggerModule.createDocument(app, new DocumentBuilder()
+    .setTitle('analytics-service')
+    .setDescription('Read-only ticket sales reporting API')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build());
+  SwaggerModule.setup('api-docs', app, document);
+}
+```
+
+The reason it's a separate function: so a test can call the *exact* setup `main.ts` runs at boot, instead of a copy that could silently drift out of sync with what's actually served. `addBearerAuth()` adds an "Authorize" button in the UI -- paste in a real Keycloak access token and the `RolesGuard`-protected routes become directly exercisable from the docs, no separate curl/Postman round-trip needed. `nest-cli.json` also picked up the `@nestjs/swagger` compiler plugin (`"plugins": ["@nestjs/swagger"]`), which infers request/response shapes from the existing TypeScript types at build time -- no `@ApiProperty()`-decorated DTO classes needed, which matters here since none of this service's DTOs are classes to begin with (they're plain interfaces and Drizzle-inferred types).
+
+#### A Real Dead End: Booting the Full `AppModule` in a Test
+
+The first version of the integration test imported the real `AppModule` into a `Test.createTestingModule`, on the theory that verifying the real document meant booting the real app. It hung indefinitely -- Jest never even printed its own startup banner. The actual cause: `AppModule` also constructs `RabbitMqConsumerService` (a real `amqp-connection-manager` connection attempt against whatever's at `RABBITMQ_URL`) and the Drizzle/Postgres provider, and `SwaggerModule.createDocument()` reads neither of them -- it only introspects route and DTO metadata via reflection. Rebuilt on a minimal test module instead, with just the two controllers and a stubbed `TicketSalesService`:
+
+```typescript
+const moduleRef = await Test.createTestingModule({
+  controllers: [EventAnalyticsController, OrganizerAnalyticsController],
+  providers: [{ provide: TicketSalesService, useValue: { /* stubbed methods */ } }],
+}).compile();
+```
+
+`AuthGuard('jwt')`/`RolesGuard` on both controllers never needed `PassportModule` or a real `KeycloakJwtStrategy` in this minimal module either: Swagger's own `/api-docs`/`/api-docs-json` routes are mounted directly on the underlying HTTP adapter, bypassing Nest's guarded routes entirely, so nothing in this test ever triggers guard evaluation. Verified with `supertest` against the real `INestApplication` instance: `/api-docs-json` returns 200 with `openapi` set and all three known paths present (`/analytics/organizer/summary`, `/analytics/organizer/sales-over-time`, `/analytics/events/{eventId}/summary`); `/api-docs` returns 200 for the UI page itself.
+
+#### Summary
+
+- `ticket-service`: added `springdoc-openapi-starter-webmvc-ui:3.1.1` (the Boot-4-compatible major), permitted `/v3/api-docs/**` and `/swagger-ui/**` in `SecurityConfig`, and added `OpenApiDocsIntegrationTest` (`RANDOM_PORT`, real HTTP, not just a context-loads check)
+- `analytics-service`: added `@nestjs/swagger@11.4.7` (pinned below its Nest-12-only latest), extracted `setupSwagger()` into its own module so a test exercises the exact real setup, enabled the swagger compiler plugin for type inference without decorator-based DTO classes, and added `swagger.spec.ts` against a minimal test module (not the full `AppModule`, which pulls in a real RabbitMQ connection attempt for no reason)
+- Generated frontend API client remains the one still-open half of issue #1's OpenAPI item -- the hand-written `api.ts` files are unchanged
+
 ## Backend: PostGIS Proximity Search
 
 "PostGIS / events near me" had sat in the wayfinder map's Out of scope list since planning, flagged specifically as cheap to add later because `Venue` already stores plain `latitude`/`longitude`. Picking it up meant finding out whether "cheap" actually held up against this project's real Postgres instance, not just the abstract idea of it.
@@ -10337,13 +10419,15 @@ Automated testing (also originally out of scope) is now built too, on both sides
 - Discovered, not fixed: hitting a genuinely nonexistent route (like the now-removed `GET /api/v1/published-events`) returns a generic `500` (`{"error":"An unexpected error occurred"}`) instead of a proper `404` -- `GlobalExceptionHandler` catches `NoResourceFoundException` the same as any other unhandled exception. Pre-existing for any mistyped URL on this API, not introduced by this change
 - Ticket cancellation (see "Ticket Cancellation & Refund") added a new Liquibase changeset (`004-add-ticket-cancellation.xml`, `15-add-ticket-cancellation`) and four new endpoints across `TicketController`/`EventController` -- purely additive; the only existing behavior it changes is the sold-out check and the `ticketsSold` figure now excluding cancelled tickets. Both direct cancel endpoints and `EventServiceImpl#cancelEvent`'s cascade onto its own tickets are confirmed working live
 - Event images (see "Event Images") added a new Liquibase changeset (`005-add-event-images.xml`, `16-add-event-images`), a new `thumbnailator` dependency, and changed `createEvent`/`updateEvent` from JSON to multipart requests -- the one existing-behavior change of consequence, since every other client of those two endpoints needs to send multipart now too. Confirmed working live end-to-end
+- OpenAPI docs (see "OpenAPI Specs for Both Backend Services") added `springdoc-openapi-starter-webmvc-ui:3.1.1`, two new `permitAll` routes in `SecurityConfig` (`/v3/api-docs/**`, `/swagger-ui/**`), and a `RANDOM_PORT` integration test hitting both over real HTTP -- purely additive, no existing endpoint's behavior changed
 
 ### `analytics-service` loose ends
 
 - A message has never actually been watched flowing publish → consume → DB row end-to-end -- the consumer's setup (exchange/queue/binding) is confirmed via the RabbitMQ management API, but a live message hasn't been traced through `recordSale` yet; this is expected to get exercised naturally once real purchases are flowing through `ticket-service`
 - The reporting endpoints are now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard" and "Organizer-Wide Analytics: Rollup and Sales-Over-Time"). The organizer-wide rollup and sales-over-time chart are now confirmed live: logged in as a real organizer, the KPI row, the line chart, and its "View as table" toggle all render correctly. Not yet independently confirmed: the crosshair/tooltip hover interaction specifically, and whether the displayed numbers match expected sales data -- rendering was verified, not those two behaviors. The original per-event summary chart is still only confirmed via Testcontainers/unit tests plus a `401` on an unauthenticated/bad-token request, not by seeing it live.
 - Ticket cancellation (see "Ticket Cancellation & Refund") added a second `ticket.cancelled` binding to the existing queue and a nullable `cancelled_at` column on `ticket_sales` (migration `0002_lean_black_tarantula`); like the original `ticket.purchased` flow, a cancellation hasn't been watched flowing publish -> consume -> DB row end-to-end yet either
-- No automated tests
+- Real test coverage now exists (see "Automated Testing"): Jest specs for `TicketSalesService` (Testcontainers Postgres, not mocked), `RolesGuard`, `KeycloakJwtStrategy`, both analytics controllers, `RabbitMqConsumerService`'s routing/ack/nack logic, and (see "OpenAPI Specs for Both Backend Services") the generated Swagger document itself -- 31 tests total. Not yet wired into this project's CI workflows the way `ticket-service`/`frontend` are
+- OpenAPI docs (see "OpenAPI Specs for Both Backend Services") added `@nestjs/swagger@11.4.7`, served at `/api-docs`/`/api-docs-json` with no auth gate of its own (matching `ticket-service`'s same local-dev-only reasoning) -- purely additive
 
 ### Explicitly out of scope, not oversights
 
@@ -10351,6 +10435,5 @@ These are called out directly in the relevant lessons as deliberate simplificati
 
 - Dead-lettering failed RabbitMQ messages (currently dropped with a log line -- see "Wire Up the Consumer")
 - The transactional outbox pattern, for the narrow crash-between-commit-and-publish window (see "Two Kinds of Event, Not One")
-- Additional reporting endpoints beyond the one summary endpoint -- sales-over-time, organizer-level rollups (see "Expose the Reporting API")
 - A `notifications-service` third consumer on the `ticket-platform.events` exchange
 - Any way to browse a published event whose date has already passed -- every date filter on `/browse` (including the default) is upcoming-relative-to-now by design, not an oversight in the filter UI
