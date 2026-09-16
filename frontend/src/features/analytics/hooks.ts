@@ -1,6 +1,10 @@
 // Named React Query hooks wrapping api.ts -- see issue #8.
 import { queryOptions, useQueries, useQuery } from '@tanstack/react-query'
-import { getEventAnalyticsSummary } from './api'
+import {
+  getEventAnalyticsSummary,
+  getOrganizerAnalyticsSummary,
+  getSalesOverTime,
+} from './api'
 
 const analyticsKey = ['analytics'] as const
 
@@ -27,6 +31,32 @@ export function useEventAnalyticsSummary(eventId: string) {
 // them all in a single call.
 export function useEventAnalyticsSummaries(eventIds: string[]) {
   return useQueries({
-    queries: eventIds.map((eventId) => eventAnalyticsSummaryQueryOptions(eventId)),
+    queries: eventIds.map((eventId) =>
+      eventAnalyticsSummaryQueryOptions(eventId),
+    ),
   })
+}
+
+// Organizer-wide rollup -- one call, independent of how many events exist (unlike
+// useEventAnalyticsSummaries' N-per-event fan-out above).
+export function organizerAnalyticsSummaryQueryOptions() {
+  return queryOptions({
+    queryKey: [...analyticsKey, 'organizer', 'summary'],
+    queryFn: getOrganizerAnalyticsSummary,
+  })
+}
+
+export function useOrganizerAnalyticsSummary() {
+  return useQuery(organizerAnalyticsSummaryQueryOptions())
+}
+
+export function salesOverTimeQueryOptions() {
+  return queryOptions({
+    queryKey: [...analyticsKey, 'organizer', 'sales-over-time'],
+    queryFn: getSalesOverTime,
+  })
+}
+
+export function useSalesOverTime() {
+  return useQuery(salesOverTimeQueryOptions())
 }

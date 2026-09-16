@@ -1,6 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Skeleton } from '#/components/ui/skeleton'
-import { eventAnalyticsSummaryQueryOptions, useEventAnalyticsSummaries } from '#/features/analytics/hooks'
+import { SalesOverTimeChart } from '#/features/analytics/components/SalesOverTimeChart'
+import {
+  eventAnalyticsSummaryQueryOptions,
+  organizerAnalyticsSummaryQueryOptions,
+  salesOverTimeQueryOptions,
+  useEventAnalyticsSummaries,
+  useOrganizerAnalyticsSummary,
+  useSalesOverTime,
+} from '#/features/analytics/hooks'
 import { eventsQueryOptions, useEvents } from '#/features/events/hooks'
 import { useMinimumDuration } from '#/hooks/use-minimum-duration'
 
@@ -23,15 +31,25 @@ export const Route = createFileRoute('/_organizer/dashboard')({
       .ensureQueryData(eventsQueryOptions({ page: 0, size: EVENTS_PAGE_SIZE }))
       .catch(() => undefined)
 
-    await Promise.all(
-      (eventsPage?.content ?? []).map((event) =>
+    await Promise.all([
+      ...(eventsPage?.content ?? []).map((event) =>
         context.queryClient
           .ensureQueryData(eventAnalyticsSummaryQueryOptions(event.id))
           .catch(() => {
             // Handled by useEventAnalyticsSummaries()'s per-query isError below.
           }),
       ),
-    )
+      context.queryClient
+        .ensureQueryData(organizerAnalyticsSummaryQueryOptions())
+        .catch(() => {
+          // Handled by useOrganizerAnalyticsSummary()'s isError below.
+        }),
+      context.queryClient
+        .ensureQueryData(salesOverTimeQueryOptions())
+        .catch(() => {
+          // Handled by useSalesOverTime()'s isError below.
+        }),
+    ])
   },
   component: OrganizerDashboard,
 })
@@ -57,11 +75,30 @@ function OrganizerDashboard() {
   const isSummariesPending = summaryQueries.some((query) => query.isPending)
   const isSummariesError = summaryQueries.some((query) => query.isError)
 
+  const {
+    data: organizerSummary,
+    isPending: isOrganizerSummaryPending,
+    isError: isOrganizerSummaryError,
+  } = useOrganizerAnalyticsSummary()
+
+  const {
+    data: salesOverTime,
+    isPending: isSalesOverTimePending,
+    isError: isSalesOverTimeError,
+  } = useSalesOverTime()
+
   const showSkeleton = useMinimumDuration(
-    isEventsPending || isSummariesPending,
+    isEventsPending ||
+      isSummariesPending ||
+      isOrganizerSummaryPending ||
+      isSalesOverTimePending,
     400,
   )
-  const isError = isEventsError || isSummariesError
+  const isError =
+    isEventsError ||
+    isSummariesError ||
+    isOrganizerSummaryError ||
+    isSalesOverTimeError
 
   const rows: EventRevenueRow[] = events
     .map((event, index) => ({
@@ -85,20 +122,34 @@ function OrganizerDashboard() {
       </h1>
 
       {showSkeleton && (
-        <div className="island-shell space-y-4 rounded-xl p-6" role="status">
-          <span className="sr-only">Loading revenue by event...</span>
-          {Array.from({ length: 5 }).map((_, index) => (
-            // Index as key is fine here: a fixed-count list of placeholder rows with
-            // no real identity, never reordered.
-            <div
-              key={index}
-              className="flex items-center gap-3"
-              aria-hidden="true"
-            >
-              <Skeleton className="h-4 w-32 shrink-0" />
-              <Skeleton className="h-5 flex-1" />
+        <div className="space-y-6" role="status">
+          <span className="sr-only">Loading revenue data...</span>
+          <div className="grid grid-cols-2 gap-4" aria-hidden="true">
+            <div className="island-shell space-y-2 rounded-xl p-6">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-9 w-32" />
             </div>
-          ))}
+            <div className="island-shell space-y-2 rounded-xl p-6">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-9 w-32" />
+            </div>
+          </div>
+          <div className="island-shell rounded-xl p-6" aria-hidden="true">
+            <Skeleton className="h-48 w-full" />
+          </div>
+          <div
+            className="island-shell space-y-4 rounded-xl p-6"
+            aria-hidden="true"
+          >
+            {Array.from({ length: 5 }).map((_, index) => (
+              // Index as key is fine here: a fixed-count list of placeholder rows
+              // with no real identity, never reordered.
+              <div key={index} className="flex items-center gap-3">
+                <Skeleton className="h-4 w-32 shrink-0" />
+                <Skeleton className="h-5 flex-1" />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -115,33 +166,57 @@ function OrganizerDashboard() {
       )}
 
       {!showSkeleton && !isError && rows.length > 0 && (
-        <div className="island-shell rounded-xl p-6">
-          <h2 className="mb-6 text-sm font-semibold text-(--sea-ink)">
-            Revenue by event
-          </h2>
-          <div className="space-y-3">
-            {rows.map((row) => {
-              const widthPercent = (row.revenue / maxRevenue) * 100
-              return (
-                <div key={row.id} className="group flex items-center gap-3">
-                  <span
-                    className="w-32 shrink-0 truncate text-sm text-(--sea-ink)"
-                    title={row.name}
-                  >
-                    {row.name}
-                  </span>
-                  <div className="h-5 flex-1 rounded-sm bg-(--line)">
-                    <div
-                      className="h-5 rounded-r-lg bg-(--lagoon-deep) transition-[filter] group-hover:brightness-110"
-                      style={{ width: `${widthPercent}%` }}
-                    />
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="island-shell rounded-xl p-6">
+              <p className="text-sm text-(--sea-ink-soft)">Total revenue</p>
+              <p className="text-3xl font-semibold text-(--sea-ink)">
+                ${(organizerSummary?.revenue ?? 0).toFixed(2)}
+              </p>
+            </div>
+            <div className="island-shell rounded-xl p-6">
+              <p className="text-sm text-(--sea-ink-soft)">Tickets sold</p>
+              <p className="text-3xl font-semibold text-(--sea-ink)">
+                {organizerSummary?.ticketsSold ?? 0}
+              </p>
+            </div>
+          </div>
+
+          <div className="island-shell rounded-xl p-6">
+            <h2 className="mb-6 text-sm font-semibold text-(--sea-ink)">
+              Revenue, last 30 days
+            </h2>
+            <SalesOverTimeChart data={salesOverTime ?? []} />
+          </div>
+
+          <div className="island-shell rounded-xl p-6">
+            <h2 className="mb-6 text-sm font-semibold text-(--sea-ink)">
+              Revenue by event
+            </h2>
+            <div className="space-y-3">
+              {rows.map((row) => {
+                const widthPercent = (row.revenue / maxRevenue) * 100
+                return (
+                  <div key={row.id} className="group flex items-center gap-3">
+                    <span
+                      className="w-32 shrink-0 truncate text-sm text-(--sea-ink)"
+                      title={row.name}
+                    >
+                      {row.name}
+                    </span>
+                    <div className="h-5 flex-1 rounded-sm bg-(--line)">
+                      <div
+                        className="h-5 rounded-r-lg bg-(--lagoon-deep) transition-[filter] group-hover:brightness-110"
+                        style={{ width: `${widthPercent}%` }}
+                      />
+                    </div>
+                    <span className="w-36 shrink-0 text-right text-sm tabular-nums text-(--sea-ink-soft)">
+                      ${row.revenue.toFixed(2)} · {row.ticketsSold} sold
+                    </span>
                   </div>
-                  <span className="w-36 shrink-0 text-right text-sm tabular-nums text-(--sea-ink-soft)">
-                    ${row.revenue.toFixed(2)} · {row.ticketsSold} sold
-                  </span>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

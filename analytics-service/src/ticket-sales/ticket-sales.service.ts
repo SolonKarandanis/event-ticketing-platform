@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { DRIZZLE } from '../db/drizzle.provider';
 import { ticketSales } from '../db/schema';
@@ -63,5 +63,73 @@ export class TicketSalesService {
       );
 
     return { eventId, ...summary };
+  }
+
+  // Organizer-wide rollup -- same shape as getSummaryForEvent, just without the eventId
+  // filter, so it sums across every event the organizer has ever sold a ticket for.
+  async getSummaryForOrganizer(organizerId: string) {
+    const [summary] = await this.db
+      .select({
+        ticketsSold: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+      })
+      .from(ticketSales)
+      .where(
+        and(
+          eq(ticketSales.organizerId, organizerId),
+          isNull(ticketSales.cancelledAt),
+        ),
+      );
+
+    return summary;
+  }
+
+  // Daily revenue/tickets for the last `days` calendar days (UTC), organizer-wide,
+  // cancelled sales excluded -- same filtering as the two summaries above. Returns one
+  // point per day in the window, oldest first, zero-filled for days with no sales: a
+  // sparse query result (only days that actually have rows) would otherwise leave gaps
+  // in the trend line instead of an honest flat stretch at zero.
+  async getSalesOverTime(organizerId: string, days = 30) {
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (days - 1));
+
+    // AT TIME ZONE 'UTC' on a timestamptz column converts it to the UTC wall-clock
+    // reading before truncating to a day -- bucketing has to be timezone-fixed, or
+    // which calendar day a sale near midnight lands in would depend on the database
+    // server's local timezone setting instead of a value this service controls.
+    const dateExpr = sql<string>`to_char(${ticketSales.purchasedAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+
+    const rows = await this.db
+      .select({
+        date: dateExpr,
+        ticketsSold: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+      })
+      .from(ticketSales)
+      .where(
+        and(
+          eq(ticketSales.organizerId, organizerId),
+          isNull(ticketSales.cancelledAt),
+          gte(ticketSales.purchasedAt, since),
+        ),
+      )
+      .groupBy(dateExpr)
+      .orderBy(dateExpr);
+
+    const byDate = new Map(rows.map((row) => [row.date, row]));
+    const series: { date: string; ticketsSold: number; revenue: number }[] = [];
+    for (let i = 0; i < days; i++) {
+      const day = new Date(since);
+      day.setUTCDate(day.getUTCDate() + i);
+      const date = day.toISOString().slice(0, 10);
+      const found = byDate.get(date);
+      series.push({
+        date,
+        ticketsSold: found?.ticketsSold ?? 0,
+        revenue: found?.revenue ?? 0,
+      });
+    }
+    return series;
   }
 }

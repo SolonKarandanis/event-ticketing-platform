@@ -4,12 +4,13 @@ import { PassportModule } from '@nestjs/passport';
 import { drizzleProvider } from './db/drizzle.provider';
 import { TicketSalesService } from './ticket-sales/ticket-sales.service';
 import { EventAnalyticsController } from './ticket-sales/event-analytics.controller';
+import { OrganizerAnalyticsController } from './ticket-sales/organizer-analytics.controller';
 import { RabbitMqConsumerService } from './rabbitmq/rabbitmq-consumer.service';
 import { KeycloakJwtStrategy } from './auth/keycloak-jwt.strategy';
 
 @Module({
   imports: [ConfigModule.forRoot(), PassportModule],
-  controllers: [EventAnalyticsController],
+  controllers: [EventAnalyticsController, OrganizerAnalyticsController],
   providers: [
     drizzleProvider,
     TicketSalesService,

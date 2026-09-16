@@ -9703,6 +9703,121 @@ Built as plain divs sized by percentage width, not a charting library -- `rechar
 - Bars follow the skill's fixed anatomy (≤24px, square baseline, 4px rounded tip); every bar direct-labels both revenue and tickets sold, so the chart skips a numeric axis entirely and needs no legend
 - Built with plain HTML/CSS, not a charting library
 
+## Organizer-Wide Analytics: Rollup and Sales-Over-Time
+
+Another item from issue #1's Out of scope list, picked up after the map closed: "richer analytics endpoints... beyond the existing per-event summary." Built in two passes -- the organizer-wide rollup first, then sales-over-time once the rollup's scope (which controller, which guard pair) was already settled.
+
+### A Second, Separate Controller
+
+`GET /analytics/organizer/summary` sums `{ ticketsSold, revenue }` across every event the calling organizer has ever sold a ticket for, cancelled sales excluded -- the same filter `getSummaryForEvent` already applies, just without the `eventId` clause:
+
+```typescript
+async getSummaryForOrganizer(organizerId: string) {
+  const [summary] = await this.db
+    .select({
+      ticketsSold: sql<number>`count(*)::int`,
+      revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+    })
+    .from(ticketSales)
+    .where(
+      and(eq(ticketSales.organizerId, organizerId), isNull(ticketSales.cancelledAt)),
+    );
+
+  return summary;
+}
+```
+
+This lives on the same `TicketSalesService`, but behind a new `OrganizerAnalyticsController` rather than a second route on `EventAnalyticsController`. Nothing about Nest's routing forces that split -- `@Get('summary')` and `@Get(':eventId/summary')` don't collide (different segment counts, matched by path shape rather than declaration order) -- but `EventAnalyticsController` is a class name that promises "scoped to one event," and this endpoint isn't scoped to one; giving it its own controller keeps that promise honest instead of overloading the existing one. Same guard pair either way: `AuthGuard('jwt')`, then `RolesGuard` reading `ROLE_ORGANIZER` off the same JWT claim, with `organizerId` itself coming from `req.user.userId`, never a request param.
+
+### Real Testcontainers Coverage, Not Just the Happy Path
+
+`getSummaryForOrganizer` got the same Testcontainers-backed test treatment as `getSummaryForEvent` (see "Automated Testing" above) rather than a mocked query-builder test: sums across multiple events for one organizer, excludes a cancelled ticket's price and count, excludes another organizer's sales entirely, and returns `{ ticketsSold: 0, revenue: 0 }` -- not `null` -- for an organizer with no sales at all.
+
+### The Dashboard's New KPI Row
+
+Before touching layout or color, this went through the `/dataviz` skill, same as the original per-event bar chart. Two headline numbers with no prior-period comparison data available yet is a **KPI row of plain stat tiles** per the skill's form table ("a handful of headline numbers" -> stat tiles, not a chart) -- no delta, no sparkline, and per the stat-tile mark contract, no hover layer either (that's only required once a tile carries a plot). The values also don't reuse the bar chart's `--lagoon-deep` accent: that hue encodes "this is the revenue series" on the chart, but a tile with no delta/trend has nothing to encode -- the numbers stay in the app's normal ink tokens, the same "text wears text tokens, never the series color" rule the chart itself already follows for its own labels.
+
+```tsx
+<div className="grid grid-cols-2 gap-4">
+  <div className="island-shell rounded-xl p-6">
+    <p className="text-sm text-(--sea-ink-soft)">Total revenue</p>
+    <p className="text-3xl font-semibold text-(--sea-ink)">
+      ${(organizerSummary?.revenue ?? 0).toFixed(2)}
+    </p>
+  </div>
+  <div className="island-shell rounded-xl p-6">
+    <p className="text-sm text-(--sea-ink-soft)">Tickets sold</p>
+    <p className="text-3xl font-semibold text-(--sea-ink)">
+      {organizerSummary?.ticketsSold ?? 0}
+    </p>
+  </div>
+</div>
+```
+
+The KPI row sits above the existing "Revenue by event" chart, sharing its loading/error/empty gating rather than getting its own -- `useOrganizerAnalyticsSummary()`'s `isPending`/`isError` fold into the same `showSkeleton`/`isError` the page already computed from the events list and the per-event summaries, so the dashboard still reads as one cohesive unit rather than three independently-loading widgets. It's also gated behind the same `rows.length > 0` check as the chart -- a brand-new organizer with zero events sees the existing "No events yet" message, not a redundant "$0.00 / 0 sold" tile pair next to it.
+
+Note this is additive, not a replacement: `useEventAnalyticsSummaries`' N-requests-for-N-events pattern backing the per-event chart is untouched. The new endpoint answers "what's my total," not "break it down by event" -- the per-event breakdown still has no bulk endpoint to fetch it in one call.
+
+### Sales-Over-Time: a Fixed 30-Day, Zero-Filled Daily Series
+
+The second half of the "richer analytics" item. Scoped without a round-trip to design: organizer-wide (matches the rollup, and sits naturally on the same dashboard rather than needing a new per-event page), daily buckets (simplest query, most granular for a 30-day window), and a fixed last-30-days range with no picker -- consistent with issue #8's original "chart only, no filter controls" call for this same dashboard.
+
+```typescript
+async getSalesOverTime(organizerId: string, days = 30) {
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (days - 1));
+
+  const dateExpr = sql<string>`to_char(${ticketSales.purchasedAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+
+  const rows = await this.db
+    .select({
+      date: dateExpr,
+      ticketsSold: sql<number>`count(*)::int`,
+      revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+    })
+    .from(ticketSales)
+    .where(
+      and(eq(ticketSales.organizerId, organizerId), isNull(ticketSales.cancelledAt), gte(ticketSales.purchasedAt, since)),
+    )
+    .groupBy(dateExpr)
+    .orderBy(dateExpr);
+
+  // Zero-fill every day in the window -- a sparse query result would otherwise leave
+  // gaps in the trend line instead of an honest flat stretch at zero.
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const series = [];
+  for (let i = 0; i < days; i++) {
+    const day = new Date(since);
+    day.setUTCDate(day.getUTCDate() + i);
+    const date = day.toISOString().slice(0, 10);
+    const found = byDate.get(date);
+    series.push({ date, ticketsSold: found?.ticketsSold ?? 0, revenue: found?.revenue ?? 0 });
+  }
+  return series;
+}
+```
+
+`AT TIME ZONE 'UTC'` on the `timestamptz` column matters here specifically because bucketing is date-based: without it, which calendar day a sale near midnight lands in would depend on the database server's local timezone setting rather than a value this service controls. The zero-filling happens in TypeScript, not SQL (no `generate_series` join) -- the query only returns days that actually have rows, and the service merges that sparse result against a plain loop over the fixed window, matching the codebase's general preference for a readable merge step over a more clever single query.
+
+The endpoint (`GET /analytics/organizer/sales-over-time`, same `OrganizerAnalyticsController`, same guard pair) takes no query parameters -- `getSalesOverTime`'s own `days` argument is a plain method default the controller never wires to the request, so adding a real range picker later is a controller change, not a service one. Testcontainers tests cover the zero-filled default window, same-day summing, cancelled/other-organizer/outside-window exclusion, and a custom `days` value.
+
+#### The Chart: a Hand-Rolled Line, Not a New Library
+
+Went through `/dataviz` again before writing any markup. "Trend over time" maps to a line chart per the skill's form table, colored with the same `--lagoon-deep` accent the bar chart already uses for revenue (one hue, magnitude, no identity to distinguish -- the same reasoning that justified reusing it for the KPI tiles' sibling chart). Unlike the bare stat tiles, a line chart *is* a plot, so the skill's hover requirement applies in full: a crosshair that snaps to the nearest day, a single tooltip showing that day's date/revenue/tickets-sold together, and the same details reachable on keyboard focus (arrow keys move the crosshair) as on hover.
+
+No charting library got pulled in for this -- same call the original bar chart made, just carried further: the line itself is one SVG `<path>` built from the 30 points, the crosshair is a vertical `<line>` plus a `<circle>` marker (2px ring in the surface color, per the skill's spacer rule, so it stays legible crossing the line), and the tooltip is a plain positioned `<div>` that flips to the left of the cursor past the horizontal midpoint so it never runs off the card's edge.
+
+One accessibility piece the bar chart didn't need: a table-view toggle. The bar chart could direct-label every value because there were only as many bars as events; thirty daily points can't all be direct-labeled without turning into overlapping noise, so the tooltip is the only way to read a specific day's numbers *unless* a plain HTML `<table>` (date/revenue/tickets-sold rows) is available behind a "View as table" disclosure -- the skill's own non-negotiable that a tooltip must never be the only way to reach a value.
+
+#### Summary
+
+- Added `TicketSalesService.getSummaryForOrganizer` and a new `OrganizerAnalyticsController` (`GET /analytics/organizer/summary`), same guard pair as `EventAnalyticsController`, kept as a separate controller since this endpoint isn't event-scoped
+- Added `TicketSalesService.getSalesOverTime` (`GET /analytics/organizer/sales-over-time`) -- daily, zero-filled, fixed 30-day window, no query params; the fixed window is a controller-layer choice, not baked into the service's own `days` parameter
+- Real Postgres/Testcontainers tests cover both new methods: the rollup's multi-event sum/cancelled-sale/cross-organizer/zero-sales cases, and the time-series' zero-filled default window, same-day bucketing, cancelled/other-organizer/outside-window exclusion, and a custom `days` value
+- Frontend: `features/analytics/{api,hooks,types}.ts` gained hooks for both endpoints; `/dashboard` gained a two-tile KPI row (Total revenue, Tickets sold) and a new hand-rolled line chart (crosshair + tooltip + keyboard focus + table-view toggle, no charting library), both designed via `/dataviz`, both sharing the page's existing loading/error/empty states rather than introducing their own
+- Issue #1's "richer analytics endpoints" item is now fully resolved -- both halves (rollup, sales-over-time) are built
+
 ## Backend: PostGIS Proximity Search
 
 "PostGIS / events near me" had sat in the wayfinder map's Out of scope list since planning, flagged specifically as cheap to add later because `Venue` already stores plain `latitude`/`longitude`. Picking it up meant finding out whether "cheap" actually held up against this project's real Postgres instance, not just the abstract idea of it.
@@ -10182,7 +10297,7 @@ A snapshot of where the real build stands relative to this document, kept here a
 - **Purchase flow** (attendee, from `/browse/$eventId`) -- a quantity selector and Buy button per ticket type, looping the single-ticket purchase endpoint sequentially with live "Purchasing... (X of Y)" progress, landing on a dedicated Success/Partial confirmation page (`/browse/confirmation`) per issues #4/#5.
 - **My Tickets** (attendee, `/tickets`) -- a real list/detail pair (`_attendee/tickets/{index,$ticketId}.tsx`) replacing the old auth-check placeholder; the detail page renders the purchased ticket's QR code image and reference code, plus (once ticket cancellation shipped -- see "Ticket Cancellation & Refund") an optional-note self-cancel action.
 - **Staff ticket validation** (staff, `/scan`) -- continuous camera QR scanning (`qr-scanner`, Web Worker-based) plus a manual reference-code fallback, both funnelling into one full-screen colored result per issue #9 -- ADMIT/ALREADY-USED/NOT-FOUND, plus a fourth CANCELLED outcome once ticket cancellation shipped.
-- **Reports dashboard** (organizer, `/dashboard`) -- a sorted, single-hue horizontal bar chart of revenue by event, each bar direct-labeled with both revenue and tickets sold, per issue #8.
+- **Reports dashboard** (organizer, `/dashboard`) -- a sorted, single-hue horizontal bar chart of revenue by event, each bar direct-labeled with both revenue and tickets sold, per issue #8, plus (see "Organizer-Wide Analytics: Rollup and Sales-Over-Time") a two-tile KPI row (total revenue, tickets sold) and a hand-rolled 30-day daily revenue line chart with crosshair/tooltip/table-view, both organizer-wide.
 - **Ticket sales & cancellation** (organizer, `/sales` cross-event, `/events/{id}/tickets` per-event) -- paginated tables of every ticket sold, with an inline per-row Cancel action; not part of the original wayfinder map, built afterward alongside the rest of ticket cancellation -- see "Ticket Cancellation & Refund".
 
 Deliberately not built, matching resolved decisions rather than gaps: `i18next` and translation files still aren't installed -- issue #11 explicitly decided i18n "lands alongside whichever feature first needs it," and nothing has needed it yet, so `apiFetch()` forwarding `Accept-Language` remains the only i18n-adjacent code that exists. Everything else called out as out of scope in the wayfinder map (payment gateway integration, OpenAPI codegen, deployment, etc.) remains exactly that -- see "Explicitly out of scope, not oversights" below.
@@ -10225,7 +10340,7 @@ Automated testing (also originally out of scope) is now built too, on both sides
 ### `analytics-service` loose ends
 
 - A message has never actually been watched flowing publish → consume → DB row end-to-end -- the consumer's setup (exchange/queue/binding) is confirmed via the RabbitMQ management API, but a live message hasn't been traced through `recordSale` yet; this is expected to get exercised naturally once real purchases are flowing through `ticket-service`
-- The reporting endpoint is now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard"), but that screen hasn't been confirmed live in a browser yet -- so it's still only been directly confirmed rejecting an unauthenticated/bad-token request (`401`), not returning real summary data end-to-end through the UI
+- The reporting endpoints are now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard" and "Organizer-Wide Analytics: Rollup and Sales-Over-Time"), but that screen hasn't been confirmed live in a browser yet -- so the per-event summary, the organizer-wide rollup, and the sales-over-time series are all only confirmed via their own Testcontainers/unit tests plus a `401` on an unauthenticated/bad-token request, not by seeing real summary or trend data render end-to-end through the UI
 - Ticket cancellation (see "Ticket Cancellation & Refund") added a second `ticket.cancelled` binding to the existing queue and a nullable `cancelled_at` column on `ticket_sales` (migration `0002_lean_black_tarantula`); like the original `ticket.purchased` flow, a cancellation hasn't been watched flowing publish -> consume -> DB row end-to-end yet either
 - No automated tests
 
