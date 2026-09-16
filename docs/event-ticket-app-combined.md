@@ -9817,6 +9817,7 @@ One accessibility piece the bar chart didn't need: a table-view toggle. The bar 
 - Real Postgres/Testcontainers tests cover both new methods: the rollup's multi-event sum/cancelled-sale/cross-organizer/zero-sales cases, and the time-series' zero-filled default window, same-day bucketing, cancelled/other-organizer/outside-window exclusion, and a custom `days` value
 - Frontend: `features/analytics/{api,hooks,types}.ts` gained hooks for both endpoints; `/dashboard` gained a two-tile KPI row (Total revenue, Tickets sold) and a new hand-rolled line chart (crosshair + tooltip + keyboard focus + table-view toggle, no charting library), both designed via `/dataviz`, both sharing the page's existing loading/error/empty states rather than introducing their own
 - Issue #1's "richer analytics endpoints" item is now fully resolved -- both halves (rollup, sales-over-time) are built
+- Confirmed live, logged in as a real organizer: the KPI row, the sales-over-time line chart, and its "View as table" toggle all render correctly on `/dashboard`. Not yet independently confirmed: the crosshair/tooltip hover interaction, and whether the numbers themselves match expected sales data
 
 ## Backend: PostGIS Proximity Search
 
@@ -10340,7 +10341,7 @@ Automated testing (also originally out of scope) is now built too, on both sides
 ### `analytics-service` loose ends
 
 - A message has never actually been watched flowing publish → consume → DB row end-to-end -- the consumer's setup (exchange/queue/binding) is confirmed via the RabbitMQ management API, but a live message hasn't been traced through `recordSale` yet; this is expected to get exercised naturally once real purchases are flowing through `ticket-service`
-- The reporting endpoints are now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard" and "Organizer-Wide Analytics: Rollup and Sales-Over-Time"), but that screen hasn't been confirmed live in a browser yet -- so the per-event summary, the organizer-wide rollup, and the sales-over-time series are all only confirmed via their own Testcontainers/unit tests plus a `401` on an unauthenticated/bad-token request, not by seeing real summary or trend data render end-to-end through the UI
+- The reporting endpoints are now called for real by the frontend's `/dashboard` (see "Frontend Reports Dashboard" and "Organizer-Wide Analytics: Rollup and Sales-Over-Time"). The organizer-wide rollup and sales-over-time chart are now confirmed live: logged in as a real organizer, the KPI row, the line chart, and its "View as table" toggle all render correctly. Not yet independently confirmed: the crosshair/tooltip hover interaction specifically, and whether the displayed numbers match expected sales data -- rendering was verified, not those two behaviors. The original per-event summary chart is still only confirmed via Testcontainers/unit tests plus a `401` on an unauthenticated/bad-token request, not by seeing it live.
 - Ticket cancellation (see "Ticket Cancellation & Refund") added a second `ticket.cancelled` binding to the existing queue and a nullable `cancelled_at` column on `ticket_sales` (migration `0002_lean_black_tarantula`); like the original `ticket.purchased` flow, a cancellation hasn't been watched flowing publish -> consume -> DB row end-to-end yet either
 - No automated tests
 
