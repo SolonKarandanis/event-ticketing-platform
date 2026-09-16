@@ -29,6 +29,11 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(authorize ->
                         authorize
+                                // Local-dev-only scope throughout this project (see the CORS
+                                // rule below, hardcoded to localhost:3000) -- the generated spec
+                                // and its UI are left open rather than gated behind a role, the
+                                // same reasoning that already applies to published-events reads.
+                                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**").permitAll()
                                 // The search endpoint is POST (see PublishedEventController), so the
                                 // GET rule above doesn't cover it -- HTTP method is part of what a

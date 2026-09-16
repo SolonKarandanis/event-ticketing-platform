@@ -32,6 +32,9 @@ dependencies {
     implementation 'org.hibernate.orm:hibernate-spatial'
     implementation 'net.coobird:thumbnailator:0.4.20'
     implementation 'xyz.capybara:clamav-client:2.1.2'
+    // 3.x is the line that targets Spring Boot 4 (springdoc's major versions track
+    // Spring Boot's own) -- the 2.x line only supports Boot 3.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
