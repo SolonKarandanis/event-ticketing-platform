@@ -1,11 +1,10 @@
 package com.etp.ticketservice.config.antivirus;
 
-import com.etp.ticketservice.domain.service.antivirus.AntivirusService;
+import com.etp.ticketservice.common.antivirus.AntivirusService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
-
 
 @Component
 public class AntivirusHealthIndicator implements HealthIndicator {

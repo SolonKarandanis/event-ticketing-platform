@@ -1,8 +1,6 @@
 package com.etp.ticketservice.messaging;
 
 import com.etp.ticketservice.config.RabbitMqConfig;
-import com.etp.ticketservice.domain.event.TicketCancelledEvent;
-import com.etp.ticketservice.domain.event.TicketPurchasedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;

@@ -1,7 +1,7 @@
 package com.etp.ticketservice.security;
 
-import com.etp.ticketservice.domain.entity.User;
-import com.etp.ticketservice.domain.repository.UserRepository;
+import com.etp.ticketservice.user.User;
+import com.etp.ticketservice.user.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
