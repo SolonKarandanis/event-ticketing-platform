@@ -1,5 +1,6 @@
 package com.etp.ticketservice;
 
+import com.etp.ticketservice.common.PostgresTestContainer;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -19,8 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 // other test dependency here is one of Boot 4's split per-feature test starters), and
 // pulling in whichever split module owns TestRestTemplate isn't worth it for one test
 // class when the JDK's own client already does the job.
+// Extends PostgresTestContainer for the same reason TicketServiceApplicationTests does --
+// the full app context's Liquibase run needs a real, reachable Postgres, and
+// application.properties's hardcoded datasource URL is a developer-machine LAN address.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class OpenApiDocsIntegrationTest {
+class OpenApiDocsIntegrationTest extends PostgresTestContainer {
 
     @LocalServerPort
     private int port;
