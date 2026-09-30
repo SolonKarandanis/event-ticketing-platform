@@ -15,6 +15,7 @@ import { Route as OrganizerRouteImport } from './routes/_organizer'
 import { Route as StaffRouteImport } from './routes/_staff'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as AttendeePaymentMethodsRouteImport } from './routes/_attendee/payment-methods'
 import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dashboard'
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as BrowseIndexRouteImport } from './routes/browse/index'
@@ -57,6 +58,11 @@ const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
   path: '/callback',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AttendeePaymentMethodsRoute = AttendeePaymentMethodsRouteImport.update({
+  id: '/payment-methods',
+  path: '/payment-methods',
+  getParentRoute: () => AttendeeRoute,
 } as any)
 const OrganizerDashboardRoute = OrganizerDashboardRouteImport.update({
   id: '/dashboard',
@@ -140,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
+  '/payment-methods': typeof AttendeePaymentMethodsRoute
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
@@ -160,6 +167,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
+  '/payment-methods': typeof AttendeePaymentMethodsRoute
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   '/_staff': typeof StaffRouteWithChildren
   '/about': typeof AboutRoute
   '/callback': typeof CallbackRoute
+  '/_attendee/payment-methods': typeof AttendeePaymentMethodsRoute
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
@@ -206,6 +215,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/callback'
+    | '/payment-methods'
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
@@ -226,6 +236,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/callback'
+    | '/payment-methods'
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
@@ -249,6 +260,7 @@ export interface FileRouteTypes {
     | '/_staff'
     | '/about'
     | '/callback'
+    | '/_attendee/payment-methods'
     | '/_organizer/dashboard'
     | '/_staff/scan'
     | '/browse/$eventId'
@@ -321,6 +333,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/callback'
       preLoaderRoute: typeof CallbackRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_attendee/payment-methods': {
+      id: '/_attendee/payment-methods'
+      path: '/payment-methods'
+      fullPath: '/payment-methods'
+      preLoaderRoute: typeof AttendeePaymentMethodsRouteImport
+      parentRoute: typeof AttendeeRoute
     }
     '/_organizer/dashboard': {
       id: '/_organizer/dashboard'
@@ -431,11 +450,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AttendeeRouteChildren {
+  AttendeePaymentMethodsRoute: typeof AttendeePaymentMethodsRoute
   AttendeeTicketsTicketIdRoute: typeof AttendeeTicketsTicketIdRoute
   AttendeeTicketsIndexRoute: typeof AttendeeTicketsIndexRoute
 }
 
 const AttendeeRouteChildren: AttendeeRouteChildren = {
+  AttendeePaymentMethodsRoute: AttendeePaymentMethodsRoute,
   AttendeeTicketsTicketIdRoute: AttendeeTicketsTicketIdRoute,
   AttendeeTicketsIndexRoute: AttendeeTicketsIndexRoute,
 }

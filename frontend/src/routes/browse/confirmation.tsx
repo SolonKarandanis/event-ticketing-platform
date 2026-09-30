@@ -5,24 +5,26 @@ import { publishedEventQueryOptions, usePublishedEvent } from '#/features/publis
 
 // Search-param driven (not a path param under $eventId) so this stays a plain sibling
 // route -- $eventId.tsx has no children today, and nesting a route under it would turn
-// it into a layout route for no other reason than this one page. See issue #5: the
-// purchase loop on $eventId.tsx already knows requested/purchased/errorMessage by the
-// time it's done, so this page doesn't need to re-derive or persist any of that
-// server-side -- it's just handed through the URL.
+// it into a layout route for no other reason than this one page.
+//
+// requested/purchased are cart-wide totals now (issue #26/#20's multi-ticket-type
+// cart), not a single ticket type's counters. TODO(#18): once the real Stripe
+// Checkout Session + webhook flow replaces $eventId.tsx's bridge loop, a cart-level
+// reservation makes checkout atomic -- this collapses to Success/Failed only, and
+// requested/purchased (a leftover from the pre-reservation sequential-loop model)
+// can go away entirely.
 const confirmationSearchSchema = z.object({
   eventId: z.string(),
-  ticketTypeId: z.string(),
   requested: z.coerce.number().int().min(1),
   purchased: z.coerce.number().int().min(0),
-  errorMessage: z.string().optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/browse/confirmation')({
   validateSearch: confirmationSearchSchema.parse,
   // eventId lives in search here, not a path param -- loaderDeps narrows the loader to
-  // re-run only when it changes, not on requested/purchased/errorMessage too. Usually
-  // already warm (the purchase flow on $eventId.tsx reads the same cache entry right
-  // before navigating here), but this page is also reachable cold -- a refresh, a
+  // re-run only when it changes, not on requested/purchased too. Usually already warm
+  // (the checkout flow on $eventId.tsx reads the same cache entry right before
+  // navigating here), but this page is also reachable cold -- a refresh, a
   // shared/bookmarked confirmation link -- where nothing has fetched it yet.
   //
   // Client-only, same reason as every other /browse/** loader: this route isn't
@@ -45,12 +47,8 @@ export const Route = createFileRoute('/browse/confirmation')({
 })
 
 function PurchaseConfirmation() {
-  const { eventId, ticketTypeId, requested, purchased, errorMessage } =
-    Route.useSearch()
+  const { eventId, requested, purchased } = Route.useSearch()
   const { data: event } = usePublishedEvent(eventId)
-  const ticketType = event?.ticketTypes.find(
-    (candidate) => candidate.id === ticketTypeId,
-  )
   const isFullSuccess = purchased === requested
 
   return (
@@ -61,19 +59,13 @@ function PurchaseConfirmation() {
         </p>
         <h1 className="display-title mb-4 text-2xl font-bold text-(--sea-ink)">
           {isFullSuccess
-            ? `${purchased} ${ticketType?.name ?? 'ticket'}${purchased === 1 ? '' : 's'} purchased`
+            ? `${purchased} ticket${purchased === 1 ? '' : 's'} purchased`
             : purchased > 0
               ? `${purchased} of ${requested} tickets purchased`
               : "We couldn't complete your purchase"}
         </h1>
         {event ? (
-          <p className="mb-2 text-sm text-(--sea-ink-soft)">
-            {event.name}
-            {ticketType ? ` — ${ticketType.name}` : ''}
-          </p>
-        ) : null}
-        {!isFullSuccess && errorMessage ? (
-          <p className="mb-6 text-sm text-destructive">{errorMessage}</p>
+          <p className="mb-6 text-sm text-(--sea-ink-soft)">{event.name}</p>
         ) : (
           <div className="mb-6" />
         )}
@@ -83,7 +75,7 @@ function PurchaseConfirmation() {
               <Link to="/tickets">View My Tickets</Link>
             </Button>
           ) : null}
-          <Button asChild variant="outline">
+          <Button asChild variant={purchased > 0 ? 'outline' : 'default'}>
             <Link to="/browse/$eventId" params={{ eventId }}>
               Back to Event
             </Link>
