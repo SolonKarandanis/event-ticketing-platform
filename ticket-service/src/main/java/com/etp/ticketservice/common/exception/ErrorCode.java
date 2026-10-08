@@ -25,7 +25,9 @@ public enum ErrorCode {
     TICKET_EVENT_ALREADY_COMPLETED("error.ticket.event-already-completed", HttpStatus.CONFLICT),
     EVENT_IMAGE_NOT_FOUND("error.event.image-not-found", HttpStatus.BAD_REQUEST),
     EVENT_TOO_MANY_IMAGES("error.event.too-many-images", HttpStatus.CONFLICT),
-    EVENT_IMAGE_INVALID_FILE("error.event.image-invalid-file", HttpStatus.BAD_REQUEST);
+    EVENT_IMAGE_INVALID_FILE("error.event.image-invalid-file", HttpStatus.BAD_REQUEST),
+    TICKET_TYPE_NOT_IN_EVENT("error.ticket-type.not-in-event", HttpStatus.BAD_REQUEST),
+    PAYMENT_GATEWAY_ERROR("error.payment.gateway-error", HttpStatus.BAD_GATEWAY);
 
     private final String messageKey;
     private final HttpStatus httpStatus;

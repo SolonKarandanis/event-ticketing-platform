@@ -4,6 +4,8 @@ import com.etp.ticketservice.events.images.EventImageService;
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 
 import com.etp.ticketservice.events.images.EventImage;
+import com.etp.ticketservice.orders.OrderStatusEnum;
+import com.etp.ticketservice.orders.TicketOrderItemRepository;
 import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.ticketvalidation.TicketValidation;
@@ -81,6 +83,8 @@ class EventServiceImplTest {
     private EventRepository eventRepository;
     @Mock
     private TicketRepository ticketRepository;
+    @Mock
+    private TicketOrderItemRepository ticketOrderItemRepository;
     @Mock
     private EventImageRepository eventImageRepository;
     @Mock
@@ -240,6 +244,7 @@ class EventServiceImplTest {
         when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
         when(ticketRepository.countByTicketTypeId(100L)).thenReturn(1);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(0);
 
         // The request omits soldTicketType entirely -- an implicit removal.
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);
@@ -276,6 +281,7 @@ class EventServiceImplTest {
         when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
         when(ticketRepository.countByTicketTypeId(101L)).thenReturn(0);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(101L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(0);
         when(eventRepository.save(existingEvent)).thenReturn(existingEvent);
 
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);

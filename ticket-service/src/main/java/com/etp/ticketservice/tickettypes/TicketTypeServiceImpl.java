@@ -3,6 +3,8 @@ package com.etp.ticketservice.tickettypes;
 import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 
+import com.etp.ticketservice.orders.OrderStatusEnum;
+import com.etp.ticketservice.orders.TicketOrderItemRepository;
 import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Service
@@ -33,6 +36,7 @@ public class TicketTypeServiceImpl implements TicketTypeService {
     private final UserRepository userRepository;
     private final TicketTypeRepository ticketTypeRepository;
     private final TicketRepository ticketRepository;
+    private final TicketOrderItemRepository ticketOrderItemRepository;
     private final QrCodeService qrCodeService;
     private final TicketEventPublisher ticketEventPublisher;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -53,11 +57,16 @@ public class TicketTypeServiceImpl implements TicketTypeService {
         // not the raw historical one -- a cancelled ticket freed its slot back up, so
         // it shouldn't count against a new purchase the same way a live one does.
         int purchasedTickets = ticketRepository.countActiveByTicketTypeId(ticketType.getId(), TicketStatusEnum.CANCELLED);
+        // Issue #20's checkout flow can hold a PENDING reservation against this same
+        // ticket type before any Ticket row exists -- without subtracting it here, this
+        // single-ticket path could still oversell straight through an active cart hold.
+        int reserved = ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                ticketType.getId(), OrderStatusEnum.PENDING, LocalDateTime.now());
         Integer totalAvailable = ticketType.getTotalAvailable();
 
         // A null totalAvailable means this ticket type is unlimited -- only enforce the cap
         // when one is actually set.
-        if (null != totalAvailable && purchasedTickets + 1 > totalAvailable) {
+        if (null != totalAvailable && purchasedTickets + reserved + 1 > totalAvailable) {
             throw new TicketsSoldOutException(ErrorCode.TICKET_SOLD_OUT, ticketTypeId);
         }
 

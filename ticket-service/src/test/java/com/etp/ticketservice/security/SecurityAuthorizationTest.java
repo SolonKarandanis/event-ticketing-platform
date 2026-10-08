@@ -8,6 +8,10 @@ import com.etp.ticketservice.ticketvalidation.TicketValidation;
 import com.etp.ticketservice.ticketvalidation.TicketValidationMethod;
 import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
 import com.etp.ticketservice.events.EventService;
+import com.etp.ticketservice.orders.CheckoutService;
+import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
+import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
+import com.etp.ticketservice.orders.dto.CreateCheckoutResponseDto;
 import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickettypes.TicketTypeService;
@@ -23,6 +27,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.UUID;
 
 import static com.etp.ticketservice.common.TestJwts.withSubject;
@@ -74,6 +79,8 @@ class SecurityAuthorizationTest {
     private TicketTypeService ticketTypeService;
     @MockitoBean
     private TicketValidationService ticketValidationService;
+    @MockitoBean
+    private CheckoutService checkoutService;
 
     private static final UUID USER_ID = UUID.randomUUID();
 
@@ -156,6 +163,28 @@ class SecurityAuthorizationTest {
                 .andExpect(status().isNoContent());
     }
 
+    // ---- /api/v1/events/{id}/checkout -> authenticated() specifically, same carve-out
+    // reasoning as ticket purchase above: an attendee action under the organizer-only
+    // /api/v1/events/ prefix, carved out ahead of that broader rule in SecurityConfig.
+
+    @Test
+    void checkout_rejectsAnonymousRequest() throws Exception {
+        mockMvc.perform(post("/api/v1/events/{eventId}/checkout", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void checkout_needsOnlyAuthentication_notOrganizerRole() throws Exception {
+        when(checkoutService.createCheckout(any(), any(), any()))
+                .thenReturn(new CreateCheckoutResponseDto(UUID.randomUUID(), "https://checkout.stripe.com/test", null));
+
+        mockMvc.perform(post("/api/v1/events/{eventId}/checkout", UUID.randomUUID())
+                        .with(withSubjectAndRole(USER_ID, Role.ATTENDEE))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsBytes(checkoutRequest())))
+                .andExpect(status().isCreated());
+    }
+
     // ---- /api/v1/ticket-validations -> hasRole(STAFF) ----
 
     @Test
@@ -201,5 +230,9 @@ class SecurityAuthorizationTest {
 
     private TicketValidationRequestDto validationRequest() {
         return new TicketValidationRequestDto("XY3P9KRT", TicketValidationMethod.MANUAL);
+    }
+
+    private CreateCheckoutRequestDto checkoutRequest() {
+        return new CreateCheckoutRequestDto(List.of(new CheckoutLineItemRequestDto(UUID.randomUUID(), 1)));
     }
 }

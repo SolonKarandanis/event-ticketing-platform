@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="17-create-ticket-orders-table" author="event-ticket-platform">
+        <createSequence sequenceName="ticket_orders_seq" startValue="1" incrementBy="1"/>
+        <createTable tableName="ticket_orders">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="ticket_orders_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_ticket_orders_domain_id"/>
+            </column>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_checkout_session_id" type="VARCHAR(255)">
+                <constraints unique="true" uniqueConstraintName="uc_ticket_orders_provider_checkout_session_id"/>
+            </column>
+            <column name="purchaser_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_ticket_orders_purchaser" references="users(id)"/>
+            </column>
+            <column name="event_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_ticket_orders_event" references="events(id)"/>
+            </column>
+            <column name="expires_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="18-create-ticket-order-items-table" author="event-ticket-platform">
+        <createSequence sequenceName="ticket_order_items_seq" startValue="1" incrementBy="1"/>
+        <createTable tableName="ticket_order_items">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="ticket_order_items_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="domain_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uc_ticket_order_items_domain_id"/>
+            </column>
+            <column name="ticket_order_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_ticket_order_items_ticket_order" references="ticket_orders(id)"/>
+            </column>
+            <column name="ticket_type_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_ticket_order_items_ticket_type" references="ticket_types(id)"/>
+            </column>
+            <column name="quantity" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="unit_price_at_checkout" type="DOUBLE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="19-add-tickets-order-item-column" author="event-ticket-platform">
+        <addColumn tableName="tickets">
+            <column name="order_item_id" type="BIGINT">
+                <constraints foreignKeyName="fk_tickets_order_item" references="ticket_order_items(id)"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

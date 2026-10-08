@@ -39,10 +39,11 @@ public class SecurityConfig {
                                 // GET rule above doesn't cover it -- HTTP method is part of what a
                                 // requestMatcher matches on, not just the path.
                                 .requestMatchers(HttpMethod.POST, "/api/v1/published-events/search").permitAll()
-                                // Ticket purchase lives under /api/v1/events/** but is an attendee
-                                // action, not organizer management -- must be matched before the
-                                // broader ORGANIZER-only rule below.
+                                // Ticket purchase and checkout both live under /api/v1/events/** but
+                                // are attendee actions, not organizer management -- must be matched
+                                // before the broader ORGANIZER-only rule below.
                                 .requestMatchers(HttpMethod.POST, "/api/v1/events/*/ticket-types/*/tickets").authenticated()
+                                .requestMatchers(HttpMethod.POST, "/api/v1/events/*/checkout").authenticated()
                                 .requestMatchers("/api/v1/events/**").hasRole(Role.ORGANIZER.name())
                                 .requestMatchers("/api/v1/venues/**").hasRole(Role.ORGANIZER.name())
                                 .requestMatchers("/api/v1/ticket-validations").hasRole(Role.STAFF.name())

@@ -1,5 +1,6 @@
 package com.etp.ticketservice.tickets;
 
+import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.tickets.qrcode.QrCode;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.ticketvalidation.TicketValidation;
@@ -79,6 +80,13 @@ public class Ticket {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "purchaser_id")
     private User purchaser;
+
+    // Null for every ticket issued before issue #20 -- and for now, every ticket period,
+    // since nothing populates this until #21's webhook handler issues tickets from a
+    // paid TicketOrder.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_item_id")
+    private TicketOrderItem orderItem;
 
     // Bookkeeping for a cancelled ticket -- no real payment gateway exists (see issue #1),
     // so there's nothing to actually refund; this is the audit trail a future refund

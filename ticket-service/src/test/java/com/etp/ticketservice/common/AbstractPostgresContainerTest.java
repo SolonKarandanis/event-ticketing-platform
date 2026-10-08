@@ -3,6 +3,10 @@ package com.etp.ticketservice.common;
 import com.etp.ticketservice.config.JpaConfiguration;
 import com.etp.ticketservice.events.Event;
 import com.etp.ticketservice.events.images.EventImage;
+import com.etp.ticketservice.orders.OrderStatusEnum;
+import com.etp.ticketservice.orders.TicketOrder;
+import com.etp.ticketservice.orders.TicketOrderItem;
+import com.etp.ticketservice.payments.PaymentProvider;
 import com.etp.ticketservice.tickets.qrcode.QrCode;
 import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.tickettypes.TicketType;
@@ -107,6 +111,27 @@ public abstract class AbstractPostgresContainerTest extends PostgresTestContaine
                 .status(status)
                 .value("qr-value-" + UUID.randomUUID())
                 .ticket(ticket)
+                .build());
+    }
+
+    protected TicketOrder persistTicketOrder(Event event, User purchaser, OrderStatusEnum status, LocalDateTime expiresAt) {
+        return entityManager.persistAndFlush(TicketOrder.builder()
+                .domainId(UUID.randomUUID())
+                .status(status)
+                .provider(PaymentProvider.STRIPE)
+                .purchaser(purchaser)
+                .event(event)
+                .expiresAt(expiresAt)
+                .build());
+    }
+
+    protected TicketOrderItem persistTicketOrderItem(TicketOrder ticketOrder, TicketType ticketType, int quantity, double unitPrice) {
+        return entityManager.persistAndFlush(TicketOrderItem.builder()
+                .domainId(UUID.randomUUID())
+                .ticketOrder(ticketOrder)
+                .ticketType(ticketType)
+                .quantity(quantity)
+                .unitPriceAtCheckout(unitPrice)
                 .build());
     }
 

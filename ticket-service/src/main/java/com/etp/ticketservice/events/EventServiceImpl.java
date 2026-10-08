@@ -2,6 +2,8 @@ package com.etp.ticketservice.events;
 
 import com.etp.ticketservice.events.images.EventImageService;
 import com.etp.ticketservice.messaging.TicketEventPublisher;
+import com.etp.ticketservice.orders.OrderStatusEnum;
+import com.etp.ticketservice.orders.TicketOrderItemRepository;
 
 import com.etp.ticketservice.events.dto.CreateEventRequestDto;
 import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
@@ -77,6 +79,7 @@ public class EventServiceImpl implements EventService {
     private final VenueRepository venueRepository;
     private final EventRepository eventRepository;
     private final TicketRepository ticketRepository;
+    private final TicketOrderItemRepository ticketOrderItemRepository;
     private final EventImageRepository eventImageRepository;
     private final TicketEventPublisher ticketEventPublisher;
     private final EventImageService eventImageService;
@@ -225,9 +228,14 @@ public class EventServiceImpl implements EventService {
 
         // A ticket type that already has sold tickets can't be silently orphan-deleted --
         // removing it from the request would otherwise cascade-delete rows that back real
-        // purchases, with no warning to the organizer.
+        // purchases, with no warning to the organizer. A live checkout reservation (issue
+        // #20) against it is blocked the same way -- without this, removing it here would
+        // cascade-delete a TicketOrderItem a pending Stripe checkout still points at,
+        // surfacing as a raw FK-violation 500 instead of a clean business error.
         for (TicketType ticketTypeToRemove : ticketTypesToRemove) {
-            if (ticketRepository.countByTicketTypeId(ticketTypeToRemove.getId()) > 0) {
+            int reserved = ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                    ticketTypeToRemove.getId(), OrderStatusEnum.PENDING, LocalDateTime.now());
+            if (ticketRepository.countByTicketTypeId(ticketTypeToRemove.getId()) > 0 || reserved > 0) {
                 throw new TicketTypeHasSoldTicketsException(ErrorCode.TICKET_TYPE_HAS_SOLD_TICKETS, ticketTypeToRemove.getDomainId());
             }
         }
