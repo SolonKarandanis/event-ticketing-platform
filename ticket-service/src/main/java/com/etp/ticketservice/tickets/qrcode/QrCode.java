@@ -15,6 +15,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -66,6 +67,13 @@ public class QrCode {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ticket_id")
     private Ticket ticket;
+
+    // Read-only mirror of ticket_id -- lets callers read the FK without touching the
+    // lazy association itself. insertable/updatable=false: ticket above is the only
+    // thing that ever writes this column.
+    @Setter(AccessLevel.NONE)
+    @Column(name = "ticket_id", insertable = false, updatable = false)
+    private Long ticketId;
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)

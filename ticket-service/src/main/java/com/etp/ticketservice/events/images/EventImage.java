@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -60,6 +61,13 @@ public class EventImage {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "event_id", nullable = false)
     private Event event;
+
+    // Read-only mirror of event_id -- lets callers read the FK without touching the
+    // lazy association itself. insertable/updatable=false: event above is the only
+    // thing that ever writes this column.
+    @Setter(AccessLevel.NONE)
+    @Column(name = "event_id", insertable = false, updatable = false)
+    private Long eventId;
 
     // Gallery display order -- 0 is the cover image shown on the /browse card. Set from
     // the submitted images list's array order on every create/update, not from a

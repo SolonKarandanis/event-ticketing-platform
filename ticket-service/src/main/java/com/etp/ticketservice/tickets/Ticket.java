@@ -21,6 +21,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -77,9 +78,20 @@ public class Ticket {
     @JoinColumn(name = "ticket_type_id")
     private TicketType ticketType;
 
+    // Read-only mirror of ticket_type_id -- lets callers read the FK without touching
+    // the lazy association itself. insertable/updatable=false: ticketType above is the
+    // only thing that ever writes this column.
+    @Setter(AccessLevel.NONE)
+    @Column(name = "ticket_type_id", insertable = false, updatable = false)
+    private Long ticketTypeId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "purchaser_id")
     private User purchaser;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "purchaser_id", insertable = false, updatable = false)
+    private Long purchaserId;
 
     // Null for every ticket issued before issue #20 -- and for now, every ticket period,
     // since nothing populates this until #21's webhook handler issues tickets from a
@@ -87,6 +99,10 @@ public class Ticket {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_item_id")
     private TicketOrderItem orderItem;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "order_item_id", insertable = false, updatable = false)
+    private Long orderItemId;
 
     // Bookkeeping for a cancelled ticket -- no real payment gateway exists (see issue #1),
     // so there's nothing to actually refund; this is the audit trail a future refund

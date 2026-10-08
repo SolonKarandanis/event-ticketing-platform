@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -60,9 +61,20 @@ public class TicketOrderItem {
     @JoinColumn(name = "ticket_order_id", nullable = false)
     private TicketOrder ticketOrder;
 
+    // Read-only mirror of ticket_order_id -- lets callers read the FK without touching
+    // the lazy association itself. insertable/updatable=false: ticketOrder above is the
+    // only thing that ever writes this column.
+    @Setter(AccessLevel.NONE)
+    @Column(name = "ticket_order_id", insertable = false, updatable = false)
+    private Long ticketOrderId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ticket_type_id", nullable = false)
     private TicketType ticketType;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "ticket_type_id", insertable = false, updatable = false)
+    private Long ticketTypeId;
 
     @Column(name = "quantity", nullable = false)
     private Integer quantity;

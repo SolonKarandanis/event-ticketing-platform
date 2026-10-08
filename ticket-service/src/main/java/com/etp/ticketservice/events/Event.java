@@ -21,6 +21,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -77,6 +78,13 @@ public class Event {
     @JoinColumn(name = "venue_id", nullable = false)
     private Venue venue;
 
+    // Read-only mirror of venue_id -- lets callers read the FK without touching the
+    // lazy association itself. insertable/updatable=false: venue above is the only
+    // thing that ever writes this column.
+    @Setter(AccessLevel.NONE)
+    @Column(name = "venue_id", insertable = false, updatable = false)
+    private Long venueId;
+
     @Column(name = "sales_start")
     private LocalDateTime salesStart;
 
@@ -90,6 +98,10 @@ public class Event {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "organizer_id")
     private User organizer;
+
+    @Setter(AccessLevel.NONE)
+    @Column(name = "organizer_id", insertable = false, updatable = false)
+    private Long organizerId;
 
     @ManyToMany(mappedBy = "attendingEvents")
     @Builder.Default

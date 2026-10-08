@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -74,6 +75,13 @@ public class TicketType {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "event_id")
     private Event event;
+
+    // Read-only mirror of event_id -- lets callers read the FK without touching the
+    // lazy association itself. insertable/updatable=false: event above is the only
+    // thing that ever writes this column.
+    @Setter(AccessLevel.NONE)
+    @Column(name = "event_id", insertable = false, updatable = false)
+    private Long eventId;
 
     @OneToMany(mappedBy = "ticketType", cascade = CascadeType.ALL)
     @Builder.Default
