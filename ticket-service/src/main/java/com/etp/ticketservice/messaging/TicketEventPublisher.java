@@ -18,7 +18,7 @@ public class TicketEventPublisher {
                 ticket.getTicketType().getEvent().getDomainId(),
                 ticket.getTicketType().getEvent().getOrganizer().getDomainId(),
                 ticket.getPurchaser().getDomainId(),
-                ticket.getTicketType().getPrice(),
+                ticket.getTicketType().getPriceMinorUnits(),
                 ticket.getCreatedAt()
         ));
     }

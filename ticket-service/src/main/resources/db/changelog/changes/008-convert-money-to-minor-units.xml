@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="21-add-ticket-types-money-columns" author="event-ticket-platform">
+        <addColumn tableName="ticket_types">
+            <column name="price_minor_units" type="BIGINT"/>
+            <column name="currency" type="VARCHAR(3)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="22-backfill-ticket-types-money-columns" author="event-ticket-platform">
+        <sql>UPDATE ticket_types SET price_minor_units = ROUND(price * 100), currency = 'usd';</sql>
+        <rollback>
+            <sql>UPDATE ticket_types SET price_minor_units = NULL, currency = NULL</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="23-make-ticket-types-money-columns-not-null" author="event-ticket-platform">
+        <addNotNullConstraint tableName="ticket_types" columnName="price_minor_units" columnDataType="BIGINT"/>
+        <addNotNullConstraint tableName="ticket_types" columnName="currency" columnDataType="VARCHAR(3)"/>
+    </changeSet>
+
+    <changeSet id="24-drop-ticket-types-price-column" author="event-ticket-platform">
+        <dropColumn tableName="ticket_types" columnName="price"/>
+        <rollback>
+            <addColumn tableName="ticket_types">
+                <column name="price" type="DOUBLE"/>
+            </addColumn>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="25-add-ticket-order-items-money-column" author="event-ticket-platform">
+        <addColumn tableName="ticket_order_items">
+            <column name="unit_price_at_checkout_minor_units" type="BIGINT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="26-backfill-ticket-order-items-money-column" author="event-ticket-platform">
+        <sql>UPDATE ticket_order_items SET unit_price_at_checkout_minor_units = ROUND(unit_price_at_checkout * 100);</sql>
+        <rollback>
+            <sql>UPDATE ticket_order_items SET unit_price_at_checkout_minor_units = NULL</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="27-make-ticket-order-items-money-column-not-null" author="event-ticket-platform">
+        <addNotNullConstraint tableName="ticket_order_items" columnName="unit_price_at_checkout_minor_units" columnDataType="BIGINT"/>
+    </changeSet>
+
+    <changeSet id="28-drop-ticket-order-items-old-price-column" author="event-ticket-platform">
+        <dropColumn tableName="ticket_order_items" columnName="unit_price_at_checkout"/>
+        <rollback>
+            <addColumn tableName="ticket_order_items">
+                <column name="unit_price_at_checkout" type="DOUBLE"/>
+            </addColumn>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

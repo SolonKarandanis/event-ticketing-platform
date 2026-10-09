@@ -47,7 +47,7 @@ public class CheckoutServiceImpl implements CheckoutService {
         List<CheckoutLineItem> lineItems = order.getItems().stream()
                 .map(item -> CheckoutLineItem.builder()
                         .name(item.getTicketType().getName())
-                        .unitAmount(item.getUnitPriceAtCheckout())
+                        .unitAmount(item.getUnitPriceAtCheckoutMinorUnits())
                         .quantity(item.getQuantity())
                         .build())
                 .toList();

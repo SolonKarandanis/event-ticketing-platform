@@ -3,6 +3,7 @@ package com.etp.ticketservice.events;
 import com.etp.ticketservice.events.images.EventImageService;
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 
+import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.events.images.EventImage;
 import com.etp.ticketservice.orders.OrderStatusEnum;
 import com.etp.ticketservice.orders.TicketOrderItemRepository;
@@ -39,7 +40,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -92,7 +92,9 @@ class EventServiceImplTest {
     @Mock
     private EventImageService eventImageService;
 
-    @InjectMocks
+    // Constructed directly in setUp(), not via @InjectMocks -- currency is a
+    // constructor-injected String (@Value), which @InjectMocks has no mock to satisfy.
+    // Same pattern already used by CheckoutServiceImplTest for the same reason.
     private EventServiceImpl eventService;
 
     private static final UUID ORGANIZER_ID = UUID.randomUUID();
@@ -104,6 +106,11 @@ class EventServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        eventService = new EventServiceImpl(
+                userRepository, venueRepository, eventRepository, ticketRepository,
+                ticketOrderItemRepository, eventImageRepository, ticketEventPublisher,
+                eventImageService, "usd");
+
         organizer = new User();
         organizer.setDomainId(ORGANIZER_ID);
 
@@ -266,7 +273,7 @@ class EventServiceImplTest {
         UpdateTicketTypeRequest unknownTicketType = new UpdateTicketTypeRequest();
         unknownTicketType.setId(UUID.randomUUID());
         unknownTicketType.setName("Ghost");
-        unknownTicketType.setPrice(5.0);
+        unknownTicketType.setPriceMinorUnits(500L);
         request.setTicketTypes(List.of(unknownTicketType));
 
         assertThatThrownBy(() -> eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of()))
@@ -288,10 +295,10 @@ class EventServiceImplTest {
         UpdateTicketTypeRequest keepRequest = new UpdateTicketTypeRequest();
         keepRequest.setId(toKeep.getDomainId());
         keepRequest.setName("General (renamed)");
-        keepRequest.setPrice(12.0);
+        keepRequest.setPriceMinorUnits(1200L);
         UpdateTicketTypeRequest createRequest = new UpdateTicketTypeRequest();
         createRequest.setName("Early Bird");
-        createRequest.setPrice(8.0);
+        createRequest.setPriceMinorUnits(800L);
         request.setTicketTypes(List.of(keepRequest, createRequest));
 
         Event updated = eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of());
@@ -300,7 +307,7 @@ class EventServiceImplTest {
         assertThat(updated.getTicketTypes()).extracting(TicketType::getName)
                 .containsExactlyInAnyOrder("General (renamed)", "Early Bird");
         assertThat(updated.getTicketTypes()).doesNotContain(toRemove);
-        assertThat(toKeep.getPrice()).isEqualTo(12.0);
+        assertThat(toKeep.getPriceMinorUnits()).isEqualTo(1200L);
     }
 
     @Test
@@ -483,6 +490,24 @@ class EventServiceImplTest {
         assertThat(fromCaptor.getValue()).isBetween(before, after);
     }
 
+    // The existing dispatch tests above use blanket any() matchers for minPrice/maxPrice
+    // and don't prove this conversion happens at all -- this is the one place it's
+    // actually pinned down (see #23).
+    @Test
+    void findPublishedEvents_convertsMinAndMaxPriceToMinorUnitsBeforeDispatch() {
+        ArgumentCaptor<Long> minPriceCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> maxPriceCaptor = ArgumentCaptor.forClass(Long.class);
+        when(eventRepository.findPublishedEventsSortedBySoonest(
+                any(), any(), any(), any(), minPriceCaptor.capture(), maxPriceCaptor.capture(), any(), any(), any(), any()))
+                .thenReturn(Page.empty());
+
+        eventService.findPublishedEvents(null, null, null, 19.99, 49.99, null, null, null, null,
+                PublishedEventsSortBy.SOONEST, PageRequest.of(0, 10));
+
+        assertThat(minPriceCaptor.getValue()).isEqualTo(1999L);
+        assertThat(maxPriceCaptor.getValue()).isEqualTo(4999L);
+    }
+
     // ---- DTO conversion behavior worth its own test ----
 
     @Test
@@ -537,7 +562,8 @@ class EventServiceImplTest {
         ticketType.setId(id);
         ticketType.setDomainId(UUID.randomUUID());
         ticketType.setName(name);
-        ticketType.setPrice(price);
+        ticketType.setPriceMinorUnits(MoneyUtils.toMinorUnits(price));
+        ticketType.setCurrency("usd");
         event.addTicketType(ticketType);
         return ticketType;
     }
@@ -545,7 +571,7 @@ class EventServiceImplTest {
     private CreateEventRequest validCreateEventRequest() {
         CreateTicketTypeRequest ticketType = new CreateTicketTypeRequest();
         ticketType.setName("General");
-        ticketType.setPrice(10.0);
+        ticketType.setPriceMinorUnits(1000L);
 
         CreateEventRequest request = new CreateEventRequest();
         request.setName("New Event");

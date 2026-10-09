@@ -9,7 +9,7 @@ public record TicketPurchasedEvent(
         UUID eventId,
         UUID organizerId,
         UUID purchaserId,
-        Double price,
+        Long price,
         LocalDateTime purchasedAt
 ) {
 }

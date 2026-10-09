@@ -1,5 +1,6 @@
 package com.etp.ticketservice.events;
 
+import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.events.images.EventImageService;
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 import com.etp.ticketservice.orders.OrderStatusEnum;
@@ -53,8 +54,8 @@ import com.etp.ticketservice.events.images.EventImageRepository;
 import com.etp.ticketservice.tickets.TicketRepository;
 import com.etp.ticketservice.user.UserRepository;
 import com.etp.ticketservice.venues.VenueRepository;
-import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -68,7 +69,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class EventServiceImpl implements EventService {
 
     // An event with more than this many images is rejected -- 409, not a Bean Validation
@@ -83,6 +83,32 @@ public class EventServiceImpl implements EventService {
     private final EventImageRepository eventImageRepository;
     private final TicketEventPublisher ticketEventPublisher;
     private final EventImageService eventImageService;
+    private final String currency;
+
+    // Hand-written, not @RequiredArgsConstructor -- Lombok's generated constructor
+    // doesn't carry field-level annotations (including @Value) onto its parameters, so
+    // currency needs an explicit constructor to actually get wired. Same pattern already
+    // used by StripePaymentGatewayService/CheckoutServiceImpl for the same reason.
+    public EventServiceImpl(
+            UserRepository userRepository,
+            VenueRepository venueRepository,
+            EventRepository eventRepository,
+            TicketRepository ticketRepository,
+            TicketOrderItemRepository ticketOrderItemRepository,
+            EventImageRepository eventImageRepository,
+            TicketEventPublisher ticketEventPublisher,
+            EventImageService eventImageService,
+            @Value("${app.checkout.currency}") String currency) {
+        this.userRepository = userRepository;
+        this.venueRepository = venueRepository;
+        this.eventRepository = eventRepository;
+        this.ticketRepository = ticketRepository;
+        this.ticketOrderItemRepository = ticketOrderItemRepository;
+        this.eventImageRepository = eventImageRepository;
+        this.ticketEventPublisher = ticketEventPublisher;
+        this.eventImageService = eventImageService;
+        this.currency = currency;
+    }
 
     @Override
     @Transactional
@@ -114,7 +140,8 @@ public class EventServiceImpl implements EventService {
             TicketType ticketTypeToCreate = new TicketType();
             ticketTypeToCreate.setDomainId(UUID.randomUUID());
             ticketTypeToCreate.setName(ticketType.getName());
-            ticketTypeToCreate.setPrice(ticketType.getPrice());
+            ticketTypeToCreate.setPriceMinorUnits(ticketType.getPriceMinorUnits());
+            ticketTypeToCreate.setCurrency(currency);
             ticketTypeToCreate.setDescription(ticketType.getDescription());
             ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
             eventToCreate.addTicketType(ticketTypeToCreate);
@@ -250,15 +277,17 @@ public class EventServiceImpl implements EventService {
                 TicketType ticketTypeToCreate = new TicketType();
                 ticketTypeToCreate.setDomainId(UUID.randomUUID());
                 ticketTypeToCreate.setName(ticketType.getName());
-                ticketTypeToCreate.setPrice(ticketType.getPrice());
+                ticketTypeToCreate.setPriceMinorUnits(ticketType.getPriceMinorUnits());
+                ticketTypeToCreate.setCurrency(currency);
                 ticketTypeToCreate.setDescription(ticketType.getDescription());
                 ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
                 existingEvent.addTicketType(ticketTypeToCreate);
             } else if (existingTicketTypesIndex.containsKey(ticketType.getId())) {
-                // Update
+                // Update -- currency is never touched here, it's set once at creation
+                // and never changes (see TicketType.currency).
                 TicketType existingTicketType = existingTicketTypesIndex.get(ticketType.getId());
                 existingTicketType.setName(ticketType.getName());
-                existingTicketType.setPrice(ticketType.getPrice());
+                existingTicketType.setPriceMinorUnits(ticketType.getPriceMinorUnits());
                 existingTicketType.setDescription(ticketType.getDescription());
                 existingTicketType.setTotalAvailable(ticketType.getTotalAvailable());
             } else {
@@ -450,18 +479,25 @@ public class EventServiceImpl implements EventService {
         PublishedEventsSortBy effectiveSortBy =
                 (PublishedEventsSortBy.DISTANCE == sortBy && !hasOrigin) ? PublishedEventsSortBy.SOONEST : sortBy;
 
+        // The repository/column now stores minor units -- this is the one place that
+        // conversion happens, right before the only two callers (this method's own
+        // switch below) that ever need minPrice/maxPrice in that form. The method's own
+        // signature stays in human-facing decimal dollars; only these two locals change.
+        Long minPriceMinorUnits = MoneyUtils.toMinorUnits(minPrice);
+        Long maxPriceMinorUnits = MoneyUtils.toMinorUnits(maxPrice);
+
         // Exhaustive over the enum's four constants -- no default branch, so the
         // compiler (not a runtime fallthrough) catches a future fifth sort option that
         // forgets to add its query variant here.
         Page<Event> page = switch (null == effectiveSortBy ? PublishedEventsSortBy.SOONEST : effectiveSortBy) {
             case PRICE_ASC -> eventRepository.findPublishedEventsSortedByPriceAsc(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
+                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
             case PRICE_DESC -> eventRepository.findPublishedEventsSortedByPriceDesc(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
+                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
             case DISTANCE -> eventRepository.findPublishedEventsSortedByDistance(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
+                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
             case SOONEST -> eventRepository.findPublishedEventsSortedBySoonest(
-                    searchTerm, city, effectiveFrom, to, minPrice, maxPrice, latitude, longitude, radiusMeters, pageable);
+                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
         };
 
         // Native query -- JOIN FETCH isn't expressible here, so venue and images (the two
@@ -509,7 +545,7 @@ public class EventServiceImpl implements EventService {
     public CreateTicketTypeRequest convertFromDto(CreateTicketTypeRequestDto dto) {
         CreateTicketTypeRequest request = new CreateTicketTypeRequest();
         request.setName(dto.getName());
-        request.setPrice(dto.getPrice());
+        request.setPriceMinorUnits(MoneyUtils.toMinorUnits(dto.getPrice()));
         request.setDescription(dto.getDescription());
         request.setTotalAvailable(dto.getTotalAvailable());
         return request;
@@ -520,7 +556,7 @@ public class EventServiceImpl implements EventService {
         UpdateTicketTypeRequest request = new UpdateTicketTypeRequest();
         request.setId(dto.getId());
         request.setName(dto.getName());
-        request.setPrice(dto.getPrice());
+        request.setPriceMinorUnits(MoneyUtils.toMinorUnits(dto.getPrice()));
         request.setDescription(dto.getDescription());
         request.setTotalAvailable(dto.getTotalAvailable());
         return request;
@@ -592,7 +628,7 @@ public class EventServiceImpl implements EventService {
         CreateTicketTypeResponseDto dto = new CreateTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         dto.setDescription(ticketType.getDescription());
         dto.setTotalAvailable(ticketType.getTotalAvailable());
         return dto;
@@ -631,7 +667,7 @@ public class EventServiceImpl implements EventService {
         ListEventTicketTypeResponseDto dto = new ListEventTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         dto.setDescription(ticketType.getDescription());
         dto.setTotalAvailable(ticketType.getTotalAvailable());
         return dto;
@@ -667,7 +703,7 @@ public class EventServiceImpl implements EventService {
         GetEventDetailsTicketTypesResponseDto dto = new GetEventDetailsTicketTypesResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         dto.setDescription(ticketType.getDescription());
         dto.setTotalAvailable(ticketType.getTotalAvailable());
         // Active count, not the raw historical one -- a cancelled ticket freed its slot
@@ -711,7 +747,7 @@ public class EventServiceImpl implements EventService {
         UpdateTicketTypeResponseDto dto = new UpdateTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         dto.setDescription(ticketType.getDescription());
         dto.setTotalAvailable(ticketType.getTotalAvailable());
         dto.setCreatedAt(ticketType.getCreatedAt());
@@ -771,7 +807,7 @@ public class EventServiceImpl implements EventService {
         GetPublishedEventDetailsTicketTypesResponseDto dto = new GetPublishedEventDetailsTicketTypesResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         dto.setDescription(ticketType.getDescription());
         return dto;
     }

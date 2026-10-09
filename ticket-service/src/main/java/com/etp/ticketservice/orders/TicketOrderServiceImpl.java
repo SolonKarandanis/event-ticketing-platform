@@ -103,7 +103,7 @@ public class TicketOrderServiceImpl implements TicketOrderService {
             item.setDomainId(UUID.randomUUID());
             item.setTicketType(ticketType);
             item.setQuantity(quantity);
-            item.setUnitPriceAtCheckout(ticketType.getPrice());
+            item.setUnitPriceAtCheckoutMinorUnits(ticketType.getPriceMinorUnits());
             order.addItem(item);
         }
 

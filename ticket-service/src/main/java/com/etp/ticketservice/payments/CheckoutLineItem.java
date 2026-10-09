@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CheckoutLineItem {
     private String name;
-    private Double unitAmount;
+    // Minor units (e.g. cents) -- matches Stripe's own "unit_amount" convention
+    // directly, so this needs no further conversion anywhere downstream (see #23).
+    private Long unitAmount;
     private Integer quantity;
 }

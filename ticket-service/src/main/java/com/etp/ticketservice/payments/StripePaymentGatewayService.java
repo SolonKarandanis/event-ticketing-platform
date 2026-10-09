@@ -59,7 +59,10 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
                     .setQuantity(item.getQuantity().longValue())
                     .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
                             .setCurrency(currency)
-                            .setUnitAmount(Math.round(item.getUnitAmount() * 100))
+                            // item.getUnitAmount() is already minor units (see #23) --
+                            // no conversion here. Multiplying by 100 again would
+                            // silently overcharge every checkout 100x.
+                            .setUnitAmount(item.getUnitAmount())
                             .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
                                     .setName(item.getName())
                                     .build())

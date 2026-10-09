@@ -70,8 +70,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             "AND (CAST(:city AS text) IS NULL OR v.city = CAST(:city AS text)) " +
             "AND (CAST(:from AS timestamp) IS NULL OR e.event_start >= CAST(:from AS timestamp)) " +
             "AND (CAST(:to AS timestamp) IS NULL OR e.event_start <= CAST(:to AS timestamp)) " +
-            "AND (CAST(:minPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS double precision)) " +
-            "AND (CAST(:maxPrice AS double precision) IS NULL OR (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS double precision)) " +
+            "AND (CAST(:minPrice AS bigint) IS NULL OR (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS bigint)) " +
+            "AND (CAST(:maxPrice AS bigint) IS NULL OR (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS bigint)) " +
             "AND (CAST(:latitude AS double precision) IS NULL OR CAST(:longitude AS double precision) IS NULL OR CAST(:radiusMeters AS double precision) IS NULL " +
             "OR ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography, CAST(:radiusMeters AS double precision)))";
 
@@ -83,27 +83,27 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedBySoonest(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
             @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
     @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
-            " ORDER BY (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) ASC",
+            " ORDER BY (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) ASC",
             countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedByPriceAsc(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
             @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
     @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
-            " ORDER BY (SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) DESC",
+            " ORDER BY (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) DESC",
             countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedByPriceDesc(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
             @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
@@ -118,7 +118,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
             nativeQuery = true)
     Page<Event> findPublishedEventsSortedByDistance(@Param("searchTerm") String searchTerm, @Param("city") String city,
             @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Double minPrice, @Param("maxPrice") Double maxPrice,
+            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
             @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 

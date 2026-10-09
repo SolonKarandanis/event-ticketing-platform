@@ -66,7 +66,7 @@ class CheckoutServiceImplTest {
         TicketOrderItem item = new TicketOrderItem();
         item.setTicketType(ticketType);
         item.setQuantity(2);
-        item.setUnitPriceAtCheckout(15.0);
+        item.setUnitPriceAtCheckoutMinorUnits(1500L);
         reserved.addItem(item);
         when(ticketOrderService.reserve(USER_ID, EVENT_ID, request)).thenReturn(reserved);
 
@@ -93,7 +93,7 @@ class CheckoutServiceImplTest {
         assertThat(sessionRequest.getCancelUrl()).isEqualTo(CANCEL_URL_BASE + EVENT_ID);
         assertThat(sessionRequest.getLineItems()).hasSize(1);
         assertThat(sessionRequest.getLineItems().get(0).getName()).isEqualTo("General");
-        assertThat(sessionRequest.getLineItems().get(0).getUnitAmount()).isEqualTo(15.0);
+        assertThat(sessionRequest.getLineItems().get(0).getUnitAmount()).isEqualTo(1500L);
         assertThat(sessionRequest.getLineItems().get(0).getQuantity()).isEqualTo(2);
     }
 }

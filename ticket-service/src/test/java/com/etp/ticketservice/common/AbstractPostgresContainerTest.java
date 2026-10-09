@@ -1,5 +1,6 @@
 package com.etp.ticketservice.common;
 
+import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.config.JpaConfiguration;
 import com.etp.ticketservice.events.Event;
 import com.etp.ticketservice.events.images.EventImage;
@@ -90,7 +91,8 @@ public abstract class AbstractPostgresContainerTest extends PostgresTestContaine
         return entityManager.persistAndFlush(TicketType.builder()
                 .domainId(UUID.randomUUID())
                 .name(name)
-                .price(price)
+                .priceMinorUnits(MoneyUtils.toMinorUnits(price))
+                .currency("usd")
                 .event(event)
                 .build());
     }
@@ -131,7 +133,7 @@ public abstract class AbstractPostgresContainerTest extends PostgresTestContaine
                 .ticketOrder(ticketOrder)
                 .ticketType(ticketType)
                 .quantity(quantity)
-                .unitPriceAtCheckout(unitPrice)
+                .unitPriceAtCheckoutMinorUnits(MoneyUtils.toMinorUnits(unitPrice))
                 .build());
     }
 

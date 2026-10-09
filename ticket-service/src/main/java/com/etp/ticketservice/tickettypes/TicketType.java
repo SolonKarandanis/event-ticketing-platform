@@ -63,8 +63,14 @@ public class TicketType {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "price", nullable = false)
-    private Double price;
+    @Column(name = "price_minor_units", nullable = false)
+    private Long priceMinorUnits;
+
+    // ISO 4217, lowercase -- seeded once at creation from the same app.checkout.currency
+    // property Stripe checkout already uses (see StripePaymentGatewayService), never
+    // updated afterward. No per-ticket-type/per-event currency choice yet (see #23).
+    @Column(name = "currency", nullable = false, updatable = false)
+    private String currency;
 
     @Column(name = "description")
     private String description;
@@ -112,7 +118,8 @@ public class TicketType {
         return Objects.equals(id, ticketType.id) &&
                Objects.equals(domainId, ticketType.domainId) &&
                Objects.equals(name, ticketType.name) &&
-               Objects.equals(price, ticketType.price) &&
+               Objects.equals(priceMinorUnits, ticketType.priceMinorUnits) &&
+               Objects.equals(currency, ticketType.currency) &&
                Objects.equals(description, ticketType.description) &&
                Objects.equals(totalAvailable, ticketType.totalAvailable) &&
                Objects.equals(createdAt, ticketType.createdAt) &&
@@ -121,7 +128,7 @@ public class TicketType {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, name, price, description, totalAvailable,
+        return Objects.hash(id, domainId, name, priceMinorUnits, currency, description, totalAvailable,
                 createdAt, updatedAt);
     }
 }

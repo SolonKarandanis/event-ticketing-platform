@@ -109,6 +109,31 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
                 .containsExactly("Budget Meetup", "Mid-Range Show", "Pricey Gala");
     }
 
+    // Unexercised before #23 -- every other call in this class passes null for both
+    // params. This is the riskiest native-SQL path #23 touches: the column rename
+    // (price -> price_minor_units) and the CAST(... AS double precision) -> CAST(...
+    // AS bigint) change, both inside PUBLISHED_EVENTS_WHERE, a string built once and
+    // shared by all four sort variants.
+    @Test
+    void findPublishedEventsSortedByPriceAsc_filtersByMinAndMaxPriceInMinorUnits() {
+        Venue venue = persistVenue("Main Hall", "Athens", null, null);
+        User organizer = persistUser("Jane Organizer");
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+
+        persistEvent("Budget Meetup", venue, organizer, EventStatusEnum.PUBLISHED, start, 20.0);
+        persistEvent("Mid-Range Show", venue, organizer, EventStatusEnum.PUBLISHED, start, 35.0);
+        persistEvent("Pricey Gala", venue, organizer, EventStatusEnum.PUBLISHED, start, 50.0);
+
+        // minPrice/maxPrice are minor units at this layer (see #23) -- 2500-4000 cents
+        // excludes both Budget Meetup (2000) and Pricey Gala (5000), leaving only
+        // Mid-Range Show (3500).
+        Page<Event> page = eventRepository.findPublishedEventsSortedByPriceAsc(
+                null, null, null, null, 2500L, 4000L, null, null, null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(Event::getName)
+                .containsExactly("Mid-Range Show");
+    }
+
     // The one test in this class that only a real PostGIS-enabled Postgres, not H2 or a
     // mock, could ever catch a regression in: ST_DWithin/ST_Distance against a
     // geography(Point,4326) column. Three venues at increasing distance from a

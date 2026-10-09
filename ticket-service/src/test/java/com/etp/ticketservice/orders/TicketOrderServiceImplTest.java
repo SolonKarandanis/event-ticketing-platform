@@ -165,7 +165,7 @@ class TicketOrderServiceImplTest {
         User purchaser = new User();
         Event event = eventWithId(10L);
         TicketType ticketType = ticketTypeWithCapacity(event, null, 100L);
-        ticketType.setPrice(25.0);
+        ticketType.setPriceMinorUnits(2500L);
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(purchaser));
         when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(event));
         when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)).thenReturn(Optional.of(ticketType));
@@ -184,8 +184,8 @@ class TicketOrderServiceImplTest {
         TicketOrderItem item = order.getItems().iterator().next();
         assertThat(item.getQuantity()).isEqualTo(2);
         // Snapshot at checkout time, not a live reference -- see TicketOrderItem's own
-        // comment on unitPriceAtCheckout.
-        assertThat(item.getUnitPriceAtCheckout()).isEqualTo(25.0);
+        // comment on unitPriceAtCheckoutMinorUnits.
+        assertThat(item.getUnitPriceAtCheckoutMinorUnits()).isEqualTo(2500L);
     }
 
     @Test

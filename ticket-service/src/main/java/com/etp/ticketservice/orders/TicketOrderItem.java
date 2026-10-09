@@ -79,11 +79,11 @@ public class TicketOrderItem {
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
-    // Snapshot of TicketType.price at checkout time -- deliberately not a live
+    // Snapshot of TicketType.priceMinorUnits at checkout time -- deliberately not a live
     // reference, so a later organizer price edit can't retroactively change what this
     // cart already locked in.
-    @Column(name = "unit_price_at_checkout", nullable = false)
-    private Double unitPriceAtCheckout;
+    @Column(name = "unit_price_at_checkout_minor_units", nullable = false)
+    private Long unitPriceAtCheckoutMinorUnits;
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
@@ -100,13 +100,13 @@ public class TicketOrderItem {
         return Objects.equals(id, ticketOrderItem.id) &&
                Objects.equals(domainId, ticketOrderItem.domainId) &&
                Objects.equals(quantity, ticketOrderItem.quantity) &&
-               Objects.equals(unitPriceAtCheckout, ticketOrderItem.unitPriceAtCheckout) &&
+               Objects.equals(unitPriceAtCheckoutMinorUnits, ticketOrderItem.unitPriceAtCheckoutMinorUnits) &&
                Objects.equals(createdAt, ticketOrderItem.createdAt) &&
                Objects.equals(updatedAt, ticketOrderItem.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, quantity, unitPriceAtCheckout, createdAt, updatedAt);
+        return Objects.hash(id, domainId, quantity, unitPriceAtCheckoutMinorUnits, createdAt, updatedAt);
     }
 }

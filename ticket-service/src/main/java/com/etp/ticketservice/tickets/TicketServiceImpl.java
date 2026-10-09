@@ -2,6 +2,7 @@ package com.etp.ticketservice.tickets;
 
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 
+import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.GetTicketResponseDto;
@@ -169,7 +170,7 @@ public class TicketServiceImpl implements TicketService {
         ListTicketTicketTypeResponseDto dto = new ListTicketTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         return dto;
     }
 
@@ -188,7 +189,7 @@ public class TicketServiceImpl implements TicketService {
         dto.setId(ticket.getDomainId());
         dto.setReferenceCode(ticket.getReferenceCode());
         dto.setStatus(ticket.getStatus());
-        dto.setPrice(ticket.getTicketType().getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticket.getTicketType().getPriceMinorUnits()));
         dto.setDescription(ticket.getTicketType().getDescription());
         dto.setEventName(ticket.getTicketType().getEvent().getName());
         dto.setEventVenueName(ticket.getTicketType().getEvent().getVenue().getName());
@@ -213,7 +214,7 @@ public class TicketServiceImpl implements TicketService {
         TicketSaleTicketTypeResponseDto dto = new TicketSaleTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
-        dto.setPrice(ticketType.getPrice());
+        dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
         return dto;
     }
 
