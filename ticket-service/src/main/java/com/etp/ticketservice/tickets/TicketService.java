@@ -6,7 +6,9 @@ import com.etp.ticketservice.tickets.dto.ListTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.ListTicketTicketTypeResponseDto;
 import com.etp.ticketservice.tickets.dto.TicketSaleResponseDto;
 import com.etp.ticketservice.tickets.dto.TicketSaleTicketTypeResponseDto;
+import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.tickettypes.TicketType;
+import com.etp.ticketservice.user.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -14,6 +16,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface TicketService {
+    // orderItem is nullable -- null for the legacy direct-purchase path
+    // (TicketTypeServiceImpl#purchaseTicket), set for tickets issued from a paid
+    // TicketOrder (TicketOrderServiceImpl#completeOrder).
+    Ticket issueTicket(User purchaser, TicketType ticketType, TicketOrderItem orderItem);
+
     Page<Ticket> listTicketsForUser(UUID userId, Pageable pageable);
 
     Optional<Ticket> getTicketForUser(UUID userId, UUID ticketId);

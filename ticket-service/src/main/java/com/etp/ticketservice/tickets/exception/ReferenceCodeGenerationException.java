@@ -1,4 +1,4 @@
-package com.etp.ticketservice.tickettypes.exception;
+package com.etp.ticketservice.tickets.exception;
 
 import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.common.exception.EventTicketException;

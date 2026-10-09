@@ -8,6 +8,7 @@ import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
 import com.etp.ticketservice.payments.PaymentProvider;
 import com.etp.ticketservice.tickets.TicketRepository;
+import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
 import com.etp.ticketservice.tickets.exception.TicketsSoldOutException;
 import com.etp.ticketservice.tickettypes.TicketType;
@@ -59,6 +60,8 @@ class TicketOrderServiceImplTest {
     private TicketOrderRepository ticketOrderRepository;
     @Mock
     private TicketOrderItemRepository ticketOrderItemRepository;
+    @Mock
+    private TicketService ticketService;
 
     @InjectMocks
     private TicketOrderServiceImpl ticketOrderService;
@@ -230,6 +233,100 @@ class TicketOrderServiceImplTest {
         TicketOrder updated = ticketOrderService.attachProviderCheckoutSession(orderId, "cs_test_123");
 
         assertThat(updated.getProviderCheckoutSessionId()).isEqualTo("cs_test_123");
+    }
+
+    @Test
+    void completeOrder_notFound_throws() {
+        UUID orderId = UUID.randomUUID();
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ticketOrderService.completeOrder(orderId))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(ticketService, never()).issueTicket(any(), any(), any());
+    }
+
+    @Test
+    void completeOrder_alreadySettled_isNoOp() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = new TicketOrder();
+        order.setDomainId(orderId);
+        order.setStatus(OrderStatusEnum.PAID);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+
+        // Already settled by a concurrent webhook delivery or sweep pass -- a safe no-op.
+        ticketOrderService.completeOrder(orderId);
+
+        verify(ticketService, never()).issueTicket(any(), any(), any());
+        verify(ticketOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void completeOrder_happyPath_issuesTicketsPerItemQuantityAndMarksPaid() {
+        UUID orderId = UUID.randomUUID();
+        User purchaser = new User();
+        TicketOrder order = new TicketOrder();
+        order.setDomainId(orderId);
+        order.setStatus(OrderStatusEnum.PENDING);
+        order.setPurchaser(purchaser);
+
+        TicketType ticketTypeA = new TicketType();
+        TicketOrderItem itemA = new TicketOrderItem();
+        itemA.setTicketType(ticketTypeA);
+        itemA.setQuantity(2);
+        order.addItem(itemA);
+
+        TicketType ticketTypeB = new TicketType();
+        TicketOrderItem itemB = new TicketOrderItem();
+        itemB.setTicketType(ticketTypeB);
+        itemB.setQuantity(1);
+        order.addItem(itemB);
+
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(ticketOrderRepository.save(order)).thenReturn(order);
+
+        ticketOrderService.completeOrder(orderId);
+
+        verify(ticketService, times(2)).issueTicket(purchaser, ticketTypeA, itemA);
+        verify(ticketService, times(1)).issueTicket(purchaser, ticketTypeB, itemB);
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.PAID);
+    }
+
+    @Test
+    void expireOrder_notFound_throws() {
+        UUID orderId = UUID.randomUUID();
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ticketOrderService.expireOrder(orderId))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void expireOrder_alreadySettled_isNoOp() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = new TicketOrder();
+        order.setDomainId(orderId);
+        order.setStatus(OrderStatusEnum.PAID);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+
+        ticketOrderService.expireOrder(orderId);
+
+        verify(ticketOrderRepository, never()).save(any());
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.PAID);
+    }
+
+    @Test
+    void expireOrder_happyPath_marksExpired() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = new TicketOrder();
+        order.setDomainId(orderId);
+        order.setStatus(OrderStatusEnum.PENDING);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(ticketOrderRepository.save(order)).thenReturn(order);
+
+        ticketOrderService.expireOrder(orderId);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.EXPIRED);
     }
 
     private CreateCheckoutRequestDto requestFor(UUID ticketTypeId, int quantity) {

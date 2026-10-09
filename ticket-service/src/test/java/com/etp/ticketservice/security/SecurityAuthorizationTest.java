@@ -12,6 +12,7 @@ import com.etp.ticketservice.orders.CheckoutService;
 import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutResponseDto;
+import com.etp.ticketservice.payments.StripeWebhookService;
 import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickettypes.TicketTypeService;
@@ -81,6 +82,8 @@ class SecurityAuthorizationTest {
     private TicketValidationService ticketValidationService;
     @MockitoBean
     private CheckoutService checkoutService;
+    @MockitoBean
+    private StripeWebhookService stripeWebhookService;
 
     private static final UUID USER_ID = UUID.randomUUID();
 
@@ -101,6 +104,18 @@ class SecurityAuthorizationTest {
                 // Empty Optional -> 404, not 401/403 -- proof this reached the
                 // controller at all rather than being rejected by the filter chain.
                 .andExpect(status().isNotFound());
+    }
+
+    // Reachable with NO JWT at all, unlike every other permitAll rule above -- this one
+    // is trusted by Stripe's signature instead (verified inside the mocked-out service),
+    // not by the resource-server filter chain finding no token and letting it through.
+    @Test
+    void stripeWebhook_isPermitAll_reachesControllerWithoutAnyAuthentication() throws Exception {
+        mockMvc.perform(post("/api/v1/payments/webhooks/stripe")
+                        .header("Stripe-Signature", "t=123,v1=fake")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isOk());
     }
 
     // ---- /api/v1/events/** -> hasRole(ORGANIZER) ----

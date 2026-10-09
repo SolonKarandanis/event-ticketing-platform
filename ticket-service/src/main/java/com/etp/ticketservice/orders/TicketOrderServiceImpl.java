@@ -9,6 +9,7 @@ import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
 import com.etp.ticketservice.payments.PaymentProvider;
 import com.etp.ticketservice.tickets.TicketRepository;
+import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.tickettypes.TicketTypeRepository;
@@ -46,6 +47,7 @@ public class TicketOrderServiceImpl implements TicketOrderService {
     private final TicketRepository ticketRepository;
     private final TicketOrderRepository ticketOrderRepository;
     private final TicketOrderItemRepository ticketOrderItemRepository;
+    private final TicketService ticketService;
 
     @Override
     @Transactional
@@ -115,6 +117,42 @@ public class TicketOrderServiceImpl implements TicketOrderService {
                 .orElseThrow(() -> new IllegalStateException("TicketOrder " + orderDomainId + " vanished between reserve() and attachProviderCheckoutSession()"));
         order.setProviderCheckoutSessionId(providerSessionId);
         return ticketOrderRepository.save(order);
+    }
+
+    @Override
+    @Transactional
+    public void completeOrder(UUID orderDomainId) {
+        TicketOrder order = ticketOrderRepository.findByDomainIdWithLock(orderDomainId)
+                .orElseThrow(() -> new IllegalStateException("TicketOrder " + orderDomainId + " not found while completing order"));
+
+        if (OrderStatusEnum.PENDING != order.getStatus()) {
+            // Already settled by a concurrent webhook delivery or sweep pass -- the lock
+            // + re-check above is exactly what makes this a safe no-op, not an error.
+            return;
+        }
+
+        for (TicketOrderItem item : order.getItems()) {
+            for (int i = 0; i < item.getQuantity(); i++) {
+                ticketService.issueTicket(order.getPurchaser(), item.getTicketType(), item);
+            }
+        }
+
+        order.setStatus(OrderStatusEnum.PAID);
+        ticketOrderRepository.save(order);
+    }
+
+    @Override
+    @Transactional
+    public void expireOrder(UUID orderDomainId) {
+        TicketOrder order = ticketOrderRepository.findByDomainIdWithLock(orderDomainId)
+                .orElseThrow(() -> new IllegalStateException("TicketOrder " + orderDomainId + " not found while expiring order"));
+
+        if (OrderStatusEnum.PENDING != order.getStatus()) {
+            return;
+        }
+
+        order.setStatus(OrderStatusEnum.EXPIRED);
+        ticketOrderRepository.save(order);
     }
 
     // Duplicate ticketTypeId lines in one request are summed rather than rejected --

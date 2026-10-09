@@ -2,15 +2,19 @@ package com.etp.ticketservice.tickets;
 
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 
+import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.GetTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.ListTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.ListTicketTicketTypeResponseDto;
 import com.etp.ticketservice.tickets.dto.TicketSaleResponseDto;
 import com.etp.ticketservice.tickets.dto.TicketSaleTicketTypeResponseDto;
+import com.etp.ticketservice.tickets.exception.ReferenceCodeGenerationException;
+import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.events.EventStatusEnum;
 import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.tickets.exception.TicketAlreadyCancelledException;
 import com.etp.ticketservice.tickets.exception.TicketAlreadyValidatedException;
@@ -22,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,8 +35,57 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class TicketServiceImpl implements TicketService {
 
+    // Excludes visually ambiguous characters (0/O, 1/I/L) -- this code is meant to be read
+    // off a phone screen and typed by hand at a door under time pressure.
+    private static final String REFERENCE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    private static final int REFERENCE_CODE_LENGTH = 8;
+    private static final int REFERENCE_CODE_MAX_ATTEMPTS = 5;
+
     private final TicketRepository ticketRepository;
     private final TicketEventPublisher ticketEventPublisher;
+    private final QrCodeService qrCodeService;
+    private final SecureRandom secureRandom = new SecureRandom();
+
+    @Override
+    @Transactional
+    public Ticket issueTicket(User purchaser, TicketType ticketType, TicketOrderItem orderItem) {
+        Ticket ticket = new Ticket();
+        ticket.setDomainId(UUID.randomUUID());
+        ticket.setReferenceCode(generateReferenceCode());
+        ticket.setStatus(TicketStatusEnum.PURCHASED);
+        ticket.setPurchaser(purchaser);
+        ticket.setOrderItem(orderItem);
+        ticketType.addTicket(ticket);
+
+        // The save below is what assigns the ticket's generated id -- QrCode owns the
+        // ticket_id FK (Ticket.qrCodes is the inverse, mappedBy side), so QrCode needs
+        // that id to exist before it can be saved. No second ticket save afterward:
+        // addQrCode only mutates an in-memory Set on this already-managed entity, so
+        // there's no tickets-table column left to flush.
+        Ticket savedTicket = ticketRepository.save(ticket);
+        qrCodeService.generateQrCode(savedTicket);
+
+        ticketEventPublisher.publishTicketPurchased(savedTicket);
+
+        return savedTicket;
+    }
+
+    // Unlike domainId (a UUID, collision-proof enough to generate-and-save with the DB's
+    // unique constraint as the only backstop), this code is short enough that a collision,
+    // while astronomically unlikely, is worth actually checking for.
+    private String generateReferenceCode() {
+        for (int attempt = 0; attempt < REFERENCE_CODE_MAX_ATTEMPTS; attempt++) {
+            StringBuilder code = new StringBuilder(REFERENCE_CODE_LENGTH);
+            for (int i = 0; i < REFERENCE_CODE_LENGTH; i++) {
+                code.append(REFERENCE_CODE_ALPHABET.charAt(secureRandom.nextInt(REFERENCE_CODE_ALPHABET.length())));
+            }
+            String candidate = code.toString();
+            if (ticketRepository.findByReferenceCode(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        throw new ReferenceCodeGenerationException(ErrorCode.REFERENCE_CODE_GENERATION_FAILED);
+    }
 
     @Override
     @Transactional(readOnly = true)

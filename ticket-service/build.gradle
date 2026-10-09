@@ -40,6 +40,12 @@ dependencies {
     // Spring Boot's own) -- the 2.x line only supports Boot 3.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
     implementation 'com.stripe:stripe-java:34.0.0'
+    // stripe-java only exposes gson on its runtime classpath, not its compile/api one
+    // (deliberately, so it doesn't leak as part of stripe-java's own public API) -- our
+    // own code reads raw webhook JSON directly (StripePaymentGatewayService), so it
+    // needs gson as a real compile-time dependency here, pinned to the exact version
+    // stripe-java itself requires.
+    implementation 'com.google.code.gson:gson:2.10.1'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'

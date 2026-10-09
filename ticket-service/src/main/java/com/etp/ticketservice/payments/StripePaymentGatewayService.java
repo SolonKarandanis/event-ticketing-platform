@@ -1,16 +1,24 @@
 package com.etp.ticketservice.payments;
 
 import com.etp.ticketservice.common.exception.ErrorCode;
+import com.etp.ticketservice.payments.exception.InvalidWebhookSignatureException;
 import com.etp.ticketservice.payments.exception.PaymentGatewayException;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.stripe.Stripe;
+import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Event;
 import com.stripe.model.checkout.Session;
+import com.stripe.net.Webhook;
 import com.stripe.param.checkout.SessionCreateParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.UUID;
 
 @Service
 public class StripePaymentGatewayService implements PaymentGatewayService {
@@ -23,12 +31,15 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
     private static final long SESSION_EXPIRY_MINUTES = 31;
 
     private final String currency;
+    private final String webhookSecret;
 
     public StripePaymentGatewayService(
             @Value("${stripe.api-key}") String apiKey,
-            @Value("${app.checkout.currency}") String currency) {
+            @Value("${app.checkout.currency}") String currency,
+            @Value("${stripe.webhook-secret}") String webhookSecret) {
         Stripe.apiKey = apiKey;
         this.currency = currency;
+        this.webhookSecret = webhookSecret;
     }
 
     @Override
@@ -61,6 +72,49 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
             return new CheckoutSessionResult(session.getId(), session.getUrl());
         } catch (StripeException e) {
             throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    @Override
+    public WebhookEvent verifyWebhookSignature(String payload, String signatureHeader) {
+        Event event;
+        try {
+            event = Webhook.constructEvent(payload, signatureHeader, webhookSecret);
+        } catch (SignatureVerificationException e) {
+            // A bad/forged/misconfigured inbound request -- the opposite direction from
+            // createCheckoutSession's PAYMENT_GATEWAY_ERROR above (an outbound call to
+            // Stripe that failed), so it gets its own error code rather than reusing that one.
+            throw new InvalidWebhookSignatureException(ErrorCode.INVALID_WEBHOOK_SIGNATURE, e);
+        }
+
+        return WebhookEvent.builder()
+                .providerEventId(event.getId())
+                .eventType(event.getType())
+                .orderDomainId(extractOrderDomainId(event))
+                .build();
+    }
+
+    // Deliberately reads client_reference_id off the event's raw JSON rather than via
+    // event.getDataObjectDeserializer().getObject() (typed deserialization into a
+    // Session) -- that typed path silently returns Optional.empty() if the webhook
+    // endpoint's configured Stripe API version (a dashboard setting, not source
+    // controlled) ever drifts from this SDK's own pinned version, which would make a
+    // legitimate checkout.session.completed event silently never complete its order.
+    // client_reference_id is a stable, integrator-supplied field that doesn't drift with
+    // Stripe's own schema evolution, so reading it straight off the raw JSON sidesteps
+    // that whole failure mode. getRawJson() returns the data.object JSON directly (the
+    // Session object itself, not wrapped in an outer "object"/"data" key).
+    private UUID extractOrderDomainId(Event event) {
+        String rawJson = event.getDataObjectDeserializer().getRawJson();
+        JsonObject sessionJson = JsonParser.parseString(rawJson).getAsJsonObject();
+        JsonElement clientReferenceId = sessionJson.get("client_reference_id");
+        if (null == clientReferenceId || clientReferenceId.isJsonNull()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(clientReferenceId.getAsString());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 }

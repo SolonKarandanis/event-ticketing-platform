@@ -39,6 +39,11 @@ public class SecurityConfig {
                                 // GET rule above doesn't cover it -- HTTP method is part of what a
                                 // requestMatcher matches on, not just the path.
                                 .requestMatchers(HttpMethod.POST, "/api/v1/published-events/search").permitAll()
+                                // No JWT at all here, by design -- trusted only by Stripe's
+                                // cryptographic signature (verified in
+                                // StripeWebhookServiceImpl), a different kind of "public" than
+                                // the permitAll rules above.
+                                .requestMatchers(HttpMethod.POST, "/api/v1/payments/webhooks/stripe").permitAll()
                                 // Ticket purchase and checkout both live under /api/v1/events/** but
                                 // are attendee actions, not organizer management -- must be matched
                                 // before the broader ORGANIZER-only rule below.

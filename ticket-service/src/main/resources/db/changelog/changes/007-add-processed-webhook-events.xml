@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="20-create-processed-webhook-events-table" author="event-ticket-platform">
+        <createSequence sequenceName="processed_webhook_events_seq" startValue="1" incrementBy="1"/>
+        <createTable tableName="processed_webhook_events">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="processed_webhook_events_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="provider" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_event_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="event_type" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="processed_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="processed_webhook_events" columnNames="provider, provider_event_id"
+                constraintName="uc_processed_webhook_events_provider_event_id"/>
+    </changeSet>
+
+</databaseChangeLog>

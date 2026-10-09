@@ -3,14 +3,18 @@ package com.etp.ticketservice.tickets;
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 
 import com.etp.ticketservice.events.Event;
+import com.etp.ticketservice.orders.TicketOrderItem;
+import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.ticketvalidation.TicketValidation;
 import com.etp.ticketservice.events.EventStatusEnum;
 import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.tickets.exception.ReferenceCodeGenerationException;
 import com.etp.ticketservice.tickets.exception.TicketAlreadyCancelledException;
 import com.etp.ticketservice.tickets.exception.TicketAlreadyValidatedException;
 import com.etp.ticketservice.tickets.exception.TicketEventAlreadyCompletedException;
 import com.etp.ticketservice.tickets.exception.TicketNotFoundException;
+import com.etp.ticketservice.user.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -40,6 +44,8 @@ class TicketServiceImplTest {
     private TicketRepository ticketRepository;
     @Mock
     private TicketEventPublisher ticketEventPublisher;
+    @Mock
+    private QrCodeService qrCodeService;
 
     @InjectMocks
     private TicketServiceImpl ticketService;
@@ -48,6 +54,50 @@ class TicketServiceImplTest {
     private static final UUID ORGANIZER_ID = UUID.randomUUID();
     private static final UUID EVENT_ID = UUID.randomUUID();
     private static final UUID TICKET_ID = UUID.randomUUID();
+
+    @Test
+    void issueTicket_happyPath_withOrderItem_generatesQrAndPublishesAndLinksOrderItem() {
+        User purchaser = new User();
+        TicketType ticketType = new TicketType();
+        TicketOrderItem orderItem = new TicketOrderItem();
+        when(ticketRepository.findByReferenceCode(any())).thenReturn(Optional.empty());
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Ticket issued = ticketService.issueTicket(purchaser, ticketType, orderItem);
+
+        assertThat(issued.getStatus()).isEqualTo(TicketStatusEnum.PURCHASED);
+        assertThat(issued.getPurchaser()).isEqualTo(purchaser);
+        assertThat(issued.getOrderItem()).isEqualTo(orderItem);
+        assertThat(issued.getTicketType()).isEqualTo(ticketType);
+        verify(qrCodeService).generateQrCode(issued);
+        verify(ticketEventPublisher).publishTicketPurchased(issued);
+    }
+
+    @Test
+    void issueTicket_happyPath_withoutOrderItem_leavesOrderItemNull() {
+        User purchaser = new User();
+        TicketType ticketType = new TicketType();
+        when(ticketRepository.findByReferenceCode(any())).thenReturn(Optional.empty());
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Ticket issued = ticketService.issueTicket(purchaser, ticketType, null);
+
+        assertThat(issued.getOrderItem()).isNull();
+    }
+
+    @Test
+    void issueTicket_referenceCodeCollisions_retriesThenGivesUp() {
+        User purchaser = new User();
+        TicketType ticketType = new TicketType();
+        // Every candidate "collides" -- forces every one of the 5 generation attempts to
+        // be exhausted rather than succeeding on the first try.
+        when(ticketRepository.findByReferenceCode(any())).thenReturn(Optional.of(new Ticket()));
+
+        assertThatThrownBy(() -> ticketService.issueTicket(purchaser, ticketType, null))
+                .isInstanceOf(ReferenceCodeGenerationException.class);
+
+        verify(ticketRepository, never()).save(any());
+    }
 
     @Test
     void cancelTicketForUser_notFound_throws() {
