@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import { useAuth } from 'react-oidc-context'
 import { Button } from '#/components/ui/button'
 import { publishedEventImageUrl } from '#/features/published-events/api'
@@ -7,7 +7,7 @@ import {
   publishedEventQueryOptions,
   usePublishedEvent,
 } from '#/features/published-events/hooks'
-import { usePurchaseTicket } from '#/features/ticket-types/hooks'
+import { useCreateCheckout } from '#/features/checkout/hooks'
 
 export const Route = createFileRoute('/browse/$eventId')({
   // Warms the cache usePublishedEvent() below reads, on navigation/intent-preload
@@ -52,16 +52,13 @@ function EventDetails() {
   const { eventId } = Route.useParams()
   const { data: event, isPending, isError } = usePublishedEvent(eventId)
   const auth = useAuth()
-  const navigate = useNavigate()
-  const purchaseTicket = usePurchaseTicket()
+  const createCheckout = useCreateCheckout()
 
   // Cart shape decided in issue #26 (Variant C, "Order Summary Card") and issue #18's
   // #20 (a real multi-ticket-type cart, not one-ticket-type-at-a-time) -- keyed by
   // ticketTypeId, 0 means "not in the cart", not "1 by default" the way the old
   // per-row shape worked.
   const [quantities, setQuantities] = useState<Record<string, number>>({})
-  const [isCheckingOut, setIsCheckingOut] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   function setQuantity(ticketTypeId: string, quantity: number) {
     setQuantities((prev) => {
@@ -84,17 +81,10 @@ function EventDetails() {
           return sum + (ticketType?.price ?? 0) * qty
         }, 0)
 
-  // TODO(#18): this is a bridge, not the real checkout. The map (issue #18) decided
-  // purchase becomes a single Stripe Checkout Session per cart -- one charge, one
-  // webhook, atomic (every held line item is issued or none are). That needs a real
-  // "create checkout session" endpoint and a hosted-redirect round trip, neither of
-  // which exist yet. Until they do, this generalizes the pre-#18 sequential-purchase-
-  // loop (issue #4/#5) across every line in the cart instead of just one ticket type,
-  // so purchasing stays genuinely functional against the real backend in the meantime.
-  // Replace this whole function with a single POST + redirect once #18's backend lands
-  // -- at that point the outcome also collapses to Success/Failed only (no more
-  // partial), since a reservation-backed checkout can't half-succeed the way this
-  // unreserved loop still can.
+  // Issue #18 (#20): a single Stripe Checkout Session per cart, reservation-backed so
+  // a successful payment always issues every held line item -- outcome is Success or
+  // Failed/Expired only, no more partial. window.location.href, not navigate(): Stripe
+  // Checkout is a genuinely external domain, not a client-side route.
   async function handleCheckout() {
     if (!auth.isAuthenticated) {
       void auth.signinRedirect()
@@ -104,29 +94,17 @@ function EventDetails() {
       return
     }
 
-    setIsCheckingOut(true)
-    setProgress({ done: 0, total: itemCount })
-
-    let purchased = 0
-    outer: for (const [ticketTypeId, quantity] of cartLines) {
-      for (let i = 0; i < quantity; i++) {
-        try {
-          await purchaseTicket.mutateAsync({ eventId, ticketTypeId })
-          purchased += 1
-          setProgress({ done: purchased, total: itemCount })
-        } catch {
-          // usePurchaseTicket's own onError already toasts this.
-          break outer
-        }
-      }
+    try {
+      const { checkoutUrl } = await createCheckout.mutateAsync({
+        eventId,
+        request: {
+          items: cartLines.map(([ticketTypeId, quantity]) => ({ ticketTypeId, quantity })),
+        },
+      })
+      window.location.href = checkoutUrl
+    } catch {
+      // useCreateCheckout's own onError already toasts this.
     }
-
-    setIsCheckingOut(false)
-    setProgress(null)
-    void navigate({
-      to: '/browse/confirmation',
-      search: { eventId, requested: itemCount, purchased },
-    })
   }
 
   return (
@@ -206,7 +184,7 @@ function EventDetails() {
                           type="button"
                           aria-label={`Decrease ${ticketType.name} quantity`}
                           className="h-7 w-7 rounded-full border border-(--line) text-sm text-(--sea-ink) disabled:opacity-40"
-                          disabled={quantity === 0 || isCheckingOut}
+                          disabled={quantity === 0 || createCheckout.isPending}
                           onClick={() => setQuantity(ticketType.id, quantity - 1)}
                         >
                           −
@@ -218,7 +196,7 @@ function EventDetails() {
                           type="button"
                           aria-label={`Increase ${ticketType.name} quantity`}
                           className="h-7 w-7 rounded-full border border-(--line) text-sm text-(--sea-ink) disabled:opacity-40"
-                          disabled={isCheckingOut}
+                          disabled={createCheckout.isPending}
                           onClick={() => setQuantity(ticketType.id, quantity + 1)}
                         >
                           +
@@ -234,11 +212,11 @@ function EventDetails() {
               </div>
               <Button
                 className="mt-4 w-full"
-                disabled={itemCount === 0 || isCheckingOut}
+                disabled={itemCount === 0 || createCheckout.isPending}
                 onClick={() => void handleCheckout()}
               >
-                {isCheckingOut && progress
-                  ? `Purchasing... (${progress.done} of ${progress.total})`
+                {createCheckout.isPending
+                  ? 'Redirecting to checkout...'
                   : itemCount === 0
                     ? 'Select tickets'
                     : 'Checkout'}

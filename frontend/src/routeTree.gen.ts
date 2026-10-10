@@ -20,7 +20,7 @@ import { Route as OrganizerDashboardRouteImport } from './routes/_organizer/dash
 import { Route as StaffScanRouteImport } from './routes/_staff/scan'
 import { Route as BrowseIndexRouteImport } from './routes/browse/index'
 import { Route as BrowseEventIdRouteImport } from './routes/browse/$eventId'
-import { Route as BrowseConfirmationRouteImport } from './routes/browse/confirmation'
+import { Route as CheckoutSuccessRouteImport } from './routes/checkout/success'
 import { Route as AttendeeTicketsIndexRouteImport } from './routes/_attendee/tickets/index'
 import { Route as AttendeeTicketsTicketIdRouteImport } from './routes/_attendee/tickets/$ticketId'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/_organizer/events/index'
@@ -84,9 +84,9 @@ const BrowseEventIdRoute = BrowseEventIdRouteImport.update({
   path: '/browse/$eventId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BrowseConfirmationRoute = BrowseConfirmationRouteImport.update({
-  id: '/browse/confirmation',
-  path: '/browse/confirmation',
+const CheckoutSuccessRoute = CheckoutSuccessRouteImport.update({
+  id: '/checkout/success',
+  path: '/checkout/success',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AttendeeTicketsIndexRoute = AttendeeTicketsIndexRouteImport.update({
@@ -150,7 +150,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
-  '/browse/confirmation': typeof BrowseConfirmationRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/browse/': typeof BrowseIndexRoute
   '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
@@ -171,7 +171,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof OrganizerDashboardRoute
   '/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
-  '/browse/confirmation': typeof BrowseConfirmationRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/browse': typeof BrowseIndexRoute
   '/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/events/new': typeof OrganizerEventsNewRoute
@@ -196,7 +196,7 @@ export interface FileRoutesById {
   '/_organizer/dashboard': typeof OrganizerDashboardRoute
   '/_staff/scan': typeof StaffScanRoute
   '/browse/$eventId': typeof BrowseEventIdRoute
-  '/browse/confirmation': typeof BrowseConfirmationRoute
+  '/checkout/success': typeof CheckoutSuccessRoute
   '/browse/': typeof BrowseIndexRoute
   '/_attendee/tickets/$ticketId': typeof AttendeeTicketsTicketIdRoute
   '/_organizer/events/new': typeof OrganizerEventsNewRoute
@@ -219,7 +219,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
-    | '/browse/confirmation'
+    | '/checkout/success'
     | '/browse/'
     | '/tickets/$ticketId'
     | '/events/new'
@@ -240,7 +240,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/scan'
     | '/browse/$eventId'
-    | '/browse/confirmation'
+    | '/checkout/success'
     | '/browse'
     | '/tickets/$ticketId'
     | '/events/new'
@@ -264,7 +264,7 @@ export interface FileRouteTypes {
     | '/_organizer/dashboard'
     | '/_staff/scan'
     | '/browse/$eventId'
-    | '/browse/confirmation'
+    | '/checkout/success'
     | '/browse/'
     | '/_attendee/tickets/$ticketId'
     | '/_organizer/events/new'
@@ -286,7 +286,7 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   CallbackRoute: typeof CallbackRoute
   BrowseEventIdRoute: typeof BrowseEventIdRoute
-  BrowseConfirmationRoute: typeof BrowseConfirmationRoute
+  CheckoutSuccessRoute: typeof CheckoutSuccessRoute
   BrowseIndexRoute: typeof BrowseIndexRoute
 }
 
@@ -369,11 +369,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BrowseEventIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/browse/confirmation': {
-      id: '/browse/confirmation'
-      path: '/browse/confirmation'
-      fullPath: '/browse/confirmation'
-      preLoaderRoute: typeof BrowseConfirmationRouteImport
+    '/checkout/success': {
+      id: '/checkout/success'
+      path: '/checkout/success'
+      fullPath: '/checkout/success'
+      preLoaderRoute: typeof CheckoutSuccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_attendee/tickets/': {
@@ -511,7 +511,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   CallbackRoute: CallbackRoute,
   BrowseEventIdRoute: BrowseEventIdRoute,
-  BrowseConfirmationRoute: BrowseConfirmationRoute,
+  CheckoutSuccessRoute: CheckoutSuccessRoute,
   BrowseIndexRoute: BrowseIndexRoute,
 }
 export const routeTree = rootRouteImport
