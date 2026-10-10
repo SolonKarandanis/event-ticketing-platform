@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class TicketEventPublisher {
@@ -18,7 +20,9 @@ public class TicketEventPublisher {
                 ticket.getTicketType().getEvent().getDomainId(),
                 ticket.getTicketType().getEvent().getOrganizer().getDomainId(),
                 ticket.getPurchaser().getDomainId(),
+                orderDomainId(ticket),
                 ticket.getTicketType().getPriceMinorUnits(),
+                ticket.getTicketType().getCurrency(),
                 ticket.getCreatedAt()
         ));
     }
@@ -34,8 +38,13 @@ public class TicketEventPublisher {
                 ticket.getTicketType().getEvent().getDomainId(),
                 ticket.getTicketType().getEvent().getOrganizer().getDomainId(),
                 ticket.getPurchaser().getDomainId(),
+                orderDomainId(ticket),
                 ticket.getCancelledAt(),
                 ticket.getCancelReason()
         ));
+    }
+
+    private UUID orderDomainId(Ticket ticket) {
+        return null != ticket.getOrderItem() ? ticket.getOrderItem().getTicketOrder().getDomainId() : null;
     }
 }

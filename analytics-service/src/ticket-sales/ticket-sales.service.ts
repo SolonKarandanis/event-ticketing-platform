@@ -22,7 +22,9 @@ export class TicketSalesService {
         eventId: event.eventId,
         organizerId: event.organizerId,
         purchaserId: event.purchaserId,
+        orderId: event.orderId,
         price: event.price,
+        currency: event.currency,
         purchasedAt: new Date(event.purchasedAt),
       })
       .onConflictDoNothing({ target: ticketSales.ticketId });
@@ -49,9 +51,11 @@ export class TicketSalesService {
         // Number.MAX_SAFE_INTEGER -- sql<number>() is a compile-time-only type
         // assertion, it doesn't cast anything at runtime. ::int makes Postgres do the
         // narrowing itself, so the driver hands back a real JS number (a ticket count
-        // safely fits in 4 bytes).
+        // safely fits in 4 bytes). Same reasoning now applies to revenue below: price
+        // became an integer column with #24's minor-units change, and Postgres
+        // promotes SUM(integer) to bigint, so it needs the same ::int cast.
         ticketsSold: sql<number>`count(*)::int`,
-        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)::int`,
       })
       .from(ticketSales)
       .where(
@@ -71,7 +75,7 @@ export class TicketSalesService {
     const [summary] = await this.db
       .select({
         ticketsSold: sql<number>`count(*)::int`,
-        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)::int`,
       })
       .from(ticketSales)
       .where(
@@ -104,7 +108,7 @@ export class TicketSalesService {
       .select({
         date: dateExpr,
         ticketsSold: sql<number>`count(*)::int`,
-        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)`,
+        revenue: sql<number>`coalesce(sum(${ticketSales.price}), 0)::int`,
       })
       .from(ticketSales)
       .where(

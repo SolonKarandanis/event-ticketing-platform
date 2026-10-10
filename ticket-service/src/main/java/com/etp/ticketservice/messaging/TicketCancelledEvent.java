@@ -11,6 +11,12 @@ public record TicketCancelledEvent(
         UUID eventId,
         UUID organizerId,
         UUID purchaserId,
+        // Same nullability as TicketPurchasedEvent.orderId -- see that field's comment.
+        // analytics-service's recordCancellation doesn't use this today (it only ever
+        // writes cancelledAt against an already-recorded sale), but it's cheap to carry
+        // alongside the purchased event's own orderId widening, same "capture now" #23
+        // precedent already used for the currency column.
+        UUID orderId,
         LocalDateTime cancelledAt,
         TicketCancelReasonEnum cancelReason
 ) {

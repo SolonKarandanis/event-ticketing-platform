@@ -49,7 +49,9 @@ describe('TicketSalesService', () => {
       eventId: randomUUID(),
       organizerId: randomUUID(),
       purchaserId: randomUUID(),
+      orderId: randomUUID(),
       price: 25,
+      currency: 'usd',
       purchasedAt: '2026-01-01T00:00:00.000Z',
       ...overrides,
     };
@@ -74,7 +76,9 @@ describe('TicketSalesService', () => {
         eventId: event.eventId,
         organizerId: event.organizerId,
         purchaserId: event.purchaserId,
+        orderId: event.orderId,
         price: event.price,
+        currency: event.currency,
         cancelledAt: null,
       });
       expect(row?.purchasedAt.toISOString()).toBe(event.purchasedAt);
@@ -107,6 +111,7 @@ describe('TicketSalesService', () => {
         eventId: event.eventId,
         organizerId: event.organizerId,
         purchaserId: event.purchaserId,
+        orderId: event.orderId,
         cancelledAt,
         cancelReason: 'ATTENDEE_REQUEST',
       } satisfies TicketCancelledEvent);
@@ -129,6 +134,7 @@ describe('TicketSalesService', () => {
           eventId: randomUUID(),
           organizerId: randomUUID(),
           purchaserId: randomUUID(),
+          orderId: randomUUID(),
           cancelledAt: '2026-02-01T00:00:00.000Z',
           cancelReason: 'ATTENDEE_REQUEST',
         }),
@@ -167,6 +173,7 @@ describe('TicketSalesService', () => {
         eventId,
         organizerId,
         purchaserId: cancelled.purchaserId,
+        orderId: cancelled.orderId,
         cancelledAt: '2026-02-01T00:00:00.000Z',
         cancelReason: 'ORGANIZER_ACTION',
       });
@@ -233,6 +240,7 @@ describe('TicketSalesService', () => {
         eventId: cancelled.eventId,
         organizerId,
         purchaserId: cancelled.purchaserId,
+        orderId: cancelled.orderId,
         cancelledAt: '2026-02-01T00:00:00.000Z',
         cancelReason: 'ORGANIZER_ACTION',
       });
@@ -311,6 +319,7 @@ describe('TicketSalesService', () => {
         eventId: cancelled.eventId,
         organizerId,
         purchaserId: cancelled.purchaserId,
+        orderId: cancelled.orderId,
         cancelledAt: daysAgoIso(0),
         cancelReason: 'ATTENDEE_REQUEST',
       });
