@@ -40,3 +40,10 @@ out/
 # app.event-images.storage-dir's default (./data/event-images) -- uploaded event
 # images, local runtime state, never source.
 /data/
+
+### Local secrets ###
+# Real Stripe test-mode values -- a genuinely sensitive credential, unlike every other
+# credential this repo has committed so far (see issue #25). Copy
+# application-local.properties.example to this filename and fill in your own values;
+# it's picked up as a Spring profile override when SPRING_PROFILES_ACTIVE=local.
+src/main/resources/application-local.properties

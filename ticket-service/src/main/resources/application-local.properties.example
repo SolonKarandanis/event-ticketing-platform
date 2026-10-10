@@ -1,0 +1,24 @@
+# Local-only Stripe test-mode secrets (issue #25). This repo is public, and a Stripe
+# test-mode key is tied to a real external account -- unlike every other credential
+# committed so far (RabbitMQ/Keycloak admin/admin), which is meaningless outside a
+# throwaway local container.
+#
+# Setup:
+#   1. Copy this file to application-local.properties (same directory -- already
+#      gitignored) and fill in your own values below.
+#   2. Run with SPRING_PROFILES_ACTIVE=local (or set it in your IDE's run
+#      configuration) so Spring picks this up as a profile-specific override of
+#      application.properties.
+#
+# stripe.api-key: from https://dashboard.stripe.com/test/apikeys ("Secret key").
+stripe.api-key=sk_test_your_key_here
+
+# stripe.webhook-secret: printed by the Stripe CLI when forwarding webhooks to this
+# service locally (server.port=4005, context-path=/ticket-service):
+#   stripe listen --forward-to localhost:4005/ticket-service/api/v1/payments/webhooks/stripe
+# Each `stripe listen` run prints its own signing secret, different from a deployed
+# endpoint's -- only valid while that process keeps running.
+stripe.webhook-secret=whsec_your_webhook_secret_here
+
+# Standard Stripe test card numbers for manual checkout testing (any future expiry,
+# any 3-digit CVC): 4242 4242 4242 4242 (succeeds), 4000 0000 0000 0002 (declined).
