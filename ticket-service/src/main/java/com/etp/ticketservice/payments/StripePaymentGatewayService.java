@@ -10,8 +10,10 @@ import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Event;
+import com.stripe.model.Refund;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -118,6 +120,26 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
             return UUID.fromString(clientReferenceId.getAsString());
         } catch (IllegalArgumentException e) {
             return null;
+        }
+    }
+
+    @Override
+    public RefundResult refund(RefundRequest request) {
+        try {
+            // Stripe's Refund API takes a PaymentIntent reference, not the Checkout
+            // Session id directly -- resolved via one extra retrieve call (see #22).
+            Session session = Session.retrieve(request.getProviderCheckoutSessionId());
+            RefundCreateParams params = RefundCreateParams.builder()
+                    .setPaymentIntent(session.getPaymentIntent())
+                    .setAmount(request.getAmountMinorUnits())
+                    .build();
+            Refund refund = Refund.create(params);
+            return RefundResult.builder()
+                    .providerRefundId(refund.getId())
+                    .status(refund.getStatus())
+                    .build();
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
         }
     }
 }

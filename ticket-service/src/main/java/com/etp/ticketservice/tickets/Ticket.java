@@ -104,10 +104,11 @@ public class Ticket {
     @Column(name = "order_item_id", insertable = false, updatable = false)
     private Long orderItemId;
 
-    // Bookkeeping for a cancelled ticket -- no real payment gateway exists (see issue #1),
-    // so there's nothing to actually refund; this is the audit trail a future refund
-    // process (or reporting) would read. All three are null until cancelTicket sets them
-    // together, and never independently.
+    // Bookkeeping for a cancelled ticket. cancelledAt/cancelReason/cancelNote are null
+    // until cancellation sets them together, and never independently. refundStatus/
+    // providerRefundId stay null forever for a ticket whose orderItem is null (the
+    // legacy direct-purchase path, never paid via Stripe at all) or until a refund
+    // attempt actually resolves for one that was (see issue #22).
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
@@ -117,6 +118,13 @@ public class Ticket {
 
     @Column(name = "cancel_note")
     private String cancelNote;
+
+    @Column(name = "refund_status")
+    @Enumerated(EnumType.STRING)
+    private RefundStatusEnum refundStatus;
+
+    @Column(name = "provider_refund_id")
+    private String providerRefundId;
 
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
     @Builder.Default
@@ -165,12 +173,15 @@ public class Ticket {
                Objects.equals(cancelledAt, ticket.cancelledAt) &&
                cancelReason == ticket.cancelReason &&
                Objects.equals(cancelNote, ticket.cancelNote) &&
+               refundStatus == ticket.refundStatus &&
+               Objects.equals(providerRefundId, ticket.providerRefundId) &&
                Objects.equals(createdAt, ticket.createdAt) &&
                Objects.equals(updatedAt, ticket.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, referenceCode, status, cancelledAt, cancelReason, cancelNote, createdAt, updatedAt);
+        return Objects.hash(id, domainId, referenceCode, status, cancelledAt, cancelReason, cancelNote,
+                refundStatus, providerRefundId, createdAt, updatedAt);
     }
 }

@@ -1,13 +1,13 @@
 package com.etp.ticketservice.events;
 
 import com.etp.ticketservice.events.images.EventImageService;
-import com.etp.ticketservice.messaging.TicketEventPublisher;
 
 import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.events.images.EventImage;
 import com.etp.ticketservice.orders.OrderStatusEnum;
 import com.etp.ticketservice.orders.TicketOrderItemRepository;
 import com.etp.ticketservice.tickets.Ticket;
+import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.ticketvalidation.TicketValidation;
 import com.etp.ticketservice.user.User;
@@ -88,7 +88,7 @@ class EventServiceImplTest {
     @Mock
     private EventImageRepository eventImageRepository;
     @Mock
-    private TicketEventPublisher ticketEventPublisher;
+    private TicketService ticketService;
     @Mock
     private EventImageService eventImageService;
 
@@ -108,7 +108,7 @@ class EventServiceImplTest {
     void setUp() {
         eventService = new EventServiceImpl(
                 userRepository, venueRepository, eventRepository, ticketRepository,
-                ticketOrderItemRepository, eventImageRepository, ticketEventPublisher,
+                ticketOrderItemRepository, eventImageRepository, ticketService,
                 eventImageService, "usd");
 
         organizer = new User();
@@ -410,16 +410,14 @@ class EventServiceImplTest {
 
         when(ticketRepository.findByEventIdAndStatusNotWithValidations(500L, TicketStatusEnum.CANCELLED))
                 .thenReturn(List.of(unvalidatedTicket, validatedTicket));
-        when(ticketRepository.save(unvalidatedTicket)).thenReturn(unvalidatedTicket);
 
         eventService.cancelEvent(ORGANIZER_ID, EVENT_ID);
 
         assertThat(event.getStatus()).isEqualTo(EventStatusEnum.CANCELLED);
-        assertThat(unvalidatedTicket.getStatus()).isEqualTo(TicketStatusEnum.CANCELLED);
-        assertThat(validatedTicket.getStatus()).isEqualTo(TicketStatusEnum.PURCHASED);
-        verify(ticketRepository, never()).save(validatedTicket);
-        verify(ticketEventPublisher).publishTicketCancelled(unvalidatedTicket);
-        verify(ticketEventPublisher, never()).publishTicketCancelled(validatedTicket);
+        // Actual cancellation/refund now happens inside TicketService (issue #22) --
+        // this cascade's own job is just deciding which tickets to call it for.
+        verify(ticketService).cancelTicketForEventCancellation(unvalidatedTicket.getDomainId());
+        verify(ticketService, never()).cancelTicketForEventCancellation(validatedTicket.getDomainId());
     }
 
     // ---- completeEvent ----

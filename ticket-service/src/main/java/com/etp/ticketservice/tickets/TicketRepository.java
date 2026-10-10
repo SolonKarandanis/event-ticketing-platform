@@ -55,13 +55,45 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // (wrong ticket, or someone else's event) is indistinguishable from "not found",
     // matching how getEventForOrganizer already treats an ID/ownership mismatch.
     // ticketType/event are @ManyToOne (to-one) fetch joins, needed to check the event's
-    // status (can't cancel once COMPLETED) without a second query.
-    @Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e " +
+    // status (can't cancel once COMPLETED) without a second query. validations is also
+    // fetch-joined (to-many, hence DISTINCT) -- cancelTicketForOrganizer's
+    // guardCancellable call now runs with no ambient Hibernate session
+    // (spring.jpa.open-in-view=false, and this method's only caller is no longer
+    // @Transactional -- see issue #22), so validations can't be left as a lazy proxy to
+    // resolve later. Safe to extend this query in place rather than cloning it:
+    // confirmed single caller (cancelTicketForOrganizer).
+    @Query("SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e LEFT JOIN FETCH t.validations " +
             "WHERE t.domainId = :ticketDomainId AND e.domainId = :eventDomainId AND e.organizer.domainId = :organizerDomainId")
     Optional<Ticket> findByDomainIdAndEventDomainIdAndOrganizerDomainId(
             @Param("ticketDomainId") UUID ticketDomainId,
             @Param("eventDomainId") UUID eventDomainId,
             @Param("organizerDomainId") UUID organizerDomainId);
+
+    // Same lookup+shape as findByDomainIdAndPurchaserDomainId, plus validations
+    // fetch-joined -- kept as a separate method rather than extending that one in place,
+    // since that one has a second caller (getTicketForUser) that doesn't need
+    // validations and shouldn't pay for the extra DISTINCT/to-many join. Backs
+    // cancelTicketForUser's guardCancellable call, same no-ambient-session reasoning as
+    // above (issue #22).
+    @Query("SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.validations " +
+            "WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
+    Optional<Ticket> findByDomainIdAndPurchaserDomainIdForCancellation(
+            @Param("domainId") UUID domainId,
+            @Param("purchaserDomainId") UUID purchaserDomainId);
+
+    // Backs TicketCancellationServiceImpl#cancelAndPersist. orderItem/ticketOrder are
+    // needed to resolve the refund context (amount + Stripe checkout session id);
+    // ticketType/event/organizer/purchaser are needed by
+    // TicketEventPublisher#publishTicketCancelled. All @ManyToOne (to-one), so these can
+    // all be fetch-joined together with no DISTINCT needed, and none of them is left as
+    // a lazy proxy once this method's (also no-longer-@Transactional) caller chain
+    // returns control past this method's own transaction boundary (issue #22).
+    @Query("SELECT t FROM Ticket t " +
+            "LEFT JOIN FETCH t.orderItem oi LEFT JOIN FETCH oi.ticketOrder " +
+            "LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e LEFT JOIN FETCH e.organizer " +
+            "LEFT JOIN FETCH t.purchaser " +
+            "WHERE t.domainId = :domainId")
+    Optional<Ticket> findByDomainIdForCancellation(@Param("domainId") UUID domainId);
 
     // Per-event ticket-sales screen. ticketType/event/purchaser are all @ManyToOne --
     // safe to fetch join together with Pageable, none can multiply result rows. event is

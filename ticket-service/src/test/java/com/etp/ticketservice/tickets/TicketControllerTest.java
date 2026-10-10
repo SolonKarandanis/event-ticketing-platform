@@ -103,7 +103,7 @@ class TicketControllerTest {
         CancelTicketRequestDto requestDto = new CancelTicketRequestDto("Changed my mind");
         CancelTicketResponseDto responseDto = new CancelTicketResponseDto(
                 ticketId, TicketStatusEnum.CANCELLED, null,
-                TicketCancelReasonEnum.ATTENDEE_REQUEST, "Changed my mind");
+                TicketCancelReasonEnum.ATTENDEE_REQUEST, "Changed my mind", null);
 
         when(ticketService.cancelTicketForUser(ATTENDEE_ID, ticketId, "Changed my mind"))
                 .thenReturn(cancelledTicket);
@@ -126,7 +126,7 @@ class TicketControllerTest {
         UUID ticketId = UUID.randomUUID();
         Ticket cancelledTicket = new Ticket();
         CancelTicketResponseDto responseDto = new CancelTicketResponseDto(
-                ticketId, TicketStatusEnum.CANCELLED, null, TicketCancelReasonEnum.ATTENDEE_REQUEST, null);
+                ticketId, TicketStatusEnum.CANCELLED, null, TicketCancelReasonEnum.ATTENDEE_REQUEST, null, null);
 
         when(ticketService.cancelTicketForUser(eq(ATTENDEE_ID), eq(ticketId), isNull()))
                 .thenReturn(cancelledTicket);

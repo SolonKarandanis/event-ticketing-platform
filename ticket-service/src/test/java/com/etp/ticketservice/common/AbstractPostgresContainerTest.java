@@ -98,12 +98,19 @@ public abstract class AbstractPostgresContainerTest extends PostgresTestContaine
     }
 
     protected Ticket persistTicket(TicketType ticketType, User purchaser, TicketStatusEnum status) {
+        return persistTicket(ticketType, purchaser, status, null);
+    }
+
+    // Overload for a ticket issued from a paid TicketOrder (issue #22's refund flow
+    // needs one to resolve a real Stripe checkout session id/amount through).
+    protected Ticket persistTicket(TicketType ticketType, User purchaser, TicketStatusEnum status, TicketOrderItem orderItem) {
         return entityManager.persistAndFlush(Ticket.builder()
                 .domainId(UUID.randomUUID())
                 .referenceCode(UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .status(status)
                 .ticketType(ticketType)
                 .purchaser(purchaser)
+                .orderItem(orderItem)
                 .build());
     }
 

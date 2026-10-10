@@ -2,9 +2,9 @@ package com.etp.ticketservice.events;
 
 import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.events.images.EventImageService;
-import com.etp.ticketservice.messaging.TicketEventPublisher;
 import com.etp.ticketservice.orders.OrderStatusEnum;
 import com.etp.ticketservice.orders.TicketOrderItemRepository;
+import com.etp.ticketservice.tickets.TicketService;
 
 import com.etp.ticketservice.events.dto.CreateEventRequestDto;
 import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
@@ -29,7 +29,6 @@ import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.venues.Venue;
-import com.etp.ticketservice.tickets.TicketCancelReasonEnum;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
 import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
 import com.etp.ticketservice.common.exception.ErrorCode;
@@ -81,7 +80,7 @@ public class EventServiceImpl implements EventService {
     private final TicketRepository ticketRepository;
     private final TicketOrderItemRepository ticketOrderItemRepository;
     private final EventImageRepository eventImageRepository;
-    private final TicketEventPublisher ticketEventPublisher;
+    private final TicketService ticketService;
     private final EventImageService eventImageService;
     private final String currency;
 
@@ -96,7 +95,7 @@ public class EventServiceImpl implements EventService {
             TicketRepository ticketRepository,
             TicketOrderItemRepository ticketOrderItemRepository,
             EventImageRepository eventImageRepository,
-            TicketEventPublisher ticketEventPublisher,
+            TicketService ticketService,
             EventImageService eventImageService,
             @Value("${app.checkout.currency}") String currency) {
         this.userRepository = userRepository;
@@ -105,7 +104,7 @@ public class EventServiceImpl implements EventService {
         this.ticketRepository = ticketRepository;
         this.ticketOrderItemRepository = ticketOrderItemRepository;
         this.eventImageRepository = eventImageRepository;
-        this.ticketEventPublisher = ticketEventPublisher;
+        this.ticketService = ticketService;
         this.eventImageService = eventImageService;
         this.currency = currency;
     }
@@ -389,8 +388,12 @@ public class EventServiceImpl implements EventService {
         return eventRepository.save(event);
     }
 
+    // Deliberately NOT @Transactional -- the cascade below calls into TicketService,
+    // which orchestrates its own independent transactions around an external Stripe
+    // refund call per ticket (issue #22). Keeping this method transactional would fold
+    // every one of those into one ambient transaction spanning N serial Stripe calls --
+    // exactly the anti-pattern that split was meant to avoid.
     @Override
-    @Transactional
     public Event cancelEvent(UUID organizerId, UUID id) {
         Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
                 .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
@@ -412,7 +415,9 @@ public class EventServiceImpl implements EventService {
     // exists. An already-validated ticket (someone was already admitted) is left alone
     // rather than erroring the whole cascade over it -- same "can't cancel after entry"
     // rule TicketServiceImpl#guardCancellable enforces for an individually-cancelled
-    // ticket, just applied per-ticket here instead of failing the whole operation.
+    // ticket, just applied per-ticket here instead of failing the whole operation. This
+    // skip check deliberately stays here rather than moving into TicketService -- it's
+    // the cascade's own guard, not guardCancellable's (see issue #22).
     private void cancelTicketsForCancelledEvent(Event event) {
         List<Ticket> cancellableTickets =
                 ticketRepository.findByEventIdAndStatusNotWithValidations(event.getId(), TicketStatusEnum.CANCELLED);
@@ -424,11 +429,7 @@ public class EventServiceImpl implements EventService {
                 continue;
             }
 
-            ticket.setStatus(TicketStatusEnum.CANCELLED);
-            ticket.setCancelledAt(LocalDateTime.now());
-            ticket.setCancelReason(TicketCancelReasonEnum.EVENT_CANCELLED);
-            Ticket savedTicket = ticketRepository.save(ticket);
-            ticketEventPublisher.publishTicketCancelled(savedTicket);
+            ticketService.cancelTicketForEventCancellation(ticket.getDomainId());
         }
     }
 

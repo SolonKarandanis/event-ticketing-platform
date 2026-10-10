@@ -33,6 +33,11 @@ public interface TicketService {
 
     Ticket cancelTicketForOrganizer(UUID organizerId, UUID eventId, UUID ticketId, String note);
 
+    // Called once per ticket by EventServiceImpl's event-cancellation cascade --
+    // guardCancellable is NOT applied here; the cascade has already decided this ticket
+    // is cancellable (it skips an already-validated one itself rather than throwing).
+    Ticket cancelTicketForEventCancellation(UUID ticketDomainId);
+
     ListTicketTicketTypeResponseDto convertToListTicketTicketTypeResponseDto(TicketType ticketType);
 
     ListTicketResponseDto convertToListTicketResponseDto(Ticket ticket);

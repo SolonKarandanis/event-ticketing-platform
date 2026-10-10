@@ -1,5 +1,6 @@
 package com.etp.ticketservice.tickets.dto;
 
+import com.etp.ticketservice.tickets.RefundStatusEnum;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -25,4 +26,5 @@ public class TicketSaleResponseDto {
     private UUID eventId;
     private String eventName;
     private LocalDateTime createdAt;
+    private RefundStatusEnum refundStatus;
 }

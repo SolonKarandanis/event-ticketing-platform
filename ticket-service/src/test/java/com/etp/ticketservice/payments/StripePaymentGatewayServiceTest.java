@@ -12,8 +12,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // verifyWebhookSignature is fully unit-testable without any network call or static-SDK
 // mocking: sign a real payload with Webhook.Signature.generateSignatureHeader (the
 // Stripe SDK's own helper, explicitly documented for exactly this -- signing payloads in
-// unit tests), then assert on the extraction. createCheckoutSession has no equivalent
-// test -- it's an unmockable static Session.create(...) call -- so this class fills a
+// unit tests), then assert on the extraction. createCheckoutSession and refund have no
+// equivalent test -- both are unmockable static Stripe SDK calls (Session.create(...),
+// Session.retrieve(...)/Refund.create(...)) and this project has no static-mocking
+// dependency (no mockito-inline/PowerMock) to intercept them -- so this class fills a
 // real gap rather than duplicating coverage.
 class StripePaymentGatewayServiceTest {
 

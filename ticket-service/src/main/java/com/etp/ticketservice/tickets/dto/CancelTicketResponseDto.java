@@ -1,5 +1,6 @@
 package com.etp.ticketservice.tickets.dto;
 
+import com.etp.ticketservice.tickets.RefundStatusEnum;
 import com.etp.ticketservice.tickets.TicketCancelReasonEnum;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
 import lombok.AllArgsConstructor;
@@ -20,4 +21,5 @@ public class CancelTicketResponseDto {
     private LocalDateTime cancelledAt;
     private TicketCancelReasonEnum cancelReason;
     private String cancelNote;
+    private RefundStatusEnum refundStatus;
 }

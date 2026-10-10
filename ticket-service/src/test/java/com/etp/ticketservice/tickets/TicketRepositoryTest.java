@@ -1,6 +1,9 @@
 package com.etp.ticketservice.tickets;
 
 import com.etp.ticketservice.events.Event;
+import com.etp.ticketservice.orders.OrderStatusEnum;
+import com.etp.ticketservice.orders.TicketOrder;
+import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.venues.Venue;
@@ -109,6 +112,63 @@ class TicketRepositoryTest extends AbstractPostgresContainerTest {
                 event.getId(), TicketStatusEnum.CANCELLED);
 
         assertThat(tickets).extracting(Ticket::getDomainId).containsExactly(activeTicket.getDomainId());
+    }
+
+    @Test
+    void findByDomainIdForCancellation_withOrderItem_fetchJoinsThroughToProviderCheckoutSessionId() {
+        Event event = persistPublishedEvent();
+        TicketType ticketType = persistTicketType(event, "General", 25.0);
+        User purchaser = persistUser("Jane Attendee");
+        TicketOrder ticketOrder = persistTicketOrder(event, purchaser, OrderStatusEnum.PAID, LocalDateTime.now().plusMinutes(30));
+        ticketOrder.setProviderCheckoutSessionId("cs_test_123");
+        entityManager.persistAndFlush(ticketOrder);
+        TicketOrderItem orderItem = persistTicketOrderItem(ticketOrder, ticketType, 1, 25.0);
+        Ticket ticket = persistTicket(ticketType, purchaser, TicketStatusEnum.PURCHASED, orderItem);
+
+        entityManager.clear();
+
+        Optional<Ticket> found = ticketRepository.findByDomainIdForCancellation(ticket.getDomainId());
+
+        assertThat(found).isPresent();
+        // The point is reading all the way through orderItem -> ticketOrder (for the
+        // refund call) and ticketType -> event -> organizer / purchaser (for
+        // TicketEventPublisher#publishTicketCancelled) without a LazyInitializationException.
+        assertThat(found.get().getOrderItem().getTicketOrder().getProviderCheckoutSessionId()).isEqualTo("cs_test_123");
+        assertThat(found.get().getTicketType().getEvent().getOrganizer().getName()).isEqualTo("Jane Organizer");
+        assertThat(found.get().getPurchaser().getName()).isEqualTo("Jane Attendee");
+    }
+
+    @Test
+    void findByDomainIdForCancellation_withoutOrderItem_leavesOrderItemNull() {
+        TicketType ticketType = persistTicketType(persistPublishedEvent(), "General", 25.0);
+        User purchaser = persistUser("Jane Attendee");
+        Ticket ticket = persistTicket(ticketType, purchaser, TicketStatusEnum.PURCHASED);
+
+        entityManager.clear();
+
+        Optional<Ticket> found = ticketRepository.findByDomainIdForCancellation(ticket.getDomainId());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getOrderItem()).isNull();
+        assertThat(found.get().getPurchaser().getName()).isEqualTo("Jane Attendee");
+    }
+
+    @Test
+    void findByDomainIdAndPurchaserDomainIdForCancellation_fetchJoinsValidations() {
+        TicketType ticketType = persistTicketType(persistPublishedEvent(), "General", 25.0);
+        User purchaser = persistUser("Jane Attendee");
+        Ticket ticket = persistTicket(ticketType, purchaser, TicketStatusEnum.PURCHASED);
+
+        entityManager.clear();
+
+        Optional<Ticket> found = ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(
+                ticket.getDomainId(), purchaser.getDomainId());
+
+        assertThat(found).isPresent();
+        // No validations persisted here -- the point is that reading the collection at all
+        // doesn't throw LazyInitializationException post-clear; guardCancellable's own
+        // "already validated" check is covered against real data via Mockito instead.
+        assertThat(found.get().getValidations()).isEmpty();
     }
 
     private Event persistPublishedEvent() {
