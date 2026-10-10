@@ -7,19 +7,29 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.stripe.Stripe;
+import com.etp.ticketservice.payments.exception.PaymentMethodNotFoundException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Customer;
 import com.stripe.model.Event;
+import com.stripe.model.PaymentMethod;
+import com.stripe.model.PaymentMethodCollection;
 import com.stripe.model.Refund;
+import com.stripe.model.SetupIntent;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
+import com.stripe.param.CustomerCreateParams;
+import com.stripe.param.CustomerUpdateParams;
+import com.stripe.param.PaymentMethodListParams;
 import com.stripe.param.RefundCreateParams;
+import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -141,5 +151,105 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
         } catch (StripeException e) {
             throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
         }
+    }
+
+    @Override
+    public String createCustomer(CreateCustomerRequest request) {
+        try {
+            Customer customer = Customer.create(CustomerCreateParams.builder()
+                    .setEmail(request.getEmail())
+                    .setName(request.getName())
+                    .build());
+            return customer.getId();
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    @Override
+    public String createSetupIntent(String providerCustomerId) {
+        try {
+            SetupIntent setupIntent = SetupIntent.create(SetupIntentCreateParams.builder()
+                    .setCustomer(providerCustomerId)
+                    // OFF_SESSION -- this card is being saved for a future checkout, not
+                    // confirming a payment right now.
+                    .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
+                    .build());
+            return setupIntent.getClientSecret();
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    @Override
+    public List<SavedPaymentMethodResult> listPaymentMethods(String providerCustomerId) {
+        try {
+            PaymentMethodCollection collection = PaymentMethod.list(PaymentMethodListParams.builder()
+                    .setCustomer(providerCustomerId)
+                    .setType(PaymentMethodListParams.Type.CARD)
+                    .build());
+            String defaultPaymentMethodId = Customer.retrieve(providerCustomerId)
+                    .getInvoiceSettings()
+                    .getDefaultPaymentMethod();
+            return collection.getData().stream()
+                    .map(paymentMethod -> SavedPaymentMethodResult.builder()
+                            .providerPaymentMethodId(paymentMethod.getId())
+                            .brand(paymentMethod.getCard().getBrand())
+                            .last4(paymentMethod.getCard().getLast4())
+                            .expMonth(paymentMethod.getCard().getExpMonth())
+                            .expYear(paymentMethod.getCard().getExpYear())
+                            .isDefault(paymentMethod.getId().equals(defaultPaymentMethodId))
+                            .build())
+                    .toList();
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    @Override
+    public void detachPaymentMethod(String expectedProviderCustomerId, String providerPaymentMethodId) {
+        PaymentMethod paymentMethod = retrieveOwnedPaymentMethod(expectedProviderCustomerId, providerPaymentMethodId);
+        try {
+            paymentMethod.detach();
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    @Override
+    public void setDefaultPaymentMethod(String expectedProviderCustomerId, String providerPaymentMethodId) {
+        retrieveOwnedPaymentMethod(expectedProviderCustomerId, providerPaymentMethodId);
+        try {
+            Customer customer = Customer.retrieve(expectedProviderCustomerId);
+            customer.update(CustomerUpdateParams.builder()
+                    .setInvoiceSettings(CustomerUpdateParams.InvoiceSettings.builder()
+                            .setDefaultPaymentMethod(providerPaymentMethodId)
+                            .build())
+                    .build());
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    // Security-critical: without this check, any authenticated user could pass an
+    // arbitrary Stripe payment-method id belonging to a DIFFERENT customer and
+    // detach/default someone else's card. Lives here rather than one layer up in
+    // PaymentMethodServiceImpl because this package already owns all raw-Stripe-shape
+    // knowledge -- nothing above it ever sees a com.stripe.model.* type, and this makes
+    // the gateway method self-defending regardless of caller. A genuinely nonexistent id
+    // and a wrong-owner id deliberately collapse into the same exception: returning a
+    // different error for "exists but isn't yours" vs "doesn't exist" would leak
+    // information about other customers' payment methods.
+    private PaymentMethod retrieveOwnedPaymentMethod(String expectedProviderCustomerId, String providerPaymentMethodId) {
+        PaymentMethod paymentMethod;
+        try {
+            paymentMethod = PaymentMethod.retrieve(providerPaymentMethodId);
+        } catch (StripeException e) {
+            throw new PaymentMethodNotFoundException(ErrorCode.PAYMENT_METHOD_NOT_FOUND, providerPaymentMethodId);
+        }
+        if (!expectedProviderCustomerId.equals(paymentMethod.getCustomer())) {
+            throw new PaymentMethodNotFoundException(ErrorCode.PAYMENT_METHOD_NOT_FOUND, providerPaymentMethodId);
+        }
+        return paymentMethod;
     }
 }

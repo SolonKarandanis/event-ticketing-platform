@@ -12,6 +12,7 @@ import com.etp.ticketservice.orders.CheckoutService;
 import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutResponseDto;
+import com.etp.ticketservice.payments.PaymentMethodService;
 import com.etp.ticketservice.payments.StripeWebhookService;
 import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickets.TicketService;
@@ -84,6 +85,8 @@ class SecurityAuthorizationTest {
     private CheckoutService checkoutService;
     @MockitoBean
     private StripeWebhookService stripeWebhookService;
+    @MockitoBean
+    private PaymentMethodService paymentMethodService;
 
     private static final UUID USER_ID = UUID.randomUUID();
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="30-create-payment-customers-table" author="event-ticket-platform">
+        <createSequence sequenceName="payment_customers_seq" startValue="1" incrementBy="1"/>
+        <createTable tableName="payment_customers">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="payment_customers_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_payment_customers_user" references="users(id)"/>
+            </column>
+            <column name="provider" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_customer_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="payment_customers" columnNames="user_id, provider"
+                constraintName="uc_payment_customers_user_provider"/>
+    </changeSet>
+
+</databaseChangeLog>
