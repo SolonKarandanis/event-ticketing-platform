@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Standard Quartz 2.x JobStoreTX schema (org.quartz.impl.jdbcjobstore.PostgreSQLDelegate),
+         hand-translated from Quartz's own tables_postgres.sql into Liquibase changesets so this
+         schema is tracked the same way as the rest of ticket-service's tables, under its own
+         changelog/tracking tables (see QuartzLiquibaseConfiguration) rather than Quartz's
+         bundled script or Spring Boot's spring.quartz.jdbc.initialize-schema. Column names,
+         types and indexes must match Quartz's expectations exactly: do not rename or drop
+         columns Quartz itself relies on. -->
+
+    <changeSet id="1-create-qrtz-job-details" author="event-ticket-platform">
+        <createTable tableName="QRTZ_JOB_DETAILS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_job_details"/>
+            </column>
+            <column name="JOB_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_job_details"/>
+            </column>
+            <column name="JOB_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_job_details"/>
+            </column>
+            <column name="DESCRIPTION" type="VARCHAR(250)"/>
+            <column name="JOB_CLASS_NAME" type="VARCHAR(250)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="IS_DURABLE" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="IS_NONCONCURRENT" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="IS_UPDATE_DATA" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="REQUESTS_RECOVERY" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="JOB_DATA" type="BYTEA"/>
+        </createTable>
+        <createIndex indexName="IDX_QRTZ_J_REQ_RECOVERY" tableName="QRTZ_JOB_DETAILS">
+            <column name="SCHED_NAME"/>
+            <column name="REQUESTS_RECOVERY"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_J_GRP" tableName="QRTZ_JOB_DETAILS">
+            <column name="SCHED_NAME"/>
+            <column name="JOB_GROUP"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="2-create-qrtz-triggers" author="event-ticket-platform">
+        <createTable tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_triggers"/>
+            </column>
+            <column name="TRIGGER_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_triggers"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_triggers"/>
+            </column>
+            <column name="JOB_NAME" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="JOB_GROUP" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="DESCRIPTION" type="VARCHAR(250)"/>
+            <column name="NEXT_FIRE_TIME" type="BIGINT"/>
+            <column name="PREV_FIRE_TIME" type="BIGINT"/>
+            <column name="PRIORITY" type="INTEGER"/>
+            <column name="TRIGGER_STATE" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TRIGGER_TYPE" type="VARCHAR(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="START_TIME" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="END_TIME" type="BIGINT"/>
+            <column name="CALENDAR_NAME" type="VARCHAR(200)"/>
+            <column name="MISFIRE_INSTR" type="SMALLINT"/>
+            <column name="JOB_DATA" type="BYTEA"/>
+        </createTable>
+        <addForeignKeyConstraint constraintName="fk_qrtz_triggers_job_details"
+                baseTableName="QRTZ_TRIGGERS" baseColumnNames="SCHED_NAME, JOB_NAME, JOB_GROUP"
+                referencedTableName="QRTZ_JOB_DETAILS" referencedColumnNames="SCHED_NAME, JOB_NAME, JOB_GROUP"/>
+        <createIndex indexName="IDX_QRTZ_T_J" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="JOB_NAME"/>
+            <column name="JOB_GROUP"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_JG" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="JOB_GROUP"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_C" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="CALENDAR_NAME"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_G" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_GROUP"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_STATE" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_STATE"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_N_STATE" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_NAME"/>
+            <column name="TRIGGER_GROUP"/>
+            <column name="TRIGGER_STATE"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_N_G_STATE" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_GROUP"/>
+            <column name="TRIGGER_STATE"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_NEXT_FIRE_TIME" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="NEXT_FIRE_TIME"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_NFT_ST" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_STATE"/>
+            <column name="NEXT_FIRE_TIME"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_NFT_MISFIRE" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="MISFIRE_INSTR"/>
+            <column name="NEXT_FIRE_TIME"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_NFT_ST_MISFIRE" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="MISFIRE_INSTR"/>
+            <column name="NEXT_FIRE_TIME"/>
+            <column name="TRIGGER_STATE"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_T_NFT_ST_MISFIRE_GRP" tableName="QRTZ_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="MISFIRE_INSTR"/>
+            <column name="NEXT_FIRE_TIME"/>
+            <column name="TRIGGER_GROUP"/>
+            <column name="TRIGGER_STATE"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="3-create-qrtz-simple-triggers" author="event-ticket-platform">
+        <createTable tableName="QRTZ_SIMPLE_TRIGGERS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_simple_triggers"/>
+            </column>
+            <column name="TRIGGER_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_simple_triggers"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_simple_triggers"/>
+            </column>
+            <column name="REPEAT_COUNT" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="REPEAT_INTERVAL" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TIMES_TRIGGERED" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint constraintName="fk_qrtz_simple_triggers_triggers"
+                baseTableName="QRTZ_SIMPLE_TRIGGERS" baseColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"
+                referencedTableName="QRTZ_TRIGGERS" referencedColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"/>
+    </changeSet>
+
+    <changeSet id="4-create-qrtz-cron-triggers" author="event-ticket-platform">
+        <createTable tableName="QRTZ_CRON_TRIGGERS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_cron_triggers"/>
+            </column>
+            <column name="TRIGGER_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_cron_triggers"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_cron_triggers"/>
+            </column>
+            <column name="CRON_EXPRESSION" type="VARCHAR(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TIME_ZONE_ID" type="VARCHAR(80)"/>
+        </createTable>
+        <addForeignKeyConstraint constraintName="fk_qrtz_cron_triggers_triggers"
+                baseTableName="QRTZ_CRON_TRIGGERS" baseColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"
+                referencedTableName="QRTZ_TRIGGERS" referencedColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"/>
+    </changeSet>
+
+    <changeSet id="5-create-qrtz-simprop-triggers" author="event-ticket-platform">
+        <createTable tableName="QRTZ_SIMPROP_TRIGGERS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_simprop_triggers"/>
+            </column>
+            <column name="TRIGGER_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_simprop_triggers"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_simprop_triggers"/>
+            </column>
+            <column name="STR_PROP_1" type="VARCHAR(512)"/>
+            <column name="STR_PROP_2" type="VARCHAR(512)"/>
+            <column name="STR_PROP_3" type="VARCHAR(512)"/>
+            <column name="INT_PROP_1" type="INTEGER"/>
+            <column name="INT_PROP_2" type="INTEGER"/>
+            <column name="LONG_PROP_1" type="BIGINT"/>
+            <column name="LONG_PROP_2" type="BIGINT"/>
+            <column name="DEC_PROP_1" type="NUMERIC(13,4)"/>
+            <column name="DEC_PROP_2" type="NUMERIC(13,4)"/>
+            <column name="BOOL_PROP_1" type="BOOLEAN"/>
+            <column name="BOOL_PROP_2" type="BOOLEAN"/>
+        </createTable>
+        <addForeignKeyConstraint constraintName="fk_qrtz_simprop_triggers_triggers"
+                baseTableName="QRTZ_SIMPROP_TRIGGERS" baseColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"
+                referencedTableName="QRTZ_TRIGGERS" referencedColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"/>
+    </changeSet>
+
+    <changeSet id="6-create-qrtz-blob-triggers" author="event-ticket-platform">
+        <createTable tableName="QRTZ_BLOB_TRIGGERS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_blob_triggers"/>
+            </column>
+            <column name="TRIGGER_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_blob_triggers"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_blob_triggers"/>
+            </column>
+            <column name="BLOB_DATA" type="BYTEA"/>
+        </createTable>
+        <addForeignKeyConstraint constraintName="fk_qrtz_blob_triggers_triggers"
+                baseTableName="QRTZ_BLOB_TRIGGERS" baseColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"
+                referencedTableName="QRTZ_TRIGGERS" referencedColumnNames="SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP"/>
+    </changeSet>
+
+    <changeSet id="7-create-qrtz-calendars" author="event-ticket-platform">
+        <createTable tableName="QRTZ_CALENDARS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_calendars"/>
+            </column>
+            <column name="CALENDAR_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_calendars"/>
+            </column>
+            <column name="CALENDAR" type="BYTEA">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="8-create-qrtz-paused-trigger-grps" author="event-ticket-platform">
+        <createTable tableName="QRTZ_PAUSED_TRIGGER_GRPS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_paused_trigger_grps"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_paused_trigger_grps"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="9-create-qrtz-fired-triggers" author="event-ticket-platform">
+        <createTable tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_fired_triggers"/>
+            </column>
+            <column name="ENTRY_ID" type="VARCHAR(95)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_fired_triggers"/>
+            </column>
+            <column name="TRIGGER_NAME" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TRIGGER_GROUP" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="INSTANCE_NAME" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="FIRED_TIME" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="SCHED_TIME" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="PRIORITY" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="STATE" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="JOB_NAME" type="VARCHAR(200)"/>
+            <column name="JOB_GROUP" type="VARCHAR(200)"/>
+            <column name="IS_NONCONCURRENT" type="BOOLEAN"/>
+            <column name="REQUESTS_RECOVERY" type="BOOLEAN"/>
+        </createTable>
+        <createIndex indexName="IDX_QRTZ_FT_TRIG_INST_NAME" tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="INSTANCE_NAME"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_FT_INST_JOB_REQ_RCVRY" tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="INSTANCE_NAME"/>
+            <column name="REQUESTS_RECOVERY"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_FT_J_G" tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="JOB_NAME"/>
+            <column name="JOB_GROUP"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_FT_JG" tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="JOB_GROUP"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_FT_T_G" tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_NAME"/>
+            <column name="TRIGGER_GROUP"/>
+        </createIndex>
+        <createIndex indexName="IDX_QRTZ_FT_TG" tableName="QRTZ_FIRED_TRIGGERS">
+            <column name="SCHED_NAME"/>
+            <column name="TRIGGER_GROUP"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="10-create-qrtz-scheduler-state" author="event-ticket-platform">
+        <createTable tableName="QRTZ_SCHEDULER_STATE">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_scheduler_state"/>
+            </column>
+            <column name="INSTANCE_NAME" type="VARCHAR(200)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_scheduler_state"/>
+            </column>
+            <column name="LAST_CHECKIN_TIME" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="CHECKIN_INTERVAL" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="11-create-qrtz-locks" author="event-ticket-platform">
+        <createTable tableName="QRTZ_LOCKS">
+            <column name="SCHED_NAME" type="VARCHAR(120)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_locks"/>
+            </column>
+            <column name="LOCK_NAME" type="VARCHAR(40)">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_qrtz_locks"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

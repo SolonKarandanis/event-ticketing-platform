@@ -2,7 +2,6 @@ package com.etp.ticketservice.orders;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -10,18 +9,18 @@ import java.util.List;
 import java.util.UUID;
 
 // No interface -- infrastructure glue nothing else needs to mock/replace, same
-// precedent as RabbitMqTicketEventListener.
+// precedent as RabbitMqTicketEventListener. Triggered by Quartz's TicketOrderExpiryJob
+// (see com.etp.ticketservice.config.QuartzConfiguration) rather than @Scheduled directly,
+// so this class stays a plain constructor-injected Spring bean with its existing tests
+// unaffected by Quartz's own instantiation/DI requirements for Job classes.
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class TicketOrderExpirySweeper {
 
-    private static final long SWEEP_INTERVAL_MS = 300_000; // 5 minutes
-
     private final TicketOrderRepository ticketOrderRepository;
     private final TicketOrderService ticketOrderService;
 
-    @Scheduled(fixedDelay = SWEEP_INTERVAL_MS)
     public void sweep() {
         List<UUID> expiredOrderIds = ticketOrderRepository.findDomainIdsByStatusAndExpiresAtBefore(
                 OrderStatusEnum.PENDING, LocalDateTime.now());
