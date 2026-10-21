@@ -12,6 +12,13 @@ group = 'com.etp'
 version = versionProps['application.version']
 description = 'ticket-service'
 
+// Per-environment values (datasource, oauth2 issuer, rabbitmq, clamav) filtered into
+// application.properties' @token@ placeholders at build time -- see environments/.
+// Pass -Penv=<name> to pick a file other than the local dev default (skaran).
+def envName = findProperty('env') ?: 'skaran'
+def envProps = new Properties()
+file("environments/${envName}.properties").withInputStream { envProps.load(it) }
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
@@ -64,4 +71,10 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.named('processResources') {
+    filesMatching('application.properties') {
+        filter(org.apache.tools.ant.filters.ReplaceTokens, tokens: envProps)
+    }
 }
