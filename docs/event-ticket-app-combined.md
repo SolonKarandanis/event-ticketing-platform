@@ -9854,7 +9854,7 @@ class OpenApiDocsIntegrationTest {
 }
 ```
 
-Plain `HttpClient` rather than `TestRestTemplate` -- this project has no generic `spring-boot-starter-test` bundle (every other test dependency is one of Boot 4's split per-feature test starters, confirmed by grepping `build.gradle`), and pulling in whichever split module owns `TestRestTemplate` wasn't worth it for one test class when the JDK's own client already does the job.
+Plain `HttpClient` rather than `TestRestTemplate` -- this project has no generic `spring-boot-starter-test` bundle (every other test dependency is one of Boot 4's split per-feature test starters, confirmed by grepping `build.gradle.kts`), and pulling in whichever split module owns `TestRestTemplate` wasn't worth it for one test class when the JDK's own client already does the job.
 
 Writing this test caught a real, if mundane, thing worth recording: an actual `ticket-service` instance was already running locally (from live-testing the analytics dashboard earlier) on the same port 4005 this test's first draft tried to `bootRun` manually against. `RANDOM_PORT` sidesteps the whole class of problem -- a test that needs a specific port can always collide with whatever's already running on a developer's machine.
 

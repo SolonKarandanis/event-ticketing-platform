@@ -1,9 +1,9 @@
 plugins {
-    // Lets Gradle auto-provision the JDK 25 toolchain (see build.gradle) on any
+    // Lets Gradle auto-provision the JDK 25 toolchain (see build.gradle.kts) on any
     // machine that doesn't already have one installed -- CI runners included, without
     // depending on the exact JDK actions/setup-java happens to install being picked up
     // by Gradle's own auto-detection.
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.10.0'
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 
-rootProject.name = 'ticket-service'
+rootProject.name = "ticket-service"

@@ -1,0 +1,61 @@
+{
+  "realm": "event-ticket-platform",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      { "name": "ROLE_ORGANIZER" },
+      { "name": "ROLE_ATTENDEE" },
+      { "name": "ROLE_STAFF" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "event-ticket-platform-app",
+      "name": "Event Ticket Platform frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "id": "50360e73-9ba2-49a6-bd58-7afdb4aae292",
+      "username": "skaran",
+      "email": "skarandanis@gmail.com",
+      "emailVerified": true,
+      "firstName": "skaran",
+      "lastName": "organizer",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["default-roles-event-ticket-platform", "ROLE_ORGANIZER"]
+    },
+    {
+      "id": "7027dd89-91e9-4dad-9b05-80d5ebc12a60",
+      "username": "attendee",
+      "email": "skarandanis2@gmail.com",
+      "emailVerified": true,
+      "firstName": "attendee",
+      "lastName": "user",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["default-roles-event-ticket-platform", "ROLE_ATTENDEE"]
+    },
+    {
+      "username": "staff",
+      "email": "staff@example.com",
+      "emailVerified": true,
+      "firstName": "staff",
+      "lastName": "user",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "realmRoles": ["default-roles-event-ticket-platform", "ROLE_STAFF"]
+    }
+  ]
+}

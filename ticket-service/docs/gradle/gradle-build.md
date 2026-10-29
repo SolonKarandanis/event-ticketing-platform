@@ -1,13 +1,14 @@
 # Gradle Build
 
 How `ticket-service` is built, tested, and configured per environment. This is the only
-module in the repo that uses Gradle — `analytics-service` is a separate Node/NestJS stack
+module in the repo that uses Gradle (Kotlin DSL: `build.gradle.kts` /
+`settings.gradle.kts`) — `analytics-service` is a separate Node/NestJS stack
 with its own tooling.
 
 ## Toolchain
 
 - JDK **25**, auto-provisioned via the `org.gradle.toolchains.foojay-resolver-convention`
-  plugin (`settings.gradle`) so a matching JDK is fetched automatically on any machine —
+  plugin (`settings.gradle.kts`) so a matching JDK is fetched automatically on any machine —
   CI runners included — without depending on whatever JDK happens to already be installed.
 - Spring Boot **4.1.0**, dependency management via `io.spring.dependency-management`.
 
@@ -157,14 +158,15 @@ antivirus.clamav.port=@antivirus.clamav.port@
 These are filled in at build time by `processResources`, using Gradle's
 `ReplaceTokens` ant filter:
 
-```groovy
-def envName = findProperty('env') ?: 'skaran'
-def envProps = new Properties()
-file("environments/${envName}.properties").withInputStream { envProps.load(it) }
+```kotlin
+val envName = findProperty("env")?.toString() ?: "skaran"
+val envProps = Properties().apply {
+    file("environments/$envName.properties").inputStream().use { load(it) }
+}
 
-tasks.named('processResources') {
-    filesMatching('application.properties') {
-        filter(org.apache.tools.ant.filters.ReplaceTokens, tokens: envProps)
+tasks.named<ProcessResources>("processResources") {
+    filesMatching("application.properties") {
+        filter<ReplaceTokens>("tokens" to envProps.stringPropertyNames().associateWith(envProps::getProperty))
     }
 }
 ```
