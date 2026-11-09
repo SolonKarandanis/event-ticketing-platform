@@ -1,12 +1,11 @@
 package com.etp.ticketservice.tickets;
 
 import com.etp.ticketservice.messaging.TicketEventPublisher;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 // Separate Spring bean from TicketServiceImpl, deliberately -- calling a @Transactional
 // method via `this.` from another method on the SAME bean bypasses the AOP proxy and
@@ -25,9 +24,14 @@ public class TicketCancellationServiceImpl implements TicketCancellationService 
 
     @Override
     @Transactional
-    public TicketCancellationOutcome cancelAndPersist(UUID ticketDomainId, TicketCancelReasonEnum reason, String note) {
-        Ticket ticket = ticketRepository.findByDomainIdForCancellation(ticketDomainId)
-                .orElseThrow(() -> new IllegalStateException("Ticket " + ticketDomainId + " vanished mid-cancellation"));
+    public TicketCancellationOutcome cancelAndPersist(
+            UUID ticketDomainId, TicketCancelReasonEnum reason, String note) {
+        Ticket ticket =
+                ticketRepository
+                        .findByDomainIdForCancellation(ticketDomainId)
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "Ticket " + ticketDomainId + " vanished mid-cancellation"));
 
         ticket.setStatus(TicketStatusEnum.CANCELLED);
         ticket.setCancelledAt(LocalDateTime.now());
@@ -41,7 +45,8 @@ public class TicketCancellationServiceImpl implements TicketCancellationService 
         String providerCheckoutSessionId = null;
         if (null != savedTicket.getOrderItem()) {
             refundAmountMinorUnits = savedTicket.getOrderItem().getUnitPriceAtCheckoutMinorUnits();
-            providerCheckoutSessionId = savedTicket.getOrderItem().getTicketOrder().getProviderCheckoutSessionId();
+            providerCheckoutSessionId =
+                    savedTicket.getOrderItem().getTicketOrder().getProviderCheckoutSessionId();
         }
 
         return TicketCancellationOutcome.builder()
@@ -53,10 +58,16 @@ public class TicketCancellationServiceImpl implements TicketCancellationService 
 
     @Override
     @Transactional
-    public void recordRefundOutcome(UUID ticketDomainId, RefundStatusEnum refundStatus, String providerRefundId) {
-        Ticket ticket = ticketRepository.findByDomainId(ticketDomainId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Ticket " + ticketDomainId + " vanished between cancellation and refund-outcome recording"));
+    public void recordRefundOutcome(
+            UUID ticketDomainId, RefundStatusEnum refundStatus, String providerRefundId) {
+        Ticket ticket =
+                ticketRepository
+                        .findByDomainId(ticketDomainId)
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "Ticket "
+                                                + ticketDomainId
+                                                + " vanished between cancellation and refund-outcome recording"));
         ticket.setRefundStatus(refundStatus);
         ticket.setProviderRefundId(providerRefundId);
         ticketRepository.save(ticket);

@@ -2,12 +2,11 @@ package com.etp.ticketservice.tickets.dto;
 
 import com.etp.ticketservice.tickets.RefundStatusEnum;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 // Shared by both the per-event and cross-event organizer ticket-sales endpoints --
 // same shape either way (VenueResponseDto's reuse-across-endpoints precedent, not

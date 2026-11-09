@@ -1,7 +1,6 @@
 package com.etp.ticketservice.tickets.qrcode;
 
 import com.etp.ticketservice.tickets.Ticket;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,6 +14,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,10 +26,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.Objects;
-import java.util.UUID;
 
 @Entity
 @Table(name = "qr_codes")
@@ -39,16 +37,12 @@ import java.util.UUID;
 public class QrCode {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "qrCodeGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "qrCodeGenerator")
     @SequenceGenerator(
             name = "qrCodeGenerator",
             sequenceName = "qr_codes_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -87,12 +81,12 @@ public class QrCode {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         QrCode qrCode = (QrCode) o;
-        return Objects.equals(id, qrCode.id) &&
-               Objects.equals(domainId, qrCode.domainId) &&
-               status == qrCode.status &&
-               Objects.equals(value, qrCode.value) &&
-               Objects.equals(createdAt, qrCode.createdAt) &&
-               Objects.equals(updatedAt, qrCode.updatedAt);
+        return Objects.equals(id, qrCode.id)
+                && Objects.equals(domainId, qrCode.domainId)
+                && status == qrCode.status
+                && Objects.equals(value, qrCode.value)
+                && Objects.equals(createdAt, qrCode.createdAt)
+                && Objects.equals(updatedAt, qrCode.updatedAt);
     }
 
     @Override

@@ -1,7 +1,6 @@
 package com.etp.ticketservice.events.images;
 
 import com.etp.ticketservice.events.Event;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,6 +12,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,10 +24,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.Objects;
-import java.util.UUID;
 
 @Entity
 @Table(name = "event_images")
@@ -37,16 +35,12 @@ import java.util.UUID;
 public class EventImage {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "eventImageGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "eventImageGenerator")
     @SequenceGenerator(
             name = "eventImageGenerator",
             sequenceName = "event_images_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -93,12 +87,12 @@ public class EventImage {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         EventImage that = (EventImage) o;
-        return Objects.equals(id, that.id) &&
-               Objects.equals(domainId, that.domainId) &&
-               Objects.equals(position, that.position) &&
-               Objects.equals(altText, that.altText) &&
-               Objects.equals(createdAt, that.createdAt) &&
-               Objects.equals(updatedAt, that.updatedAt);
+        return Objects.equals(id, that.id)
+                && Objects.equals(domainId, that.domainId)
+                && Objects.equals(position, that.position)
+                && Objects.equals(altText, that.altText)
+                && Objects.equals(createdAt, that.createdAt)
+                && Objects.equals(updatedAt, that.updatedAt);
     }
 
     @Override

@@ -1,13 +1,12 @@
 package com.etp.ticketservice.config.antivirus;
 
+import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-//import org.springframework.cloud.context.config.annotation.RefreshScope;
+// import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
-import lombok.Data;
-
 @Data
-//@RefreshScope
+// @RefreshScope
 @ConfigurationProperties(prefix = "antivirus.clamav")
 @Component
 public class ClamAvProperties {

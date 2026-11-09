@@ -1,7 +1,6 @@
 package com.etp.ticketservice.messaging;
 
 import com.etp.ticketservice.tickets.TicketCancelReasonEnum;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -18,6 +17,4 @@ public record TicketCancelledEvent(
         // precedent already used for the currency column.
         UUID orderId,
         LocalDateTime cancelledAt,
-        TicketCancelReasonEnum cancelReason
-) {
-}
+        TicketCancelReasonEnum cancelReason) {}

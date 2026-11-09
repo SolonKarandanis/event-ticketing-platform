@@ -5,6 +5,8 @@ plugins {
     java
     id("org.springframework.boot") version "4.1.0"
     id("io.spring.dependency-management") version "1.1.7"
+    id("com.diffplug.spotless") version "8.11.0"
+    id("com.gorylenko.gradle-git-properties") version "4.0.1"
 }
 
 // Load version from version.properties
@@ -77,6 +79,54 @@ dependencies {
 
 tasks.named<Test>("test") {
     useJUnitPlatform()
+}
+
+spotless {
+    java {
+        googleJavaFormat("2.0.0").aosp()
+        removeUnusedImports()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+springBoot {
+    buildInfo {
+        // The timestamp would change build-info.properties on every build, and that file
+        // is on the test classpath, so `test` would never be up-to-date.
+        excludes.set(setOf("time"))
+    }
+}
+
+gitProperties {
+    // .git lives at the monorepo root, one level above this Gradle project.
+    dotGitDirectory.set(layout.projectDirectory.dir("../.git"))
+}
+
+// git.properties changes on every commit; ignoring it keeps `test` up-to-date when only
+// the build identity changed, not the code.
+normalization {
+    runtimeClasspath {
+        ignore("git.properties")
+    }
+}
+
+fun git(vararg args: String): String =
+    providers.exec {
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim().ifEmpty { "UNKNOWN" }
+
+val gitBranch = git("rev-parse", "--abbrev-ref", "HEAD")
+val gitHash = git("rev-parse", "HEAD")
+
+tasks.withType<Jar>().configureEach {
+    manifest {
+        attributes(
+            "Implementation-Ref" to gitBranch,
+            "Implementation-Hash" to gitHash,
+        )
+    }
 }
 
 tasks.named<ProcessResources>("processResources") {

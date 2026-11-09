@@ -1,14 +1,13 @@
 package com.etp.ticketservice.security;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 // Pure unit test, no Spring context needed -- this class has no dependencies of its own.
 // Complements SecurityAuthorizationTest, which asserts what SecurityConfig's
@@ -43,8 +42,16 @@ class JwtAuthenticationConverterTest {
         // "offline_access" and "uma_authorization" are real Keycloak default realm
         // roles that show up here alongside the app's own -- neither should leak
         // through as a Spring Security authority.
-        Jwt jwt = jwtWithClaims(Map.of("realm_access",
-                Map.of("roles", List.of("offline_access", "uma_authorization", "ROLE_ORGANIZER"))));
+        Jwt jwt =
+                jwtWithClaims(
+                        Map.of(
+                                "realm_access",
+                                Map.of(
+                                        "roles",
+                                        List.of(
+                                                "offline_access",
+                                                "uma_authorization",
+                                                "ROLE_ORGANIZER"))));
 
         JwtAuthenticationToken token = converter.convert(jwt);
 
@@ -55,8 +62,11 @@ class JwtAuthenticationConverterTest {
 
     @Test
     void convert_mapsEveryRolePrefixedRoleToAGrantedAuthority() {
-        Jwt jwt = jwtWithClaims(Map.of("realm_access",
-                Map.of("roles", List.of("ROLE_ORGANIZER", "ROLE_STAFF"))));
+        Jwt jwt =
+                jwtWithClaims(
+                        Map.of(
+                                "realm_access",
+                                Map.of("roles", List.of("ROLE_ORGANIZER", "ROLE_STAFF"))));
 
         JwtAuthenticationToken token = converter.convert(jwt);
 
@@ -75,11 +85,12 @@ class JwtAuthenticationConverterTest {
     }
 
     private Jwt jwtWithClaims(Map<String, Object> extraClaims) {
-        Jwt.Builder builder = Jwt.withTokenValue("test-token")
-                .header("alg", "none")
-                .subject(java.util.UUID.randomUUID().toString())
-                .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plusSeconds(3600));
+        Jwt.Builder builder =
+                Jwt.withTokenValue("test-token")
+                        .header("alg", "none")
+                        .subject(java.util.UUID.randomUUID().toString())
+                        .issuedAt(Instant.now())
+                        .expiresAt(Instant.now().plusSeconds(3600));
         extraClaims.forEach(builder::claim);
         return builder.build();
     }

@@ -1,25 +1,24 @@
 package com.etp.ticketservice.payments;
 
-import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.common.exception.ErrorCode;
-import com.etp.ticketservice.config.InternationalizationConfig;
-import com.etp.ticketservice.payments.exception.InvalidWebhookSignatureException;
-import com.stripe.net.Webhook;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.UUID;
-
 import static com.etp.ticketservice.common.TestJwts.withSubject;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.etp.ticketservice.common.UserProvisioningTestConfig;
+import com.etp.ticketservice.common.exception.ErrorCode;
+import com.etp.ticketservice.config.InternationalizationConfig;
+import com.etp.ticketservice.payments.exception.InvalidWebhookSignatureException;
+import com.stripe.net.Webhook;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
 
 // Same slice-test approach as every other *ControllerTest -- note this slice does NOT
 // import the real SecurityConfig, so it's still secured by Spring Security's own
@@ -47,24 +46,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({UserProvisioningTestConfig.class, InternationalizationConfig.class})
 class StripeWebhookControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @MockitoBean
-    private StripeWebhookService stripeWebhookService;
+    @MockitoBean private StripeWebhookService stripeWebhookService;
 
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Test
-    void handleStripeWebhook_returns200_andPassesRawBodyAndSignatureThroughUnchanged() throws Exception {
+    void handleStripeWebhook_returns200_andPassesRawBodyAndSignatureThroughUnchanged()
+            throws Exception {
         String payload = "{\"id\": \"evt_123\", \"type\": \"checkout.session.completed\"}";
         String signature = Webhook.Signature.generateSignatureHeader(payload, "whsec_test_secret");
 
-        mockMvc.perform(post("/api/v1/payments/webhooks/stripe")
-                        .with(withSubject(USER_ID))
-                        .header("Stripe-Signature", signature)
-                        .contentType("application/json")
-                        .content(payload))
+        mockMvc.perform(
+                        post("/api/v1/payments/webhooks/stripe")
+                                .with(withSubject(USER_ID))
+                                .header("Stripe-Signature", signature)
+                                .contentType("application/json")
+                                .content(payload))
                 .andExpect(status().isOk());
 
         verify(stripeWebhookService).handle(payload, signature);
@@ -73,13 +72,15 @@ class StripeWebhookControllerTest {
     @Test
     void handleStripeWebhook_serviceRejectsSignature_returns400() throws Exception {
         doThrow(new InvalidWebhookSignatureException(ErrorCode.INVALID_WEBHOOK_SIGNATURE))
-                .when(stripeWebhookService).handle(any(), any());
+                .when(stripeWebhookService)
+                .handle(any(), any());
 
-        mockMvc.perform(post("/api/v1/payments/webhooks/stripe")
-                        .with(withSubject(USER_ID))
-                        .header("Stripe-Signature", "t=123,v1=garbled")
-                        .contentType("application/json")
-                        .content("{}"))
+        mockMvc.perform(
+                        post("/api/v1/payments/webhooks/stripe")
+                                .with(withSubject(USER_ID))
+                                .header("Stripe-Signature", "t=123,v1=garbled")
+                                .contentType("application/json")
+                                .content("{}"))
                 .andExpect(status().isBadRequest());
     }
 }

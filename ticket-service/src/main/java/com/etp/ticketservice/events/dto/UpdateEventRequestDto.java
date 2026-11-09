@@ -2,19 +2,17 @@ package com.etp.ticketservice.events.dto;
 
 import com.etp.ticketservice.events.images.dto.EventImageRequestDto;
 import com.etp.ticketservice.tickettypes.dto.UpdateTicketTypeRequestDto;
-
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @AllArgsConstructor
@@ -45,6 +43,5 @@ public class UpdateEventRequestDto {
     // Every image the event should end up with, in the desired gallery order -- an
     // existing image (has an id) not present here gets deleted, the same
     // create/keep/delete-by-id pattern ticketTypes already uses. Optional -- 0 is fine.
-    @Valid
-    private List<EventImageRequestDto> images = new ArrayList<>();
+    @Valid private List<EventImageRequestDto> images = new ArrayList<>();
 }

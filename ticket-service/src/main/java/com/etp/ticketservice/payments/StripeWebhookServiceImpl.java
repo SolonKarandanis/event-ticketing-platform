@@ -23,8 +23,9 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
     public void handle(String payload, String signatureHeader) {
         WebhookEvent event = paymentGatewayService.verifyWebhookSignature(payload, signatureHeader);
 
-        boolean isNew = processedWebhookEventService.recordIfNew(
-                PaymentProvider.STRIPE, event.getProviderEventId(), event.getEventType());
+        boolean isNew =
+                processedWebhookEventService.recordIfNew(
+                        PaymentProvider.STRIPE, event.getProviderEventId(), event.getEventType());
         if (!isNew) {
             return; // already processed, or a concurrent delivery is processing it right now
         }
@@ -34,9 +35,13 @@ public class StripeWebhookServiceImpl implements StripeWebhookService {
         }
 
         switch (event.getEventType()) {
-            case CHECKOUT_SESSION_COMPLETED -> ticketOrderService.completeOrder(event.getOrderDomainId());
-            case CHECKOUT_SESSION_EXPIRED -> ticketOrderService.expireOrder(event.getOrderDomainId());
-            default -> { /* acknowledged, ignored */ }
+            case CHECKOUT_SESSION_COMPLETED ->
+                    ticketOrderService.completeOrder(event.getOrderDomainId());
+            case CHECKOUT_SESSION_EXPIRED ->
+                    ticketOrderService.expireOrder(event.getOrderDomainId());
+            default -> {
+                /* acknowledged, ignored */
+            }
         }
     }
 }

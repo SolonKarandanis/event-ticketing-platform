@@ -5,11 +5,10 @@ import com.etp.ticketservice.venues.dto.UpdateVenueRequestDto;
 import com.etp.ticketservice.venues.dto.VenueResponseDto;
 import com.etp.ticketservice.venues.model.CreateVenueRequest;
 import com.etp.ticketservice.venues.model.UpdateVenueRequest;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface VenueService {
     Venue createVenue(CreateVenueRequest request);

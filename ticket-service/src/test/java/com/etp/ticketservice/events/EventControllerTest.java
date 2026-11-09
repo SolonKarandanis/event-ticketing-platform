@@ -1,28 +1,5 @@
 package com.etp.ticketservice.events;
 
-import com.etp.ticketservice.events.dto.CreateEventRequestDto;
-import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
-import com.etp.ticketservice.events.dto.CreateEventResponseDto;
-import com.etp.ticketservice.events.dto.GetEventDetailsResponseDto;
-import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.events.model.CreateEventRequest;
-import com.etp.ticketservice.common.antivirus.VirusScannable;
-import com.etp.ticketservice.tickets.TicketService;
-import com.etp.ticketservice.common.antivirus.AntivirusService;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import tools.jackson.databind.ObjectMapper;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import static com.etp.ticketservice.common.TestJwts.withSubject;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -36,6 +13,28 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.etp.ticketservice.common.UserProvisioningTestConfig;
+import com.etp.ticketservice.common.antivirus.AntivirusService;
+import com.etp.ticketservice.common.antivirus.VirusScannable;
+import com.etp.ticketservice.events.dto.CreateEventRequestDto;
+import com.etp.ticketservice.events.dto.CreateEventResponseDto;
+import com.etp.ticketservice.events.dto.GetEventDetailsResponseDto;
+import com.etp.ticketservice.events.model.CreateEventRequest;
+import com.etp.ticketservice.tickets.TicketService;
+import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import tools.jackson.databind.ObjectMapper;
 
 // A slice test, not a full @SpringBootTest -- @WebMvcTest loads only EventController
 // (plus GlobalExceptionHandler, since @RestControllerAdvice beans are picked up too)
@@ -51,8 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(UserProvisioningTestConfig.class)
 class EventControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     // A plain, locally-built mapper -- not the Spring-autoconfigured bean -- since all
     // this needs is turning a simple DTO (String/UUID/List fields, no LocalDateTime set
@@ -62,14 +60,11 @@ class EventControllerTest {
     // package move was.
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private EventService eventService;
+    @MockitoBean private EventService eventService;
 
-    @MockitoBean
-    private TicketService ticketService;
+    @MockitoBean private TicketService ticketService;
 
-    @MockitoBean
-    private AntivirusService antivirusService;
+    @MockitoBean private AntivirusService antivirusService;
 
     private static final UUID ORGANIZER_ID = UUID.randomUUID();
 
@@ -81,7 +76,8 @@ class EventControllerTest {
         responseDto.setId(eventId);
         responseDto.setName("Summer Fest");
 
-        when(eventService.getEventForOrganizer(ORGANIZER_ID, eventId)).thenReturn(Optional.of(event));
+        when(eventService.getEventForOrganizer(ORGANIZER_ID, eventId))
+                .thenReturn(Optional.of(event));
         when(eventService.convertToGetEventDetailsResponseDto(event)).thenReturn(responseDto);
 
         mockMvc.perform(get("/api/v1/events/{eventId}", eventId).with(organizer()))
@@ -102,8 +98,9 @@ class EventControllerTest {
     @Test
     void createEvent_withOneImage_scansItAndReturns201() throws Exception {
         MockMultipartFile eventPart = eventPart(validCreateEventRequestDto());
-        MockMultipartFile imagePart = new MockMultipartFile(
-                "newImages", "cover.jpg", "image/jpeg", "fake-image-bytes".getBytes());
+        MockMultipartFile imagePart =
+                new MockMultipartFile(
+                        "newImages", "cover.jpg", "image/jpeg", "fake-image-bytes".getBytes());
 
         Event createdEvent = new Event();
         CreateEventResponseDto responseDto = new CreateEventResponseDto();
@@ -115,7 +112,11 @@ class EventControllerTest {
         when(eventService.createEvent(eq(ORGANIZER_ID), any(), any())).thenReturn(createdEvent);
         when(eventService.convertToCreateEventResponseDto(createdEvent)).thenReturn(responseDto);
 
-        mockMvc.perform(multipart("/api/v1/events").file(eventPart).file(imagePart).with(organizer()))
+        mockMvc.perform(
+                        multipart("/api/v1/events")
+                                .file(eventPart)
+                                .file(imagePart)
+                                .with(organizer()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("New Event"));
 

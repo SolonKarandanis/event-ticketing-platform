@@ -1,6 +1,7 @@
 package com.etp.ticketservice.common.exception;
 
 import jakarta.validation.ConstraintViolationException;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
@@ -13,8 +14,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
-
-import java.util.List;
 
 @RestControllerAdvice
 @Slf4j
@@ -35,11 +34,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorDto> handleConstraintViolation(ConstraintViolationException ex) {
         log.error("Caught ConstraintViolationException", ex);
 
-        String errorMessage = ex.getConstraintViolations()
-                .stream()
-                .findFirst()
-                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
-                .orElse(resolve("error.constraint-violation"));
+        String errorMessage =
+                ex.getConstraintViolations().stream()
+                        .findFirst()
+                        .map(violation ->
+                                violation.getPropertyPath() + ": " + violation.getMessage())
+                        .orElse(resolve("error.constraint-violation"));
 
         ErrorDto errorDto = new ErrorDto();
         errorDto.setError(errorMessage);
@@ -48,17 +48,18 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorDto> handleMethodArgumentNotValidException(
-            MethodArgumentNotValidException ex
-    ) {
+            MethodArgumentNotValidException ex) {
         log.error("Caught MethodArgumentNotValidException", ex);
         ErrorDto errorDto = new ErrorDto();
 
         BindingResult bindingResult = ex.getBindingResult();
         List<FieldError> fieldErrors = bindingResult.getFieldErrors();
-        String errorMessage = fieldErrors.stream()
-                .findFirst()
-                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
-                .orElse(resolve("error.validation-failed"));
+        String errorMessage =
+                fieldErrors.stream()
+                        .findFirst()
+                        .map(fieldError ->
+                                fieldError.getField() + ": " + fieldError.getDefaultMessage())
+                        .orElse(resolve("error.validation-failed"));
 
         errorDto.setError(errorMessage);
         return new ResponseEntity<>(errorDto, HttpStatus.BAD_REQUEST);

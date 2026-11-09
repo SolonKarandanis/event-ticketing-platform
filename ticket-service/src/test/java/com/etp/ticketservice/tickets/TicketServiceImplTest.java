@@ -1,33 +1,5 @@
 package com.etp.ticketservice.tickets;
 
-import com.etp.ticketservice.messaging.TicketEventPublisher;
-
-import com.etp.ticketservice.common.exception.ErrorCode;
-import com.etp.ticketservice.events.Event;
-import com.etp.ticketservice.orders.TicketOrderItem;
-import com.etp.ticketservice.payments.PaymentGatewayService;
-import com.etp.ticketservice.payments.RefundResult;
-import com.etp.ticketservice.payments.exception.PaymentGatewayException;
-import com.etp.ticketservice.tickets.qrcode.QrCodeService;
-import com.etp.ticketservice.tickettypes.TicketType;
-import com.etp.ticketservice.ticketvalidation.TicketValidation;
-import com.etp.ticketservice.events.EventStatusEnum;
-import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
-import com.etp.ticketservice.tickets.exception.ReferenceCodeGenerationException;
-import com.etp.ticketservice.tickets.exception.TicketAlreadyCancelledException;
-import com.etp.ticketservice.tickets.exception.TicketAlreadyValidatedException;
-import com.etp.ticketservice.tickets.exception.TicketEventAlreadyCompletedException;
-import com.etp.ticketservice.tickets.exception.TicketNotFoundException;
-import com.etp.ticketservice.user.User;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Optional;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +8,32 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.etp.ticketservice.common.exception.ErrorCode;
+import com.etp.ticketservice.events.Event;
+import com.etp.ticketservice.events.EventStatusEnum;
+import com.etp.ticketservice.messaging.TicketEventPublisher;
+import com.etp.ticketservice.orders.TicketOrderItem;
+import com.etp.ticketservice.payments.PaymentGatewayService;
+import com.etp.ticketservice.payments.RefundResult;
+import com.etp.ticketservice.payments.exception.PaymentGatewayException;
+import com.etp.ticketservice.tickets.exception.ReferenceCodeGenerationException;
+import com.etp.ticketservice.tickets.exception.TicketAlreadyCancelledException;
+import com.etp.ticketservice.tickets.exception.TicketAlreadyValidatedException;
+import com.etp.ticketservice.tickets.exception.TicketEventAlreadyCompletedException;
+import com.etp.ticketservice.tickets.exception.TicketNotFoundException;
+import com.etp.ticketservice.tickets.qrcode.QrCodeService;
+import com.etp.ticketservice.tickettypes.TicketType;
+import com.etp.ticketservice.ticketvalidation.TicketValidation;
+import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.user.User;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 // Pure Mockito unit tests -- see EventServiceImplTest's class comment for why this layer
 // is worth testing directly rather than only through TicketController's mocked-service
@@ -50,19 +48,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TicketServiceImplTest {
 
-    @Mock
-    private TicketRepository ticketRepository;
-    @Mock
-    private TicketEventPublisher ticketEventPublisher;
-    @Mock
-    private QrCodeService qrCodeService;
-    @Mock
-    private TicketCancellationService ticketCancellationService;
-    @Mock
-    private PaymentGatewayService paymentGatewayService;
+    @Mock private TicketRepository ticketRepository;
+    @Mock private TicketEventPublisher ticketEventPublisher;
+    @Mock private QrCodeService qrCodeService;
+    @Mock private TicketCancellationService ticketCancellationService;
+    @Mock private PaymentGatewayService paymentGatewayService;
 
-    @InjectMocks
-    private TicketServiceImpl ticketService;
+    @InjectMocks private TicketServiceImpl ticketService;
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID ORGANIZER_ID = UUID.randomUUID();
@@ -75,7 +67,8 @@ class TicketServiceImplTest {
         TicketType ticketType = new TicketType();
         TicketOrderItem orderItem = new TicketOrderItem();
         when(ticketRepository.findByReferenceCode(any())).thenReturn(Optional.empty());
-        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketRepository.save(any(Ticket.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         Ticket issued = ticketService.issueTicket(purchaser, ticketType, orderItem);
 
@@ -92,7 +85,8 @@ class TicketServiceImplTest {
         User purchaser = new User();
         TicketType ticketType = new TicketType();
         when(ticketRepository.findByReferenceCode(any())).thenReturn(Optional.empty());
-        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketRepository.save(any(Ticket.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         Ticket issued = ticketService.issueTicket(purchaser, ticketType, null);
 
@@ -117,7 +111,8 @@ class TicketServiceImplTest {
 
     @Test
     void cancelTicketForUser_notFound_throws() {
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.empty());
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null))
                 .isInstanceOf(TicketNotFoundException.class);
@@ -129,7 +124,8 @@ class TicketServiceImplTest {
     void cancelTicketForUser_alreadyCancelled_throws() {
         Ticket ticket = purchasableTicket();
         ticket.setStatus(TicketStatusEnum.CANCELLED);
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
 
         assertThatThrownBy(() -> ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null))
                 .isInstanceOf(TicketAlreadyCancelledException.class);
@@ -141,7 +137,8 @@ class TicketServiceImplTest {
     void cancelTicketForUser_eventAlreadyCompleted_throws() {
         Ticket ticket = purchasableTicket();
         ticket.getTicketType().getEvent().setStatus(EventStatusEnum.COMPLETED);
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
 
         assertThatThrownBy(() -> ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null))
                 .isInstanceOf(TicketEventAlreadyCompletedException.class);
@@ -153,7 +150,8 @@ class TicketServiceImplTest {
         TicketValidation validation = new TicketValidation();
         validation.setStatus(TicketValidationStatusEnum.VALID);
         ticket.addValidation(validation);
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
 
         assertThatThrownBy(() -> ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null))
                 .isInstanceOf(TicketAlreadyValidatedException.class);
@@ -165,8 +163,10 @@ class TicketServiceImplTest {
         TicketValidation validation = new TicketValidation();
         validation.setStatus(TicketValidationStatusEnum.INVALID);
         ticket.addValidation(validation);
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(eq(TICKET_ID), eq(TicketCancelReasonEnum.ATTENDEE_REQUEST), any()))
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
+        when(ticketCancellationService.cancelAndPersist(
+                        eq(TICKET_ID), eq(TicketCancelReasonEnum.ATTENDEE_REQUEST), any()))
                 .thenReturn(noRefundOutcome(cancelledTicket()));
 
         Ticket cancelled = ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null);
@@ -179,8 +179,10 @@ class TicketServiceImplTest {
     @Test
     void cancelTicketForUser_noOrderItem_skipsRefundEntirely() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, "Changed my mind"))
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, "Changed my mind"))
                 .thenReturn(noRefundOutcome(cancelledTicket()));
 
         Ticket cancelled = ticketService.cancelTicketForUser(USER_ID, TICKET_ID, "Changed my mind");
@@ -194,54 +196,78 @@ class TicketServiceImplTest {
     @Test
     void cancelTicketForUser_refundSucceeds_recordsSucceededStatus() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
                 .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
-        when(paymentGatewayService.refund(any())).thenReturn(
-                RefundResult.builder().providerRefundId("re_test_123").status("succeeded").build());
+        when(paymentGatewayService.refund(any()))
+                .thenReturn(
+                        RefundResult.builder()
+                                .providerRefundId("re_test_123")
+                                .status("succeeded")
+                                .build());
 
         Ticket cancelled = ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null);
 
         assertThat(cancelled.getRefundStatus()).isEqualTo(RefundStatusEnum.SUCCEEDED);
         assertThat(cancelled.getProviderRefundId()).isEqualTo("re_test_123");
-        verify(ticketCancellationService).recordRefundOutcome(TICKET_ID, RefundStatusEnum.SUCCEEDED, "re_test_123");
+        verify(ticketCancellationService)
+                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.SUCCEEDED, "re_test_123");
     }
 
     @Test
     void cancelTicketForUser_refundPending_recordsPendingStatus() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
                 .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
-        when(paymentGatewayService.refund(any())).thenReturn(
-                RefundResult.builder().providerRefundId("re_test_123").status("pending").build());
+        when(paymentGatewayService.refund(any()))
+                .thenReturn(
+                        RefundResult.builder()
+                                .providerRefundId("re_test_123")
+                                .status("pending")
+                                .build());
 
         ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null);
 
-        verify(ticketCancellationService).recordRefundOutcome(TICKET_ID, RefundStatusEnum.PENDING, "re_test_123");
+        verify(ticketCancellationService)
+                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.PENDING, "re_test_123");
     }
 
     @Test
     void cancelTicketForUser_refundStatusUnrecognized_mapsToFailed() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
                 .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
-        when(paymentGatewayService.refund(any())).thenReturn(
-                RefundResult.builder().providerRefundId("re_test_123").status("canceled").build());
+        when(paymentGatewayService.refund(any()))
+                .thenReturn(
+                        RefundResult.builder()
+                                .providerRefundId("re_test_123")
+                                .status("canceled")
+                                .build());
 
         ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null);
 
-        verify(ticketCancellationService).recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, "re_test_123");
+        verify(ticketCancellationService)
+                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, "re_test_123");
     }
 
     @Test
     void cancelTicketForUser_gatewayThrows_recordsFailedStatusWithoutBlockingCancellation() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
                 .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
-        when(paymentGatewayService.refund(any())).thenThrow(new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR));
+        when(paymentGatewayService.refund(any()))
+                .thenThrow(new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR));
 
         // Cancellation already took effect (cancelAndPersist already "ran") regardless
         // of the gateway failure -- no exception propagates out of this call.
@@ -249,61 +275,78 @@ class TicketServiceImplTest {
 
         assertThat(cancelled.getRefundStatus()).isEqualTo(RefundStatusEnum.FAILED);
         assertThat(cancelled.getProviderRefundId()).isNull();
-        verify(ticketCancellationService).recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, null);
+        verify(ticketCancellationService)
+                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, null);
     }
 
     @Test
-    void cancelTicketForUser_missingProviderCheckoutSessionIdDespiteAmount_recordsFailedWithoutCallingGateway() {
+    void
+            cancelTicketForUser_missingProviderCheckoutSessionIdDespiteAmount_recordsFailedWithoutCallingGateway() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
+                .thenReturn(Optional.of(ticket));
         // Amount present but no session id -- the "should never happen" case (see
         // TicketOrder.providerCheckoutSessionId's own comment).
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
-                .thenReturn(TicketCancellationOutcome.builder()
-                        .ticket(cancelledTicket())
-                        .refundAmountMinorUnits(1999L)
-                        .providerCheckoutSessionId(null)
-                        .build());
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
+                .thenReturn(
+                        TicketCancellationOutcome.builder()
+                                .ticket(cancelledTicket())
+                                .refundAmountMinorUnits(1999L)
+                                .providerCheckoutSessionId(null)
+                                .build());
 
         Ticket cancelled = ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null);
 
         assertThat(cancelled.getRefundStatus()).isEqualTo(RefundStatusEnum.FAILED);
         verify(paymentGatewayService, never()).refund(any());
-        verify(ticketCancellationService).recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, null);
+        verify(ticketCancellationService)
+                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, null);
     }
 
     // ---- cancelTicketForOrganizer / cancelTicketForEventCancellation: delegation only ----
 
     @Test
     void cancelTicketForOrganizer_notFound_throws() {
-        when(ticketRepository.findByDomainIdAndEventDomainIdAndOrganizerDomainId(TICKET_ID, EVENT_ID, ORGANIZER_ID))
+        when(ticketRepository.findByDomainIdAndEventDomainIdAndOrganizerDomainId(
+                        TICKET_ID, EVENT_ID, ORGANIZER_ID))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ticketService.cancelTicketForOrganizer(ORGANIZER_ID, EVENT_ID, TICKET_ID, null))
+        assertThatThrownBy(() ->
+                        ticketService.cancelTicketForOrganizer(
+                                ORGANIZER_ID, EVENT_ID, TICKET_ID, null))
                 .isInstanceOf(TicketNotFoundException.class);
     }
 
     @Test
     void cancelTicketForOrganizer_happyPath_delegatesWithOrganizerActionReason() {
         Ticket ticket = purchasableTicket();
-        when(ticketRepository.findByDomainIdAndEventDomainIdAndOrganizerDomainId(TICKET_ID, EVENT_ID, ORGANIZER_ID))
+        when(ticketRepository.findByDomainIdAndEventDomainIdAndOrganizerDomainId(
+                        TICKET_ID, EVENT_ID, ORGANIZER_ID))
                 .thenReturn(Optional.of(ticket));
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ORGANIZER_ACTION, "Event rescheduled"))
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ORGANIZER_ACTION, "Event rescheduled"))
                 .thenReturn(noRefundOutcome(cancelledTicket()));
 
-        ticketService.cancelTicketForOrganizer(ORGANIZER_ID, EVENT_ID, TICKET_ID, "Event rescheduled");
+        ticketService.cancelTicketForOrganizer(
+                ORGANIZER_ID, EVENT_ID, TICKET_ID, "Event rescheduled");
 
-        verify(ticketCancellationService).cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.ORGANIZER_ACTION, "Event rescheduled");
+        verify(ticketCancellationService)
+                .cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.ORGANIZER_ACTION, "Event rescheduled");
     }
 
     @Test
     void cancelTicketForEventCancellation_delegatesWithEventCancelledReasonAndNoNote() {
-        when(ticketCancellationService.cancelAndPersist(TICKET_ID, TicketCancelReasonEnum.EVENT_CANCELLED, null))
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.EVENT_CANCELLED, null))
                 .thenReturn(noRefundOutcome(cancelledTicket()));
 
         ticketService.cancelTicketForEventCancellation(TICKET_ID);
 
-        verify(ticketCancellationService).cancelAndPersist(eq(TICKET_ID), eq(TicketCancelReasonEnum.EVENT_CANCELLED), isNull());
+        verify(ticketCancellationService)
+                .cancelAndPersist(
+                        eq(TICKET_ID), eq(TicketCancelReasonEnum.EVENT_CANCELLED), isNull());
     }
 
     private Ticket purchasableTicket() {
@@ -330,7 +373,8 @@ class TicketServiceImplTest {
         return TicketCancellationOutcome.builder().ticket(ticket).build();
     }
 
-    private TicketCancellationOutcome refundableOutcome(Ticket ticket, long amountMinorUnits, String providerCheckoutSessionId) {
+    private TicketCancellationOutcome refundableOutcome(
+            Ticket ticket, long amountMinorUnits, String providerCheckoutSessionId) {
         return TicketCancellationOutcome.builder()
                 .ticket(ticket)
                 .refundAmountMinorUnits(amountMinorUnits)

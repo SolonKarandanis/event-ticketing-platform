@@ -3,7 +3,6 @@ package com.etp.ticketservice.orders;
 import com.etp.ticketservice.events.Event;
 import com.etp.ticketservice.payments.PaymentProvider;
 import com.etp.ticketservice.user.User;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -19,6 +18,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -28,12 +32,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ticket_orders")
@@ -45,16 +43,12 @@ import java.util.UUID;
 public class TicketOrder {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "ticketOrderGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "ticketOrderGenerator")
     @SequenceGenerator(
             name = "ticketOrderGenerator",
             sequenceName = "ticket_orders_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -124,19 +118,26 @@ public class TicketOrder {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         TicketOrder ticketOrder = (TicketOrder) o;
-        return Objects.equals(id, ticketOrder.id) &&
-               Objects.equals(domainId, ticketOrder.domainId) &&
-               status == ticketOrder.status &&
-               provider == ticketOrder.provider &&
-               Objects.equals(providerCheckoutSessionId, ticketOrder.providerCheckoutSessionId) &&
-               Objects.equals(expiresAt, ticketOrder.expiresAt) &&
-               Objects.equals(createdAt, ticketOrder.createdAt) &&
-               Objects.equals(updatedAt, ticketOrder.updatedAt);
+        return Objects.equals(id, ticketOrder.id)
+                && Objects.equals(domainId, ticketOrder.domainId)
+                && status == ticketOrder.status
+                && provider == ticketOrder.provider
+                && Objects.equals(providerCheckoutSessionId, ticketOrder.providerCheckoutSessionId)
+                && Objects.equals(expiresAt, ticketOrder.expiresAt)
+                && Objects.equals(createdAt, ticketOrder.createdAt)
+                && Objects.equals(updatedAt, ticketOrder.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, status, provider, providerCheckoutSessionId,
-                expiresAt, createdAt, updatedAt);
+        return Objects.hash(
+                id,
+                domainId,
+                status,
+                provider,
+                providerCheckoutSessionId,
+                expiresAt,
+                createdAt,
+                updatedAt);
     }
 }

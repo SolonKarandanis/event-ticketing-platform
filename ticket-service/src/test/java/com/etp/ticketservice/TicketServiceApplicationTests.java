@@ -12,7 +12,5 @@ import org.springframework.boot.test.context.SpringBootTest;
 class TicketServiceApplicationTests extends PostgresTestContainer {
 
     @Test
-    void contextLoads() {
-    }
-
+    void contextLoads() {}
 }

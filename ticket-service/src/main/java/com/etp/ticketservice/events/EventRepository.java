@@ -1,5 +1,10 @@
 package com.etp.ticketservice.events;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -7,19 +12,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
 
     // venue is a @ManyToOne (to-one) fetch join -- safe to combine with Pageable,
     // it doesn't multiply result rows the way a @OneToMany fetch join would.
-    @Query("SELECT e FROM Event e LEFT JOIN FETCH e.venue WHERE e.organizer.domainId = :organizerDomainId")
-    Page<Event> findByOrganizerDomainId(@Param("organizerDomainId") UUID organizerDomainId, Pageable pageable);
+    @Query(
+            "SELECT e FROM Event e LEFT JOIN FETCH e.venue WHERE e.organizer.domainId = :organizerDomainId")
+    Page<Event> findByOrganizerDomainId(
+            @Param("organizerDomainId") UUID organizerDomainId, Pageable pageable);
 
     // Second step of the "paginate, then hydrate collections" pattern: run in the same
     // transaction as findByOrganizerDomainId so this fetch-joins ticketTypes onto the
@@ -31,11 +32,15 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // ticketTypes and images are both @OneToMany, but both Set-backed -- combining two
     // to-many fetch joins in one query is exactly what that Set-over-List choice (see
     // "Relationship Collections: Set, Not List") avoids MultipleBagFetchException for.
-    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes LEFT JOIN FETCH e.images WHERE e.domainId = :domainId AND e.organizer.domainId = :organizerDomainId")
-    Optional<Event> findByDomainIdAndOrganizerDomainId(@Param("domainId") UUID domainId, @Param("organizerDomainId") UUID organizerDomainId);
+    @Query(
+            "SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes LEFT JOIN FETCH e.images WHERE e.domainId = :domainId AND e.organizer.domainId = :organizerDomainId")
+    Optional<Event> findByDomainIdAndOrganizerDomainId(
+            @Param("domainId") UUID domainId, @Param("organizerDomainId") UUID organizerDomainId);
 
-    @Query("SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes LEFT JOIN FETCH e.images WHERE e.domainId = :domainId AND e.status = :status")
-    Optional<Event> findByDomainIdAndStatus(@Param("domainId") UUID domainId, @Param("status") EventStatusEnum status);
+    @Query(
+            "SELECT DISTINCT e FROM Event e LEFT JOIN FETCH e.venue LEFT JOIN FETCH e.ticketTypes LEFT JOIN FETCH e.images WHERE e.domainId = :domainId AND e.status = :status")
+    Optional<Event> findByDomainIdAndStatus(
+            @Param("domainId") UUID domainId, @Param("status") EventStatusEnum status);
 
     // Published-events browse/search, filtering, and sort all live here as native queries --
     // PostgreSQL full-text search (to_tsvector/plainto_tsquery) has no JPQL/Criteria
@@ -65,46 +70,76 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // NULL" guard is needed: ST_DWithin against a null geography evaluates to NULL, and
     // a NULL in a WHERE clause is already treated as non-matching, so a venue with no
     // coordinates is excluded by the same expression that includes nearby ones.
-    String PUBLISHED_EVENTS_WHERE = "e.status = 'PUBLISHED' " +
-            "AND (CAST(:searchTerm AS text) IS NULL OR to_tsvector('english', COALESCE(e.name, '') || ' ' || COALESCE(v.name, '') || ' ' || COALESCE(v.city, '')) @@ plainto_tsquery('english', CAST(:searchTerm AS text))) " +
-            "AND (CAST(:city AS text) IS NULL OR v.city = CAST(:city AS text)) " +
-            "AND (CAST(:from AS timestamp) IS NULL OR e.event_start >= CAST(:from AS timestamp)) " +
-            "AND (CAST(:to AS timestamp) IS NULL OR e.event_start <= CAST(:to AS timestamp)) " +
-            "AND (CAST(:minPrice AS bigint) IS NULL OR (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS bigint)) " +
-            "AND (CAST(:maxPrice AS bigint) IS NULL OR (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS bigint)) " +
-            "AND (CAST(:latitude AS double precision) IS NULL OR CAST(:longitude AS double precision) IS NULL OR CAST(:radiusMeters AS double precision) IS NULL " +
-            "OR ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography, CAST(:radiusMeters AS double precision)))";
+    String PUBLISHED_EVENTS_WHERE =
+            "e.status = 'PUBLISHED' "
+                    + "AND (CAST(:searchTerm AS text) IS NULL OR to_tsvector('english', COALESCE(e.name, '') || ' ' || COALESCE(v.name, '') || ' ' || COALESCE(v.city, '')) @@ plainto_tsquery('english', CAST(:searchTerm AS text))) "
+                    + "AND (CAST(:city AS text) IS NULL OR v.city = CAST(:city AS text)) "
+                    + "AND (CAST(:from AS timestamp) IS NULL OR e.event_start >= CAST(:from AS timestamp)) "
+                    + "AND (CAST(:to AS timestamp) IS NULL OR e.event_start <= CAST(:to AS timestamp)) "
+                    + "AND (CAST(:minPrice AS bigint) IS NULL OR (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) >= CAST(:minPrice AS bigint)) "
+                    + "AND (CAST(:maxPrice AS bigint) IS NULL OR (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) <= CAST(:maxPrice AS bigint)) "
+                    + "AND (CAST(:latitude AS double precision) IS NULL OR CAST(:longitude AS double precision) IS NULL OR CAST(:radiusMeters AS double precision) IS NULL "
+                    + "OR ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography, CAST(:radiusMeters AS double precision)))";
 
-    String PUBLISHED_EVENTS_COUNT_QUERY = "SELECT count(*) FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE;
+    String PUBLISHED_EVENTS_COUNT_QUERY =
+            "SELECT count(*) FROM events e JOIN venues v ON v.id = e.venue_id WHERE "
+                    + PUBLISHED_EVENTS_WHERE;
 
-    @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
-            " ORDER BY e.event_start ASC",
+    @Query(
+            value =
+                    "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE "
+                            + PUBLISHED_EVENTS_WHERE
+                            + " ORDER BY e.event_start ASC",
             countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
             nativeQuery = true)
-    Page<Event> findPublishedEventsSortedBySoonest(@Param("searchTerm") String searchTerm, @Param("city") String city,
-            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
-            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+    Page<Event> findPublishedEventsSortedBySoonest(
+            @Param("searchTerm") String searchTerm,
+            @Param("city") String city,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("minPrice") Long minPrice,
+            @Param("maxPrice") Long maxPrice,
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude,
+            @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
-    @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
-            " ORDER BY (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) ASC",
+    @Query(
+            value =
+                    "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE "
+                            + PUBLISHED_EVENTS_WHERE
+                            + " ORDER BY (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) ASC",
             countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
             nativeQuery = true)
-    Page<Event> findPublishedEventsSortedByPriceAsc(@Param("searchTerm") String searchTerm, @Param("city") String city,
-            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
-            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+    Page<Event> findPublishedEventsSortedByPriceAsc(
+            @Param("searchTerm") String searchTerm,
+            @Param("city") String city,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("minPrice") Long minPrice,
+            @Param("maxPrice") Long maxPrice,
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude,
+            @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
-    @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
-            " ORDER BY (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) DESC",
+    @Query(
+            value =
+                    "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE "
+                            + PUBLISHED_EVENTS_WHERE
+                            + " ORDER BY (SELECT MIN(tt.price_minor_units) FROM ticket_types tt WHERE tt.event_id = e.id) DESC",
             countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
             nativeQuery = true)
-    Page<Event> findPublishedEventsSortedByPriceDesc(@Param("searchTerm") String searchTerm, @Param("city") String city,
-            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
-            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+    Page<Event> findPublishedEventsSortedByPriceDesc(
+            @Param("searchTerm") String searchTerm,
+            @Param("city") String city,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("minPrice") Long minPrice,
+            @Param("maxPrice") Long maxPrice,
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude,
+            @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
     // Only ever invoked once EventServiceImpl#findPublishedEvents has confirmed
@@ -112,14 +147,23 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // deliberately lenient "any null means no-op" filter, sorting by distance from
     // nowhere isn't a meaningful fallback, so the guard lives at the call site instead
     // of here.
-    @Query(value = "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE " + PUBLISHED_EVENTS_WHERE +
-            " ORDER BY ST_Distance(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography) ASC",
+    @Query(
+            value =
+                    "SELECT e.* FROM events e JOIN venues v ON v.id = e.venue_id WHERE "
+                            + PUBLISHED_EVENTS_WHERE
+                            + " ORDER BY ST_Distance(v.location, ST_SetSRID(ST_MakePoint(CAST(:longitude AS double precision), CAST(:latitude AS double precision)), 4326)::geography) ASC",
             countQuery = PUBLISHED_EVENTS_COUNT_QUERY,
             nativeQuery = true)
-    Page<Event> findPublishedEventsSortedByDistance(@Param("searchTerm") String searchTerm, @Param("city") String city,
-            @Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
-            @Param("minPrice") Long minPrice, @Param("maxPrice") Long maxPrice,
-            @Param("latitude") Double latitude, @Param("longitude") Double longitude, @Param("radiusMeters") Double radiusMeters,
+    Page<Event> findPublishedEventsSortedByDistance(
+            @Param("searchTerm") String searchTerm,
+            @Param("city") String city,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("minPrice") Long minPrice,
+            @Param("maxPrice") Long maxPrice,
+            @Param("latitude") Double latitude,
+            @Param("longitude") Double longitude,
+            @Param("radiusMeters") Double radiusMeters,
             Pageable pageable);
 
     // Backs the browse page's City filter -- plain JPQL, not native, since there's no
@@ -127,6 +171,7 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // path (see PUBLISHED_EVENTS_WHERE above). Only cities that actually have a
     // published event, not every venue ever created -- a venue with zero published
     // events would be a misleading filter option.
-    @Query("SELECT DISTINCT e.venue.city FROM Event e WHERE e.status = 'PUBLISHED' ORDER BY e.venue.city")
+    @Query(
+            "SELECT DISTINCT e.venue.city FROM Event e WHERE e.status = 'PUBLISHED' ORDER BY e.venue.city")
     List<String> findDistinctPublishedEventCities();
 }

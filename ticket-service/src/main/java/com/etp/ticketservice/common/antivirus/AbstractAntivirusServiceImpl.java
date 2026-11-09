@@ -2,14 +2,13 @@ package com.etp.ticketservice.common.antivirus;
 
 import com.etp.ticketservice.common.antivirus.VirusScanResult.VirusScanResultBuilder;
 import com.etp.ticketservice.common.antivirus.VirusScanResultFileList.VirusScanResultFileListBuilder;
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public abstract class AbstractAntivirusServiceImpl implements AntivirusService{
+public abstract class AbstractAntivirusServiceImpl implements AntivirusService {
 
     @Override
     public boolean ping() {
@@ -47,17 +46,23 @@ public abstract class AbstractAntivirusServiceImpl implements AntivirusService{
     @Override
     public VirusScanResult scan(VirusScannable scannable) {
         VirusScanResultBuilder scanResultBuilder = VirusScanResult.builder();
-        VirusScanResultFileListBuilder scanFileListBuilder = VirusScanResultFileList.builder()
-                .fileName(scannable.getOriginalFilename());
+        VirusScanResultFileListBuilder scanFileListBuilder =
+                VirusScanResultFileList.builder().fileName(scannable.getOriginalFilename());
 
         if (scannable.getSize() <= 0) {
-            log.debug("skipping file: {} of size: {}", scannable.getOriginalFilename(), scannable.getSize());
+            log.debug(
+                    "skipping file: {} of size: {}",
+                    scannable.getOriginalFilename(),
+                    scannable.getSize());
             scanFileListBuilder.result(Result.ERROR);
             scanResultBuilder.errorFile(scanFileListBuilder.build());
             return scanResultBuilder.build();
         }
 
-        log.debug("scanning file: {} of size: {}", scannable.getOriginalFilename(), scannable.getSize());
+        log.debug(
+                "scanning file: {} of size: {}",
+                scannable.getOriginalFilename(),
+                scannable.getSize());
 
         checkIfServiceAvailable();
         Map<String, Collection<String>> viruses = doScan(scannable);
@@ -68,10 +73,16 @@ public abstract class AbstractAntivirusServiceImpl implements AntivirusService{
         } else {
             scanFileListBuilder.fileName(scannable.getOriginalFilename());
             scanFileListBuilder.result(Result.VIRUS_FOUND);
-            log.debug("scan result for file: {} viruses: {}", scannable.getOriginalFilename(), viruses);
+            log.debug(
+                    "scan result for file: {} viruses: {}",
+                    scannable.getOriginalFilename(),
+                    viruses);
             for (Map.Entry<String, Collection<String>> virusEntrySet : viruses.entrySet()) {
-                scanFileListBuilder.scanFile(VirusScanResultFile.builder().fileAlias(virusEntrySet.getKey())
-                        .viruses(virusEntrySet.getValue()).build());
+                scanFileListBuilder.scanFile(
+                        VirusScanResultFile.builder()
+                                .fileAlias(virusEntrySet.getKey())
+                                .viruses(virusEntrySet.getValue())
+                                .build());
             }
             scanResultBuilder.result(Result.VIRUS_FOUND);
             scanResultBuilder.infectedFile(scanFileListBuilder.build());
@@ -93,7 +104,8 @@ public abstract class AbstractAntivirusServiceImpl implements AntivirusService{
 
     protected abstract Map<String, Collection<String>> doScan(VirusScannable scannable);
 
-    protected VirusScanResult processScanResult(VirusScanResult scanResult) throws VirusFoundException {
+    protected VirusScanResult processScanResult(VirusScanResult scanResult)
+            throws VirusFoundException {
         List<VirusScanResultFileList> infectedFiles = scanResult.getInfectedFiles();
         if (infectedFiles != null && !infectedFiles.isEmpty()) {
             throw new VirusFoundException("error.antivirus.scan.VIRUS_FOUND");

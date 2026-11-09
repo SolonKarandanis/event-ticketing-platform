@@ -1,13 +1,12 @@
 package com.etp.ticketservice.common.antivirus;
 
+import java.io.InputStream;
 import lombok.Builder;
 import lombok.Value;
 
-import java.io.InputStream;
-
 @Builder
 @Value
-public class InputStreamVirusScannable implements VirusScannable{
+public class InputStreamVirusScannable implements VirusScannable {
 
     InputStream inputStream;
 

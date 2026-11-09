@@ -1,21 +1,20 @@
 package com.etp.ticketservice.venues;
 
+import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.venues.dto.CreateVenueRequestDto;
 import com.etp.ticketservice.venues.dto.UpdateVenueRequestDto;
 import com.etp.ticketservice.venues.dto.VenueResponseDto;
-import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.venues.exception.VenueNotFoundException;
 import com.etp.ticketservice.venues.exception.VenueUpdateException;
 import com.etp.ticketservice.venues.model.CreateVenueRequest;
 import com.etp.ticketservice.venues.model.UpdateVenueRequest;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -52,8 +51,11 @@ public class VenueServiceImpl implements VenueService {
             throw new VenueUpdateException(ErrorCode.VENUE_ID_MISMATCH, id);
         }
 
-        Venue existingVenue = venueRepository.findByDomainId(id)
-                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, id));
+        Venue existingVenue =
+                venueRepository
+                        .findByDomainId(id)
+                        .orElseThrow(
+                                () -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, id));
 
         existingVenue.setName(request.getName());
         existingVenue.setAddressLine1(request.getAddressLine1());

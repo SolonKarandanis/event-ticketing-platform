@@ -5,7 +5,6 @@ import com.etp.ticketservice.tickets.qrcode.QrCode;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.ticketvalidation.TicketValidation;
 import com.etp.ticketservice.user.User;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -21,6 +20,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,12 +34,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 
 @Entity
 @Table(name = "tickets")
@@ -47,16 +45,12 @@ import java.util.UUID;
 public class Ticket {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "ticketGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "ticketGenerator")
     @SequenceGenerator(
             name = "ticketGenerator",
             sequenceName = "tickets_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -166,22 +160,32 @@ public class Ticket {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         Ticket ticket = (Ticket) o;
-        return Objects.equals(id, ticket.id) &&
-               Objects.equals(domainId, ticket.domainId) &&
-               Objects.equals(referenceCode, ticket.referenceCode) &&
-               status == ticket.status &&
-               Objects.equals(cancelledAt, ticket.cancelledAt) &&
-               cancelReason == ticket.cancelReason &&
-               Objects.equals(cancelNote, ticket.cancelNote) &&
-               refundStatus == ticket.refundStatus &&
-               Objects.equals(providerRefundId, ticket.providerRefundId) &&
-               Objects.equals(createdAt, ticket.createdAt) &&
-               Objects.equals(updatedAt, ticket.updatedAt);
+        return Objects.equals(id, ticket.id)
+                && Objects.equals(domainId, ticket.domainId)
+                && Objects.equals(referenceCode, ticket.referenceCode)
+                && status == ticket.status
+                && Objects.equals(cancelledAt, ticket.cancelledAt)
+                && cancelReason == ticket.cancelReason
+                && Objects.equals(cancelNote, ticket.cancelNote)
+                && refundStatus == ticket.refundStatus
+                && Objects.equals(providerRefundId, ticket.providerRefundId)
+                && Objects.equals(createdAt, ticket.createdAt)
+                && Objects.equals(updatedAt, ticket.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, referenceCode, status, cancelledAt, cancelReason, cancelNote,
-                refundStatus, providerRefundId, createdAt, updatedAt);
+        return Objects.hash(
+                id,
+                domainId,
+                referenceCode,
+                status,
+                cancelledAt,
+                cancelReason,
+                cancelNote,
+                refundStatus,
+                providerRefundId,
+                createdAt,
+                updatedAt);
     }
 }

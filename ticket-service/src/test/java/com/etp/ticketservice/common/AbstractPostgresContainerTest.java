@@ -3,25 +3,24 @@ package com.etp.ticketservice.common;
 import com.etp.ticketservice.common.util.MoneyUtils;
 import com.etp.ticketservice.config.JpaConfiguration;
 import com.etp.ticketservice.events.Event;
+import com.etp.ticketservice.events.EventStatusEnum;
 import com.etp.ticketservice.events.images.EventImage;
 import com.etp.ticketservice.orders.OrderStatusEnum;
 import com.etp.ticketservice.orders.TicketOrder;
 import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.payments.PaymentProvider;
-import com.etp.ticketservice.tickets.qrcode.QrCode;
 import com.etp.ticketservice.tickets.Ticket;
+import com.etp.ticketservice.tickets.TicketStatusEnum;
+import com.etp.ticketservice.tickets.qrcode.QrCode;
+import com.etp.ticketservice.tickets.qrcode.QrCodeStatusEnum;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.venues.Venue;
-import com.etp.ticketservice.events.EventStatusEnum;
-import com.etp.ticketservice.tickets.qrcode.QrCodeStatusEnum;
-import com.etp.ticketservice.tickets.TicketStatusEnum;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 // Shared by every @DataJpaTest repository slice -- extend this instead of declaring your
 // own container. The Postgres/PostGIS container itself, and its singleton start-up
@@ -42,59 +41,68 @@ import java.util.UUID;
 @Import(JpaConfiguration.class)
 public abstract class AbstractPostgresContainerTest extends PostgresTestContainer {
 
-    @Autowired
-    protected TestEntityManager entityManager;
+    @Autowired protected TestEntityManager entityManager;
 
     protected Venue persistVenue(String name, String city, Double latitude, Double longitude) {
-        Venue venue = Venue.builder()
-                .domainId(UUID.randomUUID())
-                .name(name)
-                .addressLine1("1 Main St")
-                .city(city)
-                .postalCode("12345")
-                .country("Testland")
-                .build();
+        Venue venue =
+                Venue.builder()
+                        .domainId(UUID.randomUUID())
+                        .name(name)
+                        .addressLine1("1 Main St")
+                        .city(city)
+                        .postalCode("12345")
+                        .country("Testland")
+                        .build();
         venue.setCoordinates(latitude, longitude);
         return entityManager.persistAndFlush(venue);
     }
 
     protected User persistUser(String name) {
-        return entityManager.persistAndFlush(User.builder()
-                .domainId(UUID.randomUUID())
-                .name(name)
-                .email(UUID.randomUUID() + "@example.com")
-                .build());
+        return entityManager.persistAndFlush(
+                User.builder()
+                        .domainId(UUID.randomUUID())
+                        .name(name)
+                        .email(UUID.randomUUID() + "@example.com")
+                        .build());
     }
 
-    protected Event persistEvent(String name, Venue venue, User organizer, EventStatusEnum status, LocalDateTime start) {
-        return entityManager.persistAndFlush(Event.builder()
-                .domainId(UUID.randomUUID())
-                .name(name)
-                .venue(venue)
-                .organizer(organizer)
-                .status(status)
-                .start(start)
-                .build());
+    protected Event persistEvent(
+            String name, Venue venue, User organizer, EventStatusEnum status, LocalDateTime start) {
+        return entityManager.persistAndFlush(
+                Event.builder()
+                        .domainId(UUID.randomUUID())
+                        .name(name)
+                        .venue(venue)
+                        .organizer(organizer)
+                        .status(status)
+                        .start(start)
+                        .build());
     }
 
     // Convenience overload for tests that don't care about the ticket type itself, just
     // that the event has one -- EventRepository's published-events price sort needs
     // every event priced, for instance.
-    protected Event persistEvent(String name, Venue venue, User organizer, EventStatusEnum status,
-            LocalDateTime start, double ticketPrice) {
+    protected Event persistEvent(
+            String name,
+            Venue venue,
+            User organizer,
+            EventStatusEnum status,
+            LocalDateTime start,
+            double ticketPrice) {
         Event event = persistEvent(name, venue, organizer, status, start);
         persistTicketType(event, "General", ticketPrice);
         return event;
     }
 
     protected TicketType persistTicketType(Event event, String name, double price) {
-        return entityManager.persistAndFlush(TicketType.builder()
-                .domainId(UUID.randomUUID())
-                .name(name)
-                .priceMinorUnits(MoneyUtils.toMinorUnits(price))
-                .currency("usd")
-                .event(event)
-                .build());
+        return entityManager.persistAndFlush(
+                TicketType.builder()
+                        .domainId(UUID.randomUUID())
+                        .name(name)
+                        .priceMinorUnits(MoneyUtils.toMinorUnits(price))
+                        .currency("usd")
+                        .event(event)
+                        .build());
     }
 
     protected Ticket persistTicket(TicketType ticketType, User purchaser, TicketStatusEnum status) {
@@ -103,53 +111,64 @@ public abstract class AbstractPostgresContainerTest extends PostgresTestContaine
 
     // Overload for a ticket issued from a paid TicketOrder (issue #22's refund flow
     // needs one to resolve a real Stripe checkout session id/amount through).
-    protected Ticket persistTicket(TicketType ticketType, User purchaser, TicketStatusEnum status, TicketOrderItem orderItem) {
-        return entityManager.persistAndFlush(Ticket.builder()
-                .domainId(UUID.randomUUID())
-                .referenceCode(UUID.randomUUID().toString().substring(0, 8).toUpperCase())
-                .status(status)
-                .ticketType(ticketType)
-                .purchaser(purchaser)
-                .orderItem(orderItem)
-                .build());
+    protected Ticket persistTicket(
+            TicketType ticketType,
+            User purchaser,
+            TicketStatusEnum status,
+            TicketOrderItem orderItem) {
+        return entityManager.persistAndFlush(
+                Ticket.builder()
+                        .domainId(UUID.randomUUID())
+                        .referenceCode(UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                        .status(status)
+                        .ticketType(ticketType)
+                        .purchaser(purchaser)
+                        .orderItem(orderItem)
+                        .build());
     }
 
     protected QrCode persistQrCode(Ticket ticket, QrCodeStatusEnum status) {
-        return entityManager.persistAndFlush(QrCode.builder()
-                .domainId(UUID.randomUUID())
-                .status(status)
-                .value("qr-value-" + UUID.randomUUID())
-                .ticket(ticket)
-                .build());
+        return entityManager.persistAndFlush(
+                QrCode.builder()
+                        .domainId(UUID.randomUUID())
+                        .status(status)
+                        .value("qr-value-" + UUID.randomUUID())
+                        .ticket(ticket)
+                        .build());
     }
 
-    protected TicketOrder persistTicketOrder(Event event, User purchaser, OrderStatusEnum status, LocalDateTime expiresAt) {
-        return entityManager.persistAndFlush(TicketOrder.builder()
-                .domainId(UUID.randomUUID())
-                .status(status)
-                .provider(PaymentProvider.STRIPE)
-                .purchaser(purchaser)
-                .event(event)
-                .expiresAt(expiresAt)
-                .build());
+    protected TicketOrder persistTicketOrder(
+            Event event, User purchaser, OrderStatusEnum status, LocalDateTime expiresAt) {
+        return entityManager.persistAndFlush(
+                TicketOrder.builder()
+                        .domainId(UUID.randomUUID())
+                        .status(status)
+                        .provider(PaymentProvider.STRIPE)
+                        .purchaser(purchaser)
+                        .event(event)
+                        .expiresAt(expiresAt)
+                        .build());
     }
 
-    protected TicketOrderItem persistTicketOrderItem(TicketOrder ticketOrder, TicketType ticketType, int quantity, double unitPrice) {
-        return entityManager.persistAndFlush(TicketOrderItem.builder()
-                .domainId(UUID.randomUUID())
-                .ticketOrder(ticketOrder)
-                .ticketType(ticketType)
-                .quantity(quantity)
-                .unitPriceAtCheckoutMinorUnits(MoneyUtils.toMinorUnits(unitPrice))
-                .build());
+    protected TicketOrderItem persistTicketOrderItem(
+            TicketOrder ticketOrder, TicketType ticketType, int quantity, double unitPrice) {
+        return entityManager.persistAndFlush(
+                TicketOrderItem.builder()
+                        .domainId(UUID.randomUUID())
+                        .ticketOrder(ticketOrder)
+                        .ticketType(ticketType)
+                        .quantity(quantity)
+                        .unitPriceAtCheckoutMinorUnits(MoneyUtils.toMinorUnits(unitPrice))
+                        .build());
     }
 
     protected EventImage persistEventImage(Event event, int position, String altText) {
-        return entityManager.persistAndFlush(EventImage.builder()
-                .domainId(UUID.randomUUID())
-                .event(event)
-                .position(position)
-                .altText(altText)
-                .build());
+        return entityManager.persistAndFlush(
+                EventImage.builder()
+                        .domainId(UUID.randomUUID())
+                        .event(event)
+                        .position(position)
+                        .altText(altText)
+                        .build());
     }
 }

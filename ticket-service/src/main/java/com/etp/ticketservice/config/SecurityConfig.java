@@ -3,6 +3,7 @@ package com.etp.ticketservice.config;
 import com.etp.ticketservice.security.JwtAuthenticationConverter;
 import com.etp.ticketservice.security.Role;
 import com.etp.ticketservice.security.UserProvisioningFilter;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -15,8 +16,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
-
 @Configuration
 public class SecurityConfig {
 
@@ -24,42 +23,56 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(
             HttpSecurity http,
             UserProvisioningFilter userProvisioningFilter,
-            JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
-        http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            JwtAuthenticationConverter jwtAuthenticationConverter)
+            throws Exception {
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(authorize ->
                         authorize
                                 // Local-dev-only scope throughout this project (see the CORS
                                 // rule below, hardcoded to localhost:3000) -- the generated spec
                                 // and its UI are left open rather than gated behind a role, the
                                 // same reasoning that already applies to published-events reads.
-                                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                                .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**").permitAll()
-                                // The search endpoint is POST (see PublishedEventController), so the
+                                .requestMatchers(
+                                        "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**")
+                                .permitAll()
+                                // The search endpoint is POST (see PublishedEventController), so
+                                // the
                                 // GET rule above doesn't cover it -- HTTP method is part of what a
                                 // requestMatcher matches on, not just the path.
-                                .requestMatchers(HttpMethod.POST, "/api/v1/published-events/search").permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/v1/published-events/search")
+                                .permitAll()
                                 // No JWT at all here, by design -- trusted only by Stripe's
                                 // cryptographic signature (verified in
                                 // StripeWebhookServiceImpl), a different kind of "public" than
                                 // the permitAll rules above.
-                                .requestMatchers(HttpMethod.POST, "/api/v1/payments/webhooks/stripe").permitAll()
-                                // Ticket purchase and checkout both live under /api/v1/events/** but
+                                .requestMatchers(
+                                        HttpMethod.POST, "/api/v1/payments/webhooks/stripe")
+                                .permitAll()
+                                // Ticket purchase and checkout both live under /api/v1/events/**
+                                // but
                                 // are attendee actions, not organizer management -- must be matched
                                 // before the broader ORGANIZER-only rule below.
-                                .requestMatchers(HttpMethod.POST, "/api/v1/events/*/ticket-types/*/tickets").authenticated()
-                                .requestMatchers(HttpMethod.POST, "/api/v1/events/*/checkout").authenticated()
-                                .requestMatchers("/api/v1/events/**").hasRole(Role.ORGANIZER.name())
-                                .requestMatchers("/api/v1/venues/**").hasRole(Role.ORGANIZER.name())
-                                .requestMatchers("/api/v1/ticket-validations").hasRole(Role.STAFF.name())
-                                .anyRequest().authenticated())
+                                .requestMatchers(
+                                        HttpMethod.POST, "/api/v1/events/*/ticket-types/*/tickets")
+                                .authenticated()
+                                .requestMatchers(HttpMethod.POST, "/api/v1/events/*/checkout")
+                                .authenticated()
+                                .requestMatchers("/api/v1/events/**")
+                                .hasRole(Role.ORGANIZER.name())
+                                .requestMatchers("/api/v1/venues/**")
+                                .hasRole(Role.ORGANIZER.name())
+                                .requestMatchers("/api/v1/ticket-validations")
+                                .hasRole(Role.STAFF.name())
+                                .anyRequest()
+                                .authenticated())
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(oauth2 ->
-                        oauth2.jwt(jwt ->
-                                jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)
-                        ))
+                        oauth2.jwt(
+                                jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
                 .addFilterAfter(userProvisioningFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
@@ -74,7 +87,8 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:3000"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept-Language"));
+        configuration.setAllowedHeaders(
+                List.of("Authorization", "Content-Type", "Accept-Language"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

@@ -1,10 +1,9 @@
 package com.etp.ticketservice.events.images.dto;
 
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.UUID;
 
 // No url field -- same precedent QR codes already set (GetTicketResponseDto doesn't
 // carry one either): the frontend already knows how to build a byte-serving fetch URL

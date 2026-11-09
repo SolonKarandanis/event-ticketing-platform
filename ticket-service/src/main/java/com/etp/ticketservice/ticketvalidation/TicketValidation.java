@@ -1,7 +1,6 @@
 package com.etp.ticketservice.ticketvalidation;
 
 import com.etp.ticketservice.tickets.Ticket;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,6 +14,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,10 +26,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.Objects;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ticket_validations")
@@ -39,16 +37,12 @@ import java.util.UUID;
 public class TicketValidation {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "ticketValidationGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "ticketValidationGenerator")
     @SequenceGenerator(
             name = "ticketValidationGenerator",
             sequenceName = "ticket_validations_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -88,12 +82,12 @@ public class TicketValidation {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         TicketValidation that = (TicketValidation) o;
-        return Objects.equals(id, that.id) &&
-               Objects.equals(domainId, that.domainId) &&
-               status == that.status &&
-               validationMethod == that.validationMethod &&
-               Objects.equals(createdAt, that.createdAt) &&
-               Objects.equals(updatedAt, that.updatedAt);
+        return Objects.equals(id, that.id)
+                && Objects.equals(domainId, that.domainId)
+                && status == that.status
+                && validationMethod == that.validationMethod
+                && Objects.equals(createdAt, that.createdAt)
+                && Objects.equals(updatedAt, that.updatedAt);
     }
 
     @Override

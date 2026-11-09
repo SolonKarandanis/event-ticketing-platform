@@ -1,9 +1,11 @@
 package com.etp.ticketservice.events;
 
-import com.etp.ticketservice.events.dto.ListPublishedEventsRequestDto;
 import com.etp.ticketservice.common.paging.Paging;
 import com.etp.ticketservice.events.dto.GetPublishedEventDetailsResponseDto;
 import com.etp.ticketservice.events.dto.ListPublishedEventResponseDto;
+import com.etp.ticketservice.events.dto.ListPublishedEventsRequestDto;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,9 +18,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping(path = "/api/v1/published-events")
@@ -39,22 +38,31 @@ public class PublishedEventController {
     @PostMapping(path = "/search")
     public ResponseEntity<Page<ListPublishedEventResponseDto>> listPublishedEvents(
             @RequestBody(required = false) ListPublishedEventsRequestDto request) {
-        ListPublishedEventsRequestDto criteria = (null != request) ? request : new ListPublishedEventsRequestDto();
+        ListPublishedEventsRequestDto criteria =
+                (null != request) ? request : new ListPublishedEventsRequestDto();
         Paging paging = criteria.getPaging();
         Pageable pageable = PageRequest.of(paging.getPagingStart(), paging.getPagingSize());
-        PublishedEventsSortBy sortBy = PublishedEventsSortBy.fromWireValue(paging.getSortingColumn());
+        PublishedEventsSortBy sortBy =
+                PublishedEventsSortBy.fromWireValue(paging.getSortingColumn());
 
         // A blank/whitespace-only q means "browse all", same as omitting it -- normalize
         // here so the repository's ":searchTerm IS NULL" check treats both the same way.
         String q = criteria.getQ();
         String searchTerm = (null != q && !q.trim().isEmpty()) ? q : null;
-        Page<Event> events = eventService.findPublishedEvents(
-                searchTerm, criteria.getFrom(), criteria.getTo(), criteria.getMinPrice(), criteria.getMaxPrice(),
-                criteria.getCity(), criteria.getLatitude(), criteria.getLongitude(), criteria.getRadiusMeters(),
-                sortBy, pageable);
-        return ResponseEntity.ok(
-                events.map(eventService::convertToListPublishedEventResponseDto)
-        );
+        Page<Event> events =
+                eventService.findPublishedEvents(
+                        searchTerm,
+                        criteria.getFrom(),
+                        criteria.getTo(),
+                        criteria.getMinPrice(),
+                        criteria.getMaxPrice(),
+                        criteria.getCity(),
+                        criteria.getLatitude(),
+                        criteria.getLongitude(),
+                        criteria.getRadiusMeters(),
+                        sortBy,
+                        pageable);
+        return ResponseEntity.ok(events.map(eventService::convertToListPublishedEventResponseDto));
     }
 
     // Backs the browse page's City filter -- distinct cities with at least one published
@@ -68,8 +76,10 @@ public class PublishedEventController {
     }
 
     @GetMapping(path = "/{eventId}")
-    public ResponseEntity<GetPublishedEventDetailsResponseDto> getPublishedEventDetails(@PathVariable UUID eventId) {
-        return eventService.getPublishedEvent(eventId)
+    public ResponseEntity<GetPublishedEventDetailsResponseDto> getPublishedEventDetails(
+            @PathVariable UUID eventId) {
+        return eventService
+                .getPublishedEvent(eventId)
                 .map(eventService::convertToGetPublishedEventDetailsResponseDto)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -80,8 +90,10 @@ public class PublishedEventController {
     // PUBLISHED event; no SecurityConfig change needed, since GET /api/v1/published-events/**
     // is already permitAll.
     @GetMapping(path = "/{eventId}/images/{imageId}")
-    public ResponseEntity<byte[]> getPublishedEventImage(@PathVariable UUID eventId, @PathVariable UUID imageId) {
-        return eventService.getPublishedEventImage(eventId, imageId)
+    public ResponseEntity<byte[]> getPublishedEventImage(
+            @PathVariable UUID eventId, @PathVariable UUID imageId) {
+        return eventService
+                .getPublishedEventImage(eventId, imageId)
                 .map(bytes -> ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(bytes))
                 .orElse(ResponseEntity.notFound().build());
     }

@@ -1,17 +1,5 @@
 package com.etp.ticketservice.payments;
 
-import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.payments.dto.PaymentMethodResponseDto;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.List;
-import java.util.UUID;
-
 import static com.etp.ticketservice.common.TestJwts.withSubject;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,6 +10,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.etp.ticketservice.common.UserProvisioningTestConfig;
+import com.etp.ticketservice.payments.dto.PaymentMethodResponseDto;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
 // Same slice-test approach as TicketControllerTest/CheckoutControllerTest -- every
 // request here is authenticated as the resource owner (ATTENDEE_ID); the controller
 // itself has no notion of roles, it just trusts parseUserId(jwt) and lets
@@ -30,11 +29,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(UserProvisioningTestConfig.class)
 class PaymentMethodControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
-    @MockitoBean
-    private PaymentMethodService paymentMethodService;
+    @MockitoBean private PaymentMethodService paymentMethodService;
 
     private static final UUID ATTENDEE_ID = UUID.randomUUID();
 
@@ -49,8 +46,11 @@ class PaymentMethodControllerTest {
 
     @Test
     void listPaymentMethods_returnsCards() throws Exception {
-        when(paymentMethodService.listPaymentMethods(ATTENDEE_ID)).thenReturn(List.of(
-                new PaymentMethodResponseDto("pm_123", "visa", "4242", 8L, 2028L, true)));
+        when(paymentMethodService.listPaymentMethods(ATTENDEE_ID))
+                .thenReturn(
+                        List.of(
+                                new PaymentMethodResponseDto(
+                                        "pm_123", "visa", "4242", 8L, 2028L, true)));
 
         mockMvc.perform(get("/api/v1/payment-methods").with(attendee()))
                 .andExpect(status().isOk())
@@ -62,7 +62,9 @@ class PaymentMethodControllerTest {
 
     @Test
     void removePaymentMethod_returns204() throws Exception {
-        mockMvc.perform(delete("/api/v1/payment-methods/{paymentMethodId}", "pm_123").with(attendee()))
+        mockMvc.perform(
+                        delete("/api/v1/payment-methods/{paymentMethodId}", "pm_123")
+                                .with(attendee()))
                 .andExpect(status().isNoContent());
 
         verify(paymentMethodService).removePaymentMethod(ATTENDEE_ID, "pm_123");
@@ -70,7 +72,9 @@ class PaymentMethodControllerTest {
 
     @Test
     void setDefaultPaymentMethod_returns204() throws Exception {
-        mockMvc.perform(put("/api/v1/payment-methods/{paymentMethodId}/default", "pm_123").with(attendee()))
+        mockMvc.perform(
+                        put("/api/v1/payment-methods/{paymentMethodId}/default", "pm_123")
+                                .with(attendee()))
                 .andExpect(status().isNoContent());
 
         verify(paymentMethodService).setDefaultPaymentMethod(ATTENDEE_ID, "pm_123");

@@ -1,17 +1,16 @@
 package com.etp.ticketservice.venues;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.etp.ticketservice.common.AbstractPostgresContainerTest;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 // Real-Postgres slice test, same rationale as EventRepositoryTest -- search()'s
 // CAST(:searchTerm AS string) IS NULL trick and findWithinRadius()'s PostGIS functions
@@ -20,8 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class VenueRepositoryTest extends AbstractPostgresContainerTest {
 
-    @Autowired
-    private VenueRepository venueRepository;
+    @Autowired private VenueRepository venueRepository;
 
     @Test
     void findByDomainId_returnsVenue_whenFound() {
@@ -52,7 +50,8 @@ class VenueRepositoryTest extends AbstractPostgresContainerTest {
 
         Page<Venue> page = venueRepository.search(null, PageRequest.of(0, 10));
 
-        assertThat(page.getContent()).extracting(Venue::getName)
+        assertThat(page.getContent())
+                .extracting(Venue::getName)
                 .containsExactlyInAnyOrder("Main Hall", "Side Room");
     }
 
@@ -78,9 +77,12 @@ class VenueRepositoryTest extends AbstractPostgresContainerTest {
         persistVenue("Outside Venue", "Athens", metersNorth(refLatitude, 50_000), refLongitude);
         persistVenue("No Coordinates Venue", "Athens", null, null);
 
-        Page<Venue> page = venueRepository.findWithinRadius(refLatitude, refLongitude, 10_000.0, PageRequest.of(0, 10));
+        Page<Venue> page =
+                venueRepository.findWithinRadius(
+                        refLatitude, refLongitude, 10_000.0, PageRequest.of(0, 10));
 
-        assertThat(page.getContent()).extracting(Venue::getName)
+        assertThat(page.getContent())
+                .extracting(Venue::getName)
                 .containsExactly("Near Venue", "Far Venue");
     }
 

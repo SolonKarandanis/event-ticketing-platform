@@ -1,11 +1,9 @@
 package com.etp.ticketservice.events.dto;
 
 import com.etp.ticketservice.common.paging.SearchRequestDTO;
-
+import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.Setter;
-
-import java.time.LocalDateTime;
 
 // Every field here is optional, same as the @RequestParam(required = false) list it
 // replaced -- this is a filter bag, not a resource to validate the shape of. Paging now

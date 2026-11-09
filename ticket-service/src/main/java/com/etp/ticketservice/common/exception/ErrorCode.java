@@ -16,8 +16,10 @@ public enum ErrorCode {
     TICKET_SOLD_OUT("error.ticket.sold-out", HttpStatus.CONFLICT),
     QR_CODE_GENERATION_FAILED("error.qr-code.generation-failed", HttpStatus.INTERNAL_SERVER_ERROR),
     QR_CODE_NOT_FOUND("error.qr-code.not-found", HttpStatus.BAD_REQUEST),
-    REFERENCE_CODE_GENERATION_FAILED("error.ticket.reference-code-generation-failed", HttpStatus.INTERNAL_SERVER_ERROR),
-    EVENT_INVALID_STATUS_TRANSITION("error.event.invalid-status-transition", HttpStatus.BAD_REQUEST),
+    REFERENCE_CODE_GENERATION_FAILED(
+            "error.ticket.reference-code-generation-failed", HttpStatus.INTERNAL_SERVER_ERROR),
+    EVENT_INVALID_STATUS_TRANSITION(
+            "error.event.invalid-status-transition", HttpStatus.BAD_REQUEST),
     EVENT_NOT_PUBLISHABLE("error.event.not-publishable", HttpStatus.BAD_REQUEST),
     EVENT_INVALID_DATES("error.event.invalid-dates", HttpStatus.BAD_REQUEST),
     TICKET_ALREADY_CANCELLED("error.ticket.already-cancelled", HttpStatus.CONFLICT),

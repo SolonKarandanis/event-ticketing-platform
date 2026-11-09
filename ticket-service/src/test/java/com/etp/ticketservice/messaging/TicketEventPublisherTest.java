@@ -1,5 +1,8 @@
 package com.etp.ticketservice.messaging;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
+
 import com.etp.ticketservice.events.Event;
 import com.etp.ticketservice.orders.TicketOrder;
 import com.etp.ticketservice.orders.TicketOrderItem;
@@ -7,6 +10,8 @@ import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.tickets.TicketCancelReasonEnum;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.user.User;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,12 +19,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
 
 // Pure Mockito unit tests -- this class had no direct coverage before #24 widened both
 // events with orderId, which introduced the one piece of branching logic worth pinning
@@ -29,8 +28,7 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 class TicketEventPublisherTest {
 
-    @Mock
-    private ApplicationEventPublisher applicationEventPublisher;
+    @Mock private ApplicationEventPublisher applicationEventPublisher;
 
     // Constructed in @BeforeEach, not as a field initializer -- @Mock fields are
     // injected by MockitoExtension after construction, so capturing one in a field
@@ -129,13 +127,15 @@ class TicketEventPublisherTest {
     }
 
     private TicketPurchasedEvent capturePurchasedEvent() {
-        ArgumentCaptor<TicketPurchasedEvent> captor = ArgumentCaptor.forClass(TicketPurchasedEvent.class);
+        ArgumentCaptor<TicketPurchasedEvent> captor =
+                ArgumentCaptor.forClass(TicketPurchasedEvent.class);
         verify(applicationEventPublisher).publishEvent(captor.capture());
         return captor.getValue();
     }
 
     private TicketCancelledEvent captureCancelledEvent() {
-        ArgumentCaptor<TicketCancelledEvent> captor = ArgumentCaptor.forClass(TicketCancelledEvent.class);
+        ArgumentCaptor<TicketCancelledEvent> captor =
+                ArgumentCaptor.forClass(TicketCancelledEvent.class);
         verify(applicationEventPublisher).publishEvent(captor.capture());
         return captor.getValue();
     }

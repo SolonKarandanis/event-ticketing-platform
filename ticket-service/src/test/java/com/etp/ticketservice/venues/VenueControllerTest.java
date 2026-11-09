@@ -1,25 +1,5 @@
 package com.etp.ticketservice.venues;
 
-import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.venues.dto.CreateVenueRequestDto;
-import com.etp.ticketservice.venues.dto.UpdateVenueRequestDto;
-import com.etp.ticketservice.venues.dto.VenueResponseDto;
-import com.etp.ticketservice.venues.model.CreateVenueRequest;
-import com.etp.ticketservice.venues.model.UpdateVenueRequest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.ObjectMapper;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import static com.etp.ticketservice.common.TestJwts.withSubject;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -30,6 +10,24 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.etp.ticketservice.common.UserProvisioningTestConfig;
+import com.etp.ticketservice.venues.dto.CreateVenueRequestDto;
+import com.etp.ticketservice.venues.dto.UpdateVenueRequestDto;
+import com.etp.ticketservice.venues.dto.VenueResponseDto;
+import com.etp.ticketservice.venues.model.CreateVenueRequest;
+import com.etp.ticketservice.venues.model.UpdateVenueRequest;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
 
 // Same slice-test approach as EventControllerTest. VenueController itself has no
 // @AuthenticationPrincipal params -- ORGANIZER-only access is enforced entirely in
@@ -43,13 +41,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(UserProvisioningTestConfig.class)
 class VenueControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private VenueService venueService;
+    @MockitoBean private VenueService venueService;
 
     private static final UUID CALLER_ID = UUID.randomUUID();
 
@@ -66,10 +62,11 @@ class VenueControllerTest {
         when(venueService.createVenue(any())).thenReturn(createdVenue);
         when(venueService.convertToVenueResponseDto(createdVenue)).thenReturn(responseDto);
 
-        mockMvc.perform(post("/api/v1/venues")
-                        .with(withSubject(CALLER_ID))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(requestDto)))
+        mockMvc.perform(
+                        post("/api/v1/venues")
+                                .with(withSubject(CALLER_ID))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(requestDto)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("Main Hall"));
     }
@@ -79,10 +76,11 @@ class VenueControllerTest {
         CreateVenueRequestDto requestDto = validCreateVenueRequestDto();
         requestDto.setName("");
 
-        mockMvc.perform(post("/api/v1/venues")
-                        .with(withSubject(CALLER_ID))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(requestDto)))
+        mockMvc.perform(
+                        post("/api/v1/venues")
+                                .with(withSubject(CALLER_ID))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(requestDto)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -100,10 +98,11 @@ class VenueControllerTest {
         when(venueService.updateVenue(eq(venueId), any())).thenReturn(updatedVenue);
         when(venueService.convertToVenueResponseDto(updatedVenue)).thenReturn(responseDto);
 
-        mockMvc.perform(put("/api/v1/venues/{venueId}", venueId)
-                        .with(withSubject(CALLER_ID))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(requestDto)))
+        mockMvc.perform(
+                        put("/api/v1/venues/{venueId}", venueId)
+                                .with(withSubject(CALLER_ID))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(requestDto)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Renamed Hall"));
     }

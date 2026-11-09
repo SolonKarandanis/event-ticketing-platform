@@ -1,7 +1,6 @@
 package com.etp.ticketservice.venues;
 
 import com.etp.ticketservice.events.Event;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,6 +10,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -24,12 +28,6 @@ import org.locationtech.jts.geom.PrecisionModel;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 
-import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
-
 @Entity
 @Table(name = "venues")
 @Getter
@@ -41,19 +39,16 @@ public class Venue {
 
     // SRID 4326 (WGS 84) matches the location column's geography(Point,4326) type and
     // the 003-add-venue-geography migration's backfill (ST_SetSRID(..., 4326)).
-    private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
+    private static final GeometryFactory GEOMETRY_FACTORY =
+            new GeometryFactory(new PrecisionModel(), 4326);
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "venueGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "venueGenerator")
     @SequenceGenerator(
             name = "venueGenerator",
             sequenceName = "venues_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -119,9 +114,10 @@ public class Venue {
     public void setCoordinates(Double latitude, Double longitude) {
         this.latitude = latitude;
         this.longitude = longitude;
-        this.location = (null != latitude && null != longitude)
-                ? GEOMETRY_FACTORY.createPoint(new Coordinate(longitude, latitude))
-                : null;
+        this.location =
+                (null != latitude && null != longitude)
+                        ? GEOMETRY_FACTORY.createPoint(new Coordinate(longitude, latitude))
+                        : null;
     }
 
     public void addEvent(Event event) {
@@ -138,27 +134,40 @@ public class Venue {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         Venue venue = (Venue) o;
-        return Objects.equals(id, venue.id) &&
-               Objects.equals(domainId, venue.domainId) &&
-               Objects.equals(name, venue.name) &&
-               Objects.equals(addressLine1, venue.addressLine1) &&
-               Objects.equals(addressLine2, venue.addressLine2) &&
-               Objects.equals(city, venue.city) &&
-               Objects.equals(postalCode, venue.postalCode) &&
-               Objects.equals(country, venue.country) &&
-               Objects.equals(latitude, venue.latitude) &&
-               Objects.equals(longitude, venue.longitude) &&
-               Objects.equals(location, venue.location) &&
-               Objects.equals(capacity, venue.capacity) &&
-               Objects.equals(accessibilityInfo, venue.accessibilityInfo) &&
-               Objects.equals(createdAt, venue.createdAt) &&
-               Objects.equals(updatedAt, venue.updatedAt);
+        return Objects.equals(id, venue.id)
+                && Objects.equals(domainId, venue.domainId)
+                && Objects.equals(name, venue.name)
+                && Objects.equals(addressLine1, venue.addressLine1)
+                && Objects.equals(addressLine2, venue.addressLine2)
+                && Objects.equals(city, venue.city)
+                && Objects.equals(postalCode, venue.postalCode)
+                && Objects.equals(country, venue.country)
+                && Objects.equals(latitude, venue.latitude)
+                && Objects.equals(longitude, venue.longitude)
+                && Objects.equals(location, venue.location)
+                && Objects.equals(capacity, venue.capacity)
+                && Objects.equals(accessibilityInfo, venue.accessibilityInfo)
+                && Objects.equals(createdAt, venue.createdAt)
+                && Objects.equals(updatedAt, venue.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, name, addressLine1, addressLine2, city,
-                postalCode, country, latitude, longitude, location, capacity, accessibilityInfo,
-                createdAt, updatedAt);
+        return Objects.hash(
+                id,
+                domainId,
+                name,
+                addressLine1,
+                addressLine2,
+                city,
+                postalCode,
+                country,
+                latitude,
+                longitude,
+                location,
+                capacity,
+                accessibilityInfo,
+                createdAt,
+                updatedAt);
     }
 }

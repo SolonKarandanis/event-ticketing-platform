@@ -1,11 +1,10 @@
 package com.etp.ticketservice.config;
 
+import javax.sql.DataSource;
 import liquibase.integration.spring.SpringLiquibase;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import javax.sql.DataSource;
 
 // Spring Boot's LiquibaseAutoConfiguration guards its own main-changelog SpringLiquibase
 // bean behind @ConditionalOnMissingBean(SpringLiquibase.class) at the whole-nested-config

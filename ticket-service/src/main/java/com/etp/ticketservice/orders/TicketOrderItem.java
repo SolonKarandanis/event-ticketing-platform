@@ -1,7 +1,6 @@
 package com.etp.ticketservice.orders;
 
 import com.etp.ticketservice.tickettypes.TicketType;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,6 +12,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.Objects;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,10 +24,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.Objects;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ticket_order_items")
@@ -37,16 +35,12 @@ import java.util.UUID;
 public class TicketOrderItem {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "ticketOrderItemGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "ticketOrderItemGenerator")
     @SequenceGenerator(
             name = "ticketOrderItemGenerator",
             sequenceName = "ticket_order_items_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -97,16 +91,19 @@ public class TicketOrderItem {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         TicketOrderItem ticketOrderItem = (TicketOrderItem) o;
-        return Objects.equals(id, ticketOrderItem.id) &&
-               Objects.equals(domainId, ticketOrderItem.domainId) &&
-               Objects.equals(quantity, ticketOrderItem.quantity) &&
-               Objects.equals(unitPriceAtCheckoutMinorUnits, ticketOrderItem.unitPriceAtCheckoutMinorUnits) &&
-               Objects.equals(createdAt, ticketOrderItem.createdAt) &&
-               Objects.equals(updatedAt, ticketOrderItem.updatedAt);
+        return Objects.equals(id, ticketOrderItem.id)
+                && Objects.equals(domainId, ticketOrderItem.domainId)
+                && Objects.equals(quantity, ticketOrderItem.quantity)
+                && Objects.equals(
+                        unitPriceAtCheckoutMinorUnits,
+                        ticketOrderItem.unitPriceAtCheckoutMinorUnits)
+                && Objects.equals(createdAt, ticketOrderItem.createdAt)
+                && Objects.equals(updatedAt, ticketOrderItem.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, quantity, unitPriceAtCheckoutMinorUnits, createdAt, updatedAt);
+        return Objects.hash(
+                id, domainId, quantity, unitPriceAtCheckoutMinorUnits, createdAt, updatedAt);
     }
 }

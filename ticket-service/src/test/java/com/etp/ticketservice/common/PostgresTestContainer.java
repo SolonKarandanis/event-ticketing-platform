@@ -1,10 +1,9 @@
 package com.etp.ticketservice.common;
 
+import java.time.Duration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
-
-import java.time.Duration;
 
 // The singleton Postgres/PostGIS container shared by every integration test that needs a
 // real database -- @DataJpaTest repository slices (via AbstractPostgresContainerTest,
@@ -53,10 +52,12 @@ public abstract class PostgresTestContainer {
     // first-run init (a temporary server to run initdb + our init script, then the real
     // one bound to the TCP port), and CREATE EXTENSION postgis adds to that window.
     @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
-            DockerImageName.parse("postgis/postgis:14-3.5").asCompatibleSubstituteFor("postgres"))
-            .withInitScript("testcontainers/init-postgis.sql")
-            .withStartupTimeout(Duration.ofMinutes(3));
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer(
+                            DockerImageName.parse("postgis/postgis:14-3.5")
+                                    .asCompatibleSubstituteFor("postgres"))
+                    .withInitScript("testcontainers/init-postgis.sql")
+                    .withStartupTimeout(Duration.ofMinutes(3));
 
     // Starts POSTGRES exactly once, deterministically, here -- JLS class-initialization
     // semantics guarantee this block fully completes before any other code, including

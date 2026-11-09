@@ -1,19 +1,9 @@
 package com.etp.ticketservice.events;
 
+import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.common.util.MoneyUtils;
-import com.etp.ticketservice.events.images.EventImageService;
-import com.etp.ticketservice.orders.OrderStatusEnum;
-import com.etp.ticketservice.orders.TicketOrderItemRepository;
-import com.etp.ticketservice.tickets.TicketService;
-
 import com.etp.ticketservice.events.dto.CreateEventRequestDto;
-import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
-import com.etp.ticketservice.events.images.dto.EventImageRequestDto;
-import com.etp.ticketservice.events.dto.UpdateEventRequestDto;
-import com.etp.ticketservice.tickettypes.dto.UpdateTicketTypeRequestDto;
 import com.etp.ticketservice.events.dto.CreateEventResponseDto;
-import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeResponseDto;
-import com.etp.ticketservice.events.images.dto.EventImageResponseDto;
 import com.etp.ticketservice.events.dto.GetEventDetailsResponseDto;
 import com.etp.ticketservice.events.dto.GetEventDetailsTicketTypesResponseDto;
 import com.etp.ticketservice.events.dto.GetPublishedEventDetailsResponseDto;
@@ -21,38 +11,51 @@ import com.etp.ticketservice.events.dto.GetPublishedEventDetailsTicketTypesRespo
 import com.etp.ticketservice.events.dto.ListEventResponseDto;
 import com.etp.ticketservice.events.dto.ListEventTicketTypeResponseDto;
 import com.etp.ticketservice.events.dto.ListPublishedEventResponseDto;
+import com.etp.ticketservice.events.dto.UpdateEventRequestDto;
 import com.etp.ticketservice.events.dto.UpdateEventResponseDto;
-import com.etp.ticketservice.tickettypes.dto.UpdateTicketTypeResponseDto;
-import com.etp.ticketservice.venues.dto.VenueResponseDto;
-import com.etp.ticketservice.events.images.EventImage;
-import com.etp.ticketservice.tickets.Ticket;
-import com.etp.ticketservice.tickettypes.TicketType;
-import com.etp.ticketservice.user.User;
-import com.etp.ticketservice.venues.Venue;
-import com.etp.ticketservice.tickets.TicketStatusEnum;
-import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
-import com.etp.ticketservice.common.exception.ErrorCode;
-import com.etp.ticketservice.events.images.exception.EventImageNotFoundException;
 import com.etp.ticketservice.events.exception.EventNotFoundException;
 import com.etp.ticketservice.events.exception.EventNotPublishableException;
 import com.etp.ticketservice.events.exception.EventUpdateException;
 import com.etp.ticketservice.events.exception.InvalidEventDatesException;
-import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
 import com.etp.ticketservice.events.exception.InvalidEventStatusTransitionException;
+import com.etp.ticketservice.events.images.EventImage;
+import com.etp.ticketservice.events.images.EventImageRepository;
+import com.etp.ticketservice.events.images.EventImageService;
+import com.etp.ticketservice.events.images.dto.EventImageRequestDto;
+import com.etp.ticketservice.events.images.dto.EventImageResponseDto;
+import com.etp.ticketservice.events.images.exception.EventImageNotFoundException;
+import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
+import com.etp.ticketservice.events.images.exception.TooManyEventImagesException;
+import com.etp.ticketservice.events.images.model.EventImageRequest;
+import com.etp.ticketservice.events.model.CreateEventRequest;
+import com.etp.ticketservice.events.model.UpdateEventRequest;
+import com.etp.ticketservice.orders.OrderStatusEnum;
+import com.etp.ticketservice.orders.TicketOrderItemRepository;
+import com.etp.ticketservice.tickets.Ticket;
+import com.etp.ticketservice.tickets.TicketRepository;
+import com.etp.ticketservice.tickets.TicketService;
+import com.etp.ticketservice.tickets.TicketStatusEnum;
+import com.etp.ticketservice.tickettypes.TicketType;
+import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
+import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeResponseDto;
+import com.etp.ticketservice.tickettypes.dto.UpdateTicketTypeRequestDto;
+import com.etp.ticketservice.tickettypes.dto.UpdateTicketTypeResponseDto;
 import com.etp.ticketservice.tickettypes.exception.TicketTypeHasSoldTicketsException;
 import com.etp.ticketservice.tickettypes.exception.TicketTypeNotFoundException;
-import com.etp.ticketservice.events.images.exception.TooManyEventImagesException;
-import com.etp.ticketservice.user.UserNotFoundException;
-import com.etp.ticketservice.venues.exception.VenueNotFoundException;
-import com.etp.ticketservice.events.model.CreateEventRequest;
 import com.etp.ticketservice.tickettypes.model.CreateTicketTypeRequest;
-import com.etp.ticketservice.events.images.model.EventImageRequest;
-import com.etp.ticketservice.events.model.UpdateEventRequest;
 import com.etp.ticketservice.tickettypes.model.UpdateTicketTypeRequest;
-import com.etp.ticketservice.events.images.EventImageRepository;
-import com.etp.ticketservice.tickets.TicketRepository;
+import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.user.User;
+import com.etp.ticketservice.user.UserNotFoundException;
 import com.etp.ticketservice.user.UserRepository;
+import com.etp.ticketservice.venues.Venue;
 import com.etp.ticketservice.venues.VenueRepository;
+import com.etp.ticketservice.venues.dto.VenueResponseDto;
+import com.etp.ticketservice.venues.exception.VenueNotFoundException;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -61,11 +64,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 public class EventServiceImpl implements EventService {
@@ -111,14 +109,23 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional
-    public Event createEvent(UUID organizerId, CreateEventRequest event, List<MultipartFile> newImages) {
-        User organizer = userRepository.findByDomainId(organizerId)
-                .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, organizerId));
+    public Event createEvent(
+            UUID organizerId, CreateEventRequest event, List<MultipartFile> newImages) {
+        User organizer =
+                userRepository
+                        .findByDomainId(organizerId)
+                        .orElseThrow(() ->
+                                new UserNotFoundException(ErrorCode.USER_NOT_FOUND, organizerId));
 
-        Venue venue = venueRepository.findByDomainId(event.getVenueId())
-                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
+        Venue venue =
+                venueRepository
+                        .findByDomainId(event.getVenueId())
+                        .orElseThrow(() ->
+                                new VenueNotFoundException(
+                                        ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
-        validateEventDates(event.getStart(), event.getEnd(), event.getSalesStart(), event.getSalesEnd());
+        validateEventDates(
+                event.getStart(), event.getEnd(), event.getSalesStart(), event.getSalesEnd());
 
         Event eventToCreate = new Event();
         eventToCreate.setDomainId(UUID.randomUUID());
@@ -135,16 +142,17 @@ public class EventServiceImpl implements EventService {
         venue.addEvent(eventToCreate);
         organizer.addEventOrganized(eventToCreate);
 
-        event.getTicketTypes().forEach(ticketType -> {
-            TicketType ticketTypeToCreate = new TicketType();
-            ticketTypeToCreate.setDomainId(UUID.randomUUID());
-            ticketTypeToCreate.setName(ticketType.getName());
-            ticketTypeToCreate.setPriceMinorUnits(ticketType.getPriceMinorUnits());
-            ticketTypeToCreate.setCurrency(currency);
-            ticketTypeToCreate.setDescription(ticketType.getDescription());
-            ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
-            eventToCreate.addTicketType(ticketTypeToCreate);
-        });
+        event.getTicketTypes()
+                .forEach(ticketType -> {
+                    TicketType ticketTypeToCreate = new TicketType();
+                    ticketTypeToCreate.setDomainId(UUID.randomUUID());
+                    ticketTypeToCreate.setName(ticketType.getName());
+                    ticketTypeToCreate.setPriceMinorUnits(ticketType.getPriceMinorUnits());
+                    ticketTypeToCreate.setCurrency(currency);
+                    ticketTypeToCreate.setDescription(ticketType.getDescription());
+                    ticketTypeToCreate.setTotalAvailable(ticketType.getTotalAvailable());
+                    eventToCreate.addTicketType(ticketTypeToCreate);
+                });
 
         validateImageCount(event.getImages().size());
 
@@ -178,9 +186,15 @@ public class EventServiceImpl implements EventService {
     // multipart parts sent alongside the JSON body. An out-of-range or missing index
     // means the request itself is inconsistent (a new-image entry with nothing to
     // upload), not a normal validation failure on a single field.
-    private MultipartFile resolveNewImageFile(List<MultipartFile> newImages, Integer newImageIndex) {
-        if (null == newImageIndex || null == newImages || newImageIndex < 0 || newImageIndex >= newImages.size()) {
-            throw new InvalidEventImageException(ErrorCode.EVENT_IMAGE_INVALID_FILE, "newImageIndex " + newImageIndex + " has no matching file");
+    private MultipartFile resolveNewImageFile(
+            List<MultipartFile> newImages, Integer newImageIndex) {
+        if (null == newImageIndex
+                || null == newImages
+                || newImageIndex < 0
+                || newImageIndex >= newImages.size()) {
+            throw new InvalidEventImageException(
+                    ErrorCode.EVENT_IMAGE_INVALID_FILE,
+                    "newImageIndex " + newImageIndex + " has no matching file");
         }
         return newImages.get(newImageIndex);
     }
@@ -209,7 +223,8 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional
-    public Event updateEventForOrganizer(UUID organizerId, UUID id, UpdateEventRequest event, List<MultipartFile> newImages) {
+    public Event updateEventForOrganizer(
+            UUID organizerId, UUID id, UpdateEventRequest event, List<MultipartFile> newImages) {
         if (null == event.getId()) {
             throw new EventUpdateException(ErrorCode.EVENT_ID_REQUIRED);
         }
@@ -218,21 +233,30 @@ public class EventServiceImpl implements EventService {
             throw new EventUpdateException(ErrorCode.EVENT_ID_MISMATCH, id);
         }
 
-        Event existingEvent = eventRepository
-                .findByDomainIdAndOrganizerDomainId(id, organizerId)
-                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+        Event existingEvent =
+                eventRepository
+                        .findByDomainIdAndOrganizerDomainId(id, organizerId)
+                        .orElseThrow(
+                                () -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
         // CANCELLED/COMPLETED are terminal -- the event becomes a stable historical record,
-        // never editable again, not just non-transitionable (see publishEvent/cancelEvent/completeEvent).
+        // never editable again, not just non-transitionable (see
+        // publishEvent/cancelEvent/completeEvent).
         if (EventStatusEnum.CANCELLED.equals(existingEvent.getStatus())
                 || EventStatusEnum.COMPLETED.equals(existingEvent.getStatus())) {
-            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, existingEvent.getStatus());
+            throw new InvalidEventStatusTransitionException(
+                    ErrorCode.EVENT_INVALID_STATUS_TRANSITION, existingEvent.getStatus());
         }
 
-        Venue venue = venueRepository.findByDomainId(event.getVenueId())
-                .orElseThrow(() -> new VenueNotFoundException(ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
+        Venue venue =
+                venueRepository
+                        .findByDomainId(event.getVenueId())
+                        .orElseThrow(() ->
+                                new VenueNotFoundException(
+                                        ErrorCode.VENUE_NOT_FOUND, event.getVenueId()));
 
-        validateEventDates(event.getStart(), event.getEnd(), event.getSalesStart(), event.getSalesEnd());
+        validateEventDates(
+                event.getStart(), event.getEnd(), event.getSalesStart(), event.getSalesEnd());
 
         existingEvent.setName(event.getName());
         existingEvent.setStart(event.getStart());
@@ -242,15 +266,18 @@ public class EventServiceImpl implements EventService {
         existingEvent.setSalesEnd(event.getSalesEnd());
 
         // UpdateTicketTypeRequest.id is the ticket type's domainId, not its internal id
-        Set<UUID> requestTicketTypeDomainIds = event.getTicketTypes()
-                .stream()
-                .map(UpdateTicketTypeRequest::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Set<UUID> requestTicketTypeDomainIds =
+                event.getTicketTypes().stream()
+                        .map(UpdateTicketTypeRequest::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
 
-        Set<TicketType> ticketTypesToRemove = existingEvent.getTicketTypes().stream()
-                .filter(existingTicketType -> !requestTicketTypeDomainIds.contains(existingTicketType.getDomainId()))
-                .collect(Collectors.toSet());
+        Set<TicketType> ticketTypesToRemove =
+                existingEvent.getTicketTypes().stream()
+                        .filter(existingTicketType ->
+                                !requestTicketTypeDomainIds.contains(
+                                        existingTicketType.getDomainId()))
+                        .collect(Collectors.toSet());
 
         // A ticket type that already has sold tickets can't be silently orphan-deleted --
         // removing it from the request would otherwise cascade-delete rows that back real
@@ -259,16 +286,22 @@ public class EventServiceImpl implements EventService {
         // cascade-delete a TicketOrderItem a pending Stripe checkout still points at,
         // surfacing as a raw FK-violation 500 instead of a clean business error.
         for (TicketType ticketTypeToRemove : ticketTypesToRemove) {
-            int reserved = ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
-                    ticketTypeToRemove.getId(), OrderStatusEnum.PENDING, LocalDateTime.now());
-            if (ticketRepository.countByTicketTypeId(ticketTypeToRemove.getId()) > 0 || reserved > 0) {
-                throw new TicketTypeHasSoldTicketsException(ErrorCode.TICKET_TYPE_HAS_SOLD_TICKETS, ticketTypeToRemove.getDomainId());
+            int reserved =
+                    ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                            ticketTypeToRemove.getId(),
+                            OrderStatusEnum.PENDING,
+                            LocalDateTime.now());
+            if (ticketRepository.countByTicketTypeId(ticketTypeToRemove.getId()) > 0
+                    || reserved > 0) {
+                throw new TicketTypeHasSoldTicketsException(
+                        ErrorCode.TICKET_TYPE_HAS_SOLD_TICKETS, ticketTypeToRemove.getDomainId());
             }
         }
         ticketTypesToRemove.forEach(existingEvent::removeTicketType);
 
-        Map<UUID, TicketType> existingTicketTypesIndex = existingEvent.getTicketTypes().stream()
-                .collect(Collectors.toMap(TicketType::getDomainId, Function.identity()));
+        Map<UUID, TicketType> existingTicketTypesIndex =
+                existingEvent.getTicketTypes().stream()
+                        .collect(Collectors.toMap(TicketType::getDomainId, Function.identity()));
 
         for (UpdateTicketTypeRequest ticketType : event.getTicketTypes()) {
             if (null == ticketType.getId()) {
@@ -290,7 +323,8 @@ public class EventServiceImpl implements EventService {
                 existingTicketType.setDescription(ticketType.getDescription());
                 existingTicketType.setTotalAvailable(ticketType.getTotalAvailable());
             } else {
-                throw new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketType.getId());
+                throw new TicketTypeNotFoundException(
+                        ErrorCode.TICKET_TYPE_NOT_FOUND, ticketType.getId());
             }
         }
 
@@ -303,30 +337,38 @@ public class EventServiceImpl implements EventService {
     // position assignment ticketTypes doesn't need: every image in the submitted list is
     // kept (or created) at its array index, and array order IS gallery order -- there's
     // no separate reorder endpoint, resubmitting the list in a new order is a reorder.
-    private void applyImageChanges(Event existingEvent, List<EventImageRequest> requestedImages, List<MultipartFile> newImages) {
+    private void applyImageChanges(
+            Event existingEvent,
+            List<EventImageRequest> requestedImages,
+            List<MultipartFile> newImages) {
         validateImageCount(requestedImages.size());
 
-        Set<UUID> requestImageDomainIds = requestedImages.stream()
-                .map(EventImageRequest::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Set<UUID> requestImageDomainIds =
+                requestedImages.stream()
+                        .map(EventImageRequest::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
 
-        Set<EventImage> imagesToRemove = existingEvent.getImages().stream()
-                .filter(existingImage -> !requestImageDomainIds.contains(existingImage.getDomainId()))
-                .collect(Collectors.toSet());
+        Set<EventImage> imagesToRemove =
+                existingEvent.getImages().stream()
+                        .filter(existingImage ->
+                                !requestImageDomainIds.contains(existingImage.getDomainId()))
+                        .collect(Collectors.toSet());
         for (EventImage imageToRemove : imagesToRemove) {
             eventImageService.deleteImage(imageToRemove.getDomainId());
             existingEvent.removeImage(imageToRemove);
         }
 
-        Map<UUID, EventImage> existingImagesIndex = existingEvent.getImages().stream()
-                .collect(Collectors.toMap(EventImage::getDomainId, Function.identity()));
+        Map<UUID, EventImage> existingImagesIndex =
+                existingEvent.getImages().stream()
+                        .collect(Collectors.toMap(EventImage::getDomainId, Function.identity()));
 
         int position = 0;
         for (EventImageRequest imageRequest : requestedImages) {
             if (null == imageRequest.getId()) {
                 // Create
-                MultipartFile file = resolveNewImageFile(newImages, imageRequest.getNewImageIndex());
+                MultipartFile file =
+                        resolveNewImageFile(newImages, imageRequest.getNewImageIndex());
                 EventImage imageToCreate = new EventImage();
                 imageToCreate.setDomainId(UUID.randomUUID());
                 imageToCreate.setPosition(position);
@@ -339,7 +381,8 @@ public class EventServiceImpl implements EventService {
                 existingImage.setPosition(position);
                 existingImage.setAltText(imageRequest.getAltText());
             } else {
-                throw new EventImageNotFoundException(ErrorCode.EVENT_IMAGE_NOT_FOUND, imageRequest.getId());
+                throw new EventImageNotFoundException(
+                        ErrorCode.EVENT_IMAGE_NOT_FOUND, imageRequest.getId());
             }
             position++;
         }
@@ -350,34 +393,45 @@ public class EventServiceImpl implements EventService {
     public void deleteEventForOrganizer(UUID organizerId, UUID id) {
         // Cascade handles the EventImage rows; it doesn't touch the filesystem, so each
         // image's file is deleted explicitly here before the event itself goes.
-        getEventForOrganizer(organizerId, id).ifPresent(event -> {
-            event.getImages().forEach(image -> eventImageService.deleteImage(image.getDomainId()));
-            eventRepository.delete(event);
-        });
+        getEventForOrganizer(organizerId, id)
+                .ifPresent(event -> {
+                    event.getImages()
+                            .forEach(image -> eventImageService.deleteImage(image.getDomainId()));
+                    eventRepository.delete(event);
+                });
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<byte[]> getEventImageForOrganizer(UUID organizerId, UUID eventId, UUID imageId) {
-        return eventImageRepository.findByDomainIdAndEventDomainIdAndEventOrganizerDomainId(imageId, eventId, organizerId)
+    public Optional<byte[]> getEventImageForOrganizer(
+            UUID organizerId, UUID eventId, UUID imageId) {
+        return eventImageRepository
+                .findByDomainIdAndEventDomainIdAndEventOrganizerDomainId(
+                        imageId, eventId, organizerId)
                 .map(image -> eventImageService.readImage(image.getDomainId()));
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<byte[]> getPublishedEventImage(UUID eventId, UUID imageId) {
-        return eventImageRepository.findByDomainIdAndEventDomainIdAndEventStatus(imageId, eventId, EventStatusEnum.PUBLISHED)
+        return eventImageRepository
+                .findByDomainIdAndEventDomainIdAndEventStatus(
+                        imageId, eventId, EventStatusEnum.PUBLISHED)
                 .map(image -> eventImageService.readImage(image.getDomainId()));
     }
 
     @Override
     @Transactional
     public Event publishEvent(UUID organizerId, UUID id) {
-        Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
-                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+        Event event =
+                eventRepository
+                        .findByDomainIdAndOrganizerDomainId(id, organizerId)
+                        .orElseThrow(
+                                () -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
         if (!EventStatusEnum.DRAFT.equals(event.getStatus())) {
-            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
+            throw new InvalidEventStatusTransitionException(
+                    ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
         }
 
         if (event.getTicketTypes().isEmpty()) {
@@ -395,11 +449,15 @@ public class EventServiceImpl implements EventService {
     // exactly the anti-pattern that split was meant to avoid.
     @Override
     public Event cancelEvent(UUID organizerId, UUID id) {
-        Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
-                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+        Event event =
+                eventRepository
+                        .findByDomainIdAndOrganizerDomainId(id, organizerId)
+                        .orElseThrow(
+                                () -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
         if (!EventStatusEnum.PUBLISHED.equals(event.getStatus())) {
-            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
+            throw new InvalidEventStatusTransitionException(
+                    ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
         }
 
         event.setStatus(EventStatusEnum.CANCELLED);
@@ -420,11 +478,13 @@ public class EventServiceImpl implements EventService {
     // the cascade's own guard, not guardCancellable's (see issue #22).
     private void cancelTicketsForCancelledEvent(Event event) {
         List<Ticket> cancellableTickets =
-                ticketRepository.findByEventIdAndStatusNotWithValidations(event.getId(), TicketStatusEnum.CANCELLED);
+                ticketRepository.findByEventIdAndStatusNotWithValidations(
+                        event.getId(), TicketStatusEnum.CANCELLED);
 
         for (Ticket ticket : cancellableTickets) {
-            boolean alreadyValidated = ticket.getValidations().stream()
-                    .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
+            boolean alreadyValidated =
+                    ticket.getValidations().stream()
+                            .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
             if (alreadyValidated) {
                 continue;
             }
@@ -436,11 +496,15 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional
     public Event completeEvent(UUID organizerId, UUID id) {
-        Event event = eventRepository.findByDomainIdAndOrganizerDomainId(id, organizerId)
-                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
+        Event event =
+                eventRepository
+                        .findByDomainIdAndOrganizerDomainId(id, organizerId)
+                        .orElseThrow(
+                                () -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, id));
 
         if (!EventStatusEnum.PUBLISHED.equals(event.getStatus())) {
-            throw new InvalidEventStatusTransitionException(ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
+            throw new InvalidEventStatusTransitionException(
+                    ErrorCode.EVENT_INVALID_STATUS_TRANSITION, event.getStatus());
         }
 
         event.setStatus(EventStatusEnum.COMPLETED);
@@ -449,26 +513,41 @@ public class EventServiceImpl implements EventService {
 
     // None of start/end/salesStart/salesEnd are required, so each rule only fires when both
     // of its relevant fields are actually present.
-    private void validateEventDates(LocalDateTime start, LocalDateTime end, LocalDateTime salesStart, LocalDateTime salesEnd) {
+    private void validateEventDates(
+            LocalDateTime start,
+            LocalDateTime end,
+            LocalDateTime salesStart,
+            LocalDateTime salesEnd) {
         if (null != start && null != end && !end.isAfter(start)) {
-            throw new InvalidEventDatesException(ErrorCode.EVENT_INVALID_DATES, "end must be after start");
+            throw new InvalidEventDatesException(
+                    ErrorCode.EVENT_INVALID_DATES, "end must be after start");
         }
 
         if (null != salesEnd && null != start && salesEnd.isAfter(start)) {
-            throw new InvalidEventDatesException(ErrorCode.EVENT_INVALID_DATES, "salesEnd must not be after start");
+            throw new InvalidEventDatesException(
+                    ErrorCode.EVENT_INVALID_DATES, "salesEnd must not be after start");
         }
 
         if (null != salesStart && null != salesEnd && !salesEnd.isAfter(salesStart)) {
-            throw new InvalidEventDatesException(ErrorCode.EVENT_INVALID_DATES, "salesStart must be before salesEnd");
+            throw new InvalidEventDatesException(
+                    ErrorCode.EVENT_INVALID_DATES, "salesStart must be before salesEnd");
         }
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<Event> findPublishedEvents(String searchTerm, LocalDateTime from, LocalDateTime to,
-            Double minPrice, Double maxPrice, String city,
-            Double latitude, Double longitude, Double radiusMeters,
-            PublishedEventsSortBy sortBy, Pageable pageable) {
+    public Page<Event> findPublishedEvents(
+            String searchTerm,
+            LocalDateTime from,
+            LocalDateTime to,
+            Double minPrice,
+            Double maxPrice,
+            String city,
+            Double latitude,
+            Double longitude,
+            Double radiusMeters,
+            PublishedEventsSortBy sortBy,
+            Pageable pageable) {
         // With no explicit date range, default to upcoming events only -- otherwise a
         // PUBLISHED event whose end has already passed but hasn't been manually marked
         // COMPLETED yet would still show up in browse results.
@@ -478,7 +557,9 @@ public class EventServiceImpl implements EventService {
         // coordinates falls back to SOONEST instead of sorting by distance to nowhere.
         boolean hasOrigin = null != latitude && null != longitude && null != radiusMeters;
         PublishedEventsSortBy effectiveSortBy =
-                (PublishedEventsSortBy.DISTANCE == sortBy && !hasOrigin) ? PublishedEventsSortBy.SOONEST : sortBy;
+                (PublishedEventsSortBy.DISTANCE == sortBy && !hasOrigin)
+                        ? PublishedEventsSortBy.SOONEST
+                        : sortBy;
 
         // The repository/column now stores minor units -- this is the one place that
         // conversion happens, right before the only two callers (this method's own
@@ -490,26 +571,68 @@ public class EventServiceImpl implements EventService {
         // Exhaustive over the enum's four constants -- no default branch, so the
         // compiler (not a runtime fallthrough) catches a future fifth sort option that
         // forgets to add its query variant here.
-        Page<Event> page = switch (null == effectiveSortBy ? PublishedEventsSortBy.SOONEST : effectiveSortBy) {
-            case PRICE_ASC -> eventRepository.findPublishedEventsSortedByPriceAsc(
-                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
-            case PRICE_DESC -> eventRepository.findPublishedEventsSortedByPriceDesc(
-                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
-            case DISTANCE -> eventRepository.findPublishedEventsSortedByDistance(
-                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
-            case SOONEST -> eventRepository.findPublishedEventsSortedBySoonest(
-                    searchTerm, city, effectiveFrom, to, minPriceMinorUnits, maxPriceMinorUnits, latitude, longitude, radiusMeters, pageable);
-        };
+        Page<Event> page =
+                switch (null == effectiveSortBy ? PublishedEventsSortBy.SOONEST : effectiveSortBy) {
+                    case PRICE_ASC ->
+                            eventRepository.findPublishedEventsSortedByPriceAsc(
+                                    searchTerm,
+                                    city,
+                                    effectiveFrom,
+                                    to,
+                                    minPriceMinorUnits,
+                                    maxPriceMinorUnits,
+                                    latitude,
+                                    longitude,
+                                    radiusMeters,
+                                    pageable);
+                    case PRICE_DESC ->
+                            eventRepository.findPublishedEventsSortedByPriceDesc(
+                                    searchTerm,
+                                    city,
+                                    effectiveFrom,
+                                    to,
+                                    minPriceMinorUnits,
+                                    maxPriceMinorUnits,
+                                    latitude,
+                                    longitude,
+                                    radiusMeters,
+                                    pageable);
+                    case DISTANCE ->
+                            eventRepository.findPublishedEventsSortedByDistance(
+                                    searchTerm,
+                                    city,
+                                    effectiveFrom,
+                                    to,
+                                    minPriceMinorUnits,
+                                    maxPriceMinorUnits,
+                                    latitude,
+                                    longitude,
+                                    radiusMeters,
+                                    pageable);
+                    case SOONEST ->
+                            eventRepository.findPublishedEventsSortedBySoonest(
+                                    searchTerm,
+                                    city,
+                                    effectiveFrom,
+                                    to,
+                                    minPriceMinorUnits,
+                                    maxPriceMinorUnits,
+                                    latitude,
+                                    longitude,
+                                    radiusMeters,
+                                    pageable);
+                };
 
         // Native query -- JOIN FETCH isn't expressible here, so venue and images (the two
         // associations ListPublishedEventResponseDto needs, the latter for
         // coverImageId) are force-initialized while the session is still open, so
         // they're real objects/collections rather than lazy proxies by the time this
         // detaches and reaches the controller's DTO conversion.
-        page.getContent().forEach(event -> {
-            Hibernate.initialize(event.getVenue());
-            Hibernate.initialize(event.getImages());
-        });
+        page.getContent()
+                .forEach(event -> {
+                    Hibernate.initialize(event.getVenue());
+                    Hibernate.initialize(event.getImages());
+                });
 
         return page;
     }
@@ -535,9 +658,7 @@ public class EventServiceImpl implements EventService {
         request.setVenueId(dto.getVenueId());
         request.setSalesStart(dto.getSalesStart());
         request.setSalesEnd(dto.getSalesEnd());
-        request.setTicketTypes(dto.getTicketTypes().stream()
-                .map(this::convertFromDto)
-                .toList());
+        request.setTicketTypes(dto.getTicketTypes().stream().map(this::convertFromDto).toList());
         request.setImages(convertFromEventImageDtoList(dto.getImages()));
         return request;
     }
@@ -564,13 +685,12 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public List<UpdateTicketTypeRequest> convertFromDtoList(List<UpdateTicketTypeRequestDto> dtoList) {
+    public List<UpdateTicketTypeRequest> convertFromDtoList(
+            List<UpdateTicketTypeRequestDto> dtoList) {
         if (CollectionUtils.isEmpty(dtoList)) {
             return Collections.emptyList();
         }
-        return dtoList.stream()
-                .map(this::convertFromDto)
-                .toList();
+        return dtoList.stream().map(this::convertFromDto).toList();
     }
 
     @Override
@@ -598,13 +718,12 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public List<EventImageRequest> convertFromEventImageDtoList(List<EventImageRequestDto> dtoList) {
+    public List<EventImageRequest> convertFromEventImageDtoList(
+            List<EventImageRequestDto> dtoList) {
         if (CollectionUtils.isEmpty(dtoList)) {
             return Collections.emptyList();
         }
-        return dtoList.stream()
-                .map(this::convertFromDto)
-                .toList();
+        return dtoList.stream().map(this::convertFromDto).toList();
     }
 
     @Override
@@ -636,13 +755,12 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public List<CreateTicketTypeResponseDto> convertToCreateTicketTypeResponseDtoList(Set<TicketType> ticketTypeList) {
+    public List<CreateTicketTypeResponseDto> convertToCreateTicketTypeResponseDtoList(
+            Set<TicketType> ticketTypeList) {
         if (CollectionUtils.isEmpty(ticketTypeList)) {
             return Collections.emptyList();
         }
-        return ticketTypeList.stream()
-                .map(this::convertToCreateTicketTypeResponseDto)
-                .toList();
+        return ticketTypeList.stream().map(this::convertToCreateTicketTypeResponseDto).toList();
     }
 
     @Override
@@ -664,7 +782,8 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public ListEventTicketTypeResponseDto convertToListEventTicketTypeResponseDto(TicketType ticketType) {
+    public ListEventTicketTypeResponseDto convertToListEventTicketTypeResponseDto(
+            TicketType ticketType) {
         ListEventTicketTypeResponseDto dto = new ListEventTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
@@ -675,13 +794,12 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public List<ListEventTicketTypeResponseDto> convertToListEventTicketTypeResponseDtoList(Set<TicketType> ticketTypeList) {
+    public List<ListEventTicketTypeResponseDto> convertToListEventTicketTypeResponseDtoList(
+            Set<TicketType> ticketTypeList) {
         if (CollectionUtils.isEmpty(ticketTypeList)) {
             return Collections.emptyList();
         }
-        return ticketTypeList.stream()
-                .map(this::convertToListEventTicketTypeResponseDto)
-                .toList();
+        return ticketTypeList.stream().map(this::convertToListEventTicketTypeResponseDto).toList();
     }
 
     @Override
@@ -700,7 +818,8 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public GetEventDetailsTicketTypesResponseDto convertToGetEventDetailsTicketTypesResponseDto(TicketType ticketType) {
+    public GetEventDetailsTicketTypesResponseDto convertToGetEventDetailsTicketTypesResponseDto(
+            TicketType ticketType) {
         GetEventDetailsTicketTypesResponseDto dto = new GetEventDetailsTicketTypesResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
@@ -709,14 +828,17 @@ public class EventServiceImpl implements EventService {
         dto.setTotalAvailable(ticketType.getTotalAvailable());
         // Active count, not the raw historical one -- a cancelled ticket freed its slot
         // back up, so "sold" here should mean the same thing it means for availability.
-        dto.setTicketsSold(ticketRepository.countActiveByTicketTypeId(ticketType.getId(), TicketStatusEnum.CANCELLED));
+        dto.setTicketsSold(
+                ticketRepository.countActiveByTicketTypeId(
+                        ticketType.getId(), TicketStatusEnum.CANCELLED));
         dto.setCreatedAt(ticketType.getCreatedAt());
         dto.setUpdatedAt(ticketType.getUpdatedAt());
         return dto;
     }
 
     @Override
-    public List<GetEventDetailsTicketTypesResponseDto> convertToGetEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList) {
+    public List<GetEventDetailsTicketTypesResponseDto>
+            convertToGetEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList) {
         if (CollectionUtils.isEmpty(ticketTypeList)) {
             return Collections.emptyList();
         }
@@ -736,7 +858,8 @@ public class EventServiceImpl implements EventService {
         dto.setSalesStart(event.getSalesStart());
         dto.setSalesEnd(event.getSalesEnd());
         dto.setStatus(event.getStatus());
-        dto.setTicketTypes(convertToGetEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
+        dto.setTicketTypes(
+                convertToGetEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
         dto.setImages(convertToEventImageResponseDtoList(event.getImages()));
         dto.setCreatedAt(event.getCreatedAt());
         dto.setUpdatedAt(event.getUpdatedAt());
@@ -757,13 +880,12 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public List<UpdateTicketTypeResponseDto> convertToUpdateTicketTypeResponseDtoList(Set<TicketType> ticketTypeList) {
+    public List<UpdateTicketTypeResponseDto> convertToUpdateTicketTypeResponseDtoList(
+            Set<TicketType> ticketTypeList) {
         if (CollectionUtils.isEmpty(ticketTypeList)) {
             return Collections.emptyList();
         }
-        return ticketTypeList.stream()
-                .map(this::convertToUpdateTicketTypeResponseDto)
-                .toList();
+        return ticketTypeList.stream().map(this::convertToUpdateTicketTypeResponseDto).toList();
     }
 
     @Override
@@ -804,8 +926,10 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public GetPublishedEventDetailsTicketTypesResponseDto convertToGetPublishedEventDetailsTicketTypesResponseDto(TicketType ticketType) {
-        GetPublishedEventDetailsTicketTypesResponseDto dto = new GetPublishedEventDetailsTicketTypesResponseDto();
+    public GetPublishedEventDetailsTicketTypesResponseDto
+            convertToGetPublishedEventDetailsTicketTypesResponseDto(TicketType ticketType) {
+        GetPublishedEventDetailsTicketTypesResponseDto dto =
+                new GetPublishedEventDetailsTicketTypesResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
         dto.setPrice(MoneyUtils.toMajorUnits(ticketType.getPriceMinorUnits()));
@@ -814,7 +938,9 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public List<GetPublishedEventDetailsTicketTypesResponseDto> convertToGetPublishedEventDetailsTicketTypesResponseDtoList(Set<TicketType> ticketTypeList) {
+    public List<GetPublishedEventDetailsTicketTypesResponseDto>
+            convertToGetPublishedEventDetailsTicketTypesResponseDtoList(
+                    Set<TicketType> ticketTypeList) {
         if (CollectionUtils.isEmpty(ticketTypeList)) {
             return Collections.emptyList();
         }
@@ -824,14 +950,17 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    public GetPublishedEventDetailsResponseDto convertToGetPublishedEventDetailsResponseDto(Event event) {
+    public GetPublishedEventDetailsResponseDto convertToGetPublishedEventDetailsResponseDto(
+            Event event) {
         GetPublishedEventDetailsResponseDto dto = new GetPublishedEventDetailsResponseDto();
         dto.setId(event.getDomainId());
         dto.setName(event.getName());
         dto.setStart(event.getStart());
         dto.setEnd(event.getEnd());
         dto.setVenue(convertToVenueResponseDto(event.getVenue()));
-        dto.setTicketTypes(convertToGetPublishedEventDetailsTicketTypesResponseDtoList(event.getTicketTypes()));
+        dto.setTicketTypes(
+                convertToGetPublishedEventDetailsTicketTypesResponseDtoList(
+                        event.getTicketTypes()));
         dto.setImages(convertToEventImageResponseDtoList(event.getImages()));
         return dto;
     }

@@ -1,12 +1,11 @@
 package com.etp.ticketservice.common;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+
 import com.etp.ticketservice.security.Role;
+import java.util.UUID;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-
-import java.util.UUID;
-
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 // Authenticates a MockMvc request with a fake JWT whose subject is the given user id --
 // bypasses the real JwtDecoder entirely, no network call, no running Keycloak needed.
@@ -17,8 +16,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 // import SecurityConfig (SecurityAuthorizationTest) and needs to assert on roles too.
 public final class TestJwts {
 
-    private TestJwts() {
-    }
+    private TestJwts() {}
 
     public static RequestPostProcessor withSubject(UUID userId) {
         return jwt().jwt(builder -> builder.subject(userId.toString()));
@@ -31,8 +29,7 @@ public final class TestJwts {
     // correctly derives that set from a real token's claims. See
     // JwtAuthenticationConverterTest for that other half, tested on its own.
     public static RequestPostProcessor withSubjectAndRole(UUID userId, Role role) {
-        return jwt()
-                .jwt(builder -> builder.subject(userId.toString()))
+        return jwt().jwt(builder -> builder.subject(userId.toString()))
                 .authorities(new SimpleGrantedAuthority(role.getAuthority()));
     }
 }

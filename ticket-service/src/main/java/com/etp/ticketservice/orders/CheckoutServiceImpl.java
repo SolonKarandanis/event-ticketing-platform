@@ -6,11 +6,10 @@ import com.etp.ticketservice.payments.CheckoutLineItem;
 import com.etp.ticketservice.payments.CheckoutSessionRequest;
 import com.etp.ticketservice.payments.CheckoutSessionResult;
 import com.etp.ticketservice.payments.PaymentGatewayService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 // Deliberately NOT @Transactional -- this orchestrates two short, independent
 // TicketOrderService transactions around one external Stripe HTTP call, so that call
@@ -36,7 +35,8 @@ public class CheckoutServiceImpl implements CheckoutService {
     }
 
     @Override
-    public CreateCheckoutResponseDto createCheckout(UUID userId, UUID eventDomainId, CreateCheckoutRequestDto request) {
+    public CreateCheckoutResponseDto createCheckout(
+            UUID userId, UUID eventDomainId, CreateCheckoutRequestDto request) {
         TicketOrder order = ticketOrderService.reserve(userId, eventDomainId, request);
 
         // Safe to read these relationships after reserve()'s transaction has committed --
@@ -44,25 +44,31 @@ public class CheckoutServiceImpl implements CheckoutService {
         // instances during that transaction, never from an unresolved lazy proxy, and
         // scalar columns load eagerly with their row regardless of which getter is
         // called. Same reasoning EventController#createEvent already relies on.
-        List<CheckoutLineItem> lineItems = order.getItems().stream()
-                .map(item -> CheckoutLineItem.builder()
-                        .name(item.getTicketType().getName())
-                        .unitAmount(item.getUnitPriceAtCheckoutMinorUnits())
-                        .quantity(item.getQuantity())
-                        .build())
-                .toList();
+        List<CheckoutLineItem> lineItems =
+                order.getItems().stream()
+                        .map(item ->
+                                CheckoutLineItem.builder()
+                                        .name(item.getTicketType().getName())
+                                        .unitAmount(item.getUnitPriceAtCheckoutMinorUnits())
+                                        .quantity(item.getQuantity())
+                                        .build())
+                        .toList();
 
-        CheckoutSessionRequest sessionRequest = CheckoutSessionRequest.builder()
-                .orderDomainId(order.getDomainId())
-                .successUrl(successUrl)
-                .cancelUrl(cancelUrlBase + eventDomainId)
-                .lineItems(lineItems)
-                .build();
+        CheckoutSessionRequest sessionRequest =
+                CheckoutSessionRequest.builder()
+                        .orderDomainId(order.getDomainId())
+                        .successUrl(successUrl)
+                        .cancelUrl(cancelUrlBase + eventDomainId)
+                        .lineItems(lineItems)
+                        .build();
 
         CheckoutSessionResult result = paymentGatewayService.createCheckoutSession(sessionRequest);
 
-        TicketOrder updated = ticketOrderService.attachProviderCheckoutSession(order.getDomainId(), result.getProviderSessionId());
+        TicketOrder updated =
+                ticketOrderService.attachProviderCheckoutSession(
+                        order.getDomainId(), result.getProviderSessionId());
 
-        return new CreateCheckoutResponseDto(updated.getDomainId(), result.getRedirectUrl(), updated.getExpiresAt());
+        return new CreateCheckoutResponseDto(
+                updated.getDomainId(), result.getRedirectUrl(), updated.getExpiresAt());
     }
 }

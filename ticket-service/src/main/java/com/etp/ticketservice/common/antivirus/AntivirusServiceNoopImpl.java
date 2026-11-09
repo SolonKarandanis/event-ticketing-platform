@@ -1,15 +1,14 @@
 package com.etp.ticketservice.common.antivirus;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Service;
-
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(name = "antivirus.noop.enabled", havingValue = "true")
-public class AntivirusServiceNoopImpl extends AbstractAntivirusServiceImpl{
+public class AntivirusServiceNoopImpl extends AbstractAntivirusServiceImpl {
 
     @Override
     protected boolean doPing() {

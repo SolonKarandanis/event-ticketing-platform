@@ -4,7 +4,6 @@ import com.etp.ticketservice.events.images.EventImage;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.venues.Venue;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -21,6 +20,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,12 +34,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 
 @Entity
 @Table(name = "events")
@@ -47,16 +45,12 @@ import java.util.UUID;
 public class Event {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "eventGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "eventGenerator")
     @SequenceGenerator(
             name = "eventGenerator",
             sequenceName = "events_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -151,22 +145,21 @@ public class Event {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         Event event = (Event) o;
-        return Objects.equals(id, event.id) &&
-               Objects.equals(domainId, event.domainId) &&
-               Objects.equals(name, event.name) &&
-               Objects.equals(start, event.start) &&
-               Objects.equals(end, event.end) &&
-               Objects.equals(salesStart, event.salesStart) &&
-               Objects.equals(salesEnd, event.salesEnd) &&
-               status == event.status &&
-               Objects.equals(createdAt, event.createdAt) &&
-               Objects.equals(updatedAt, event.updatedAt);
+        return Objects.equals(id, event.id)
+                && Objects.equals(domainId, event.domainId)
+                && Objects.equals(name, event.name)
+                && Objects.equals(start, event.start)
+                && Objects.equals(end, event.end)
+                && Objects.equals(salesStart, event.salesStart)
+                && Objects.equals(salesEnd, event.salesEnd)
+                && status == event.status
+                && Objects.equals(createdAt, event.createdAt)
+                && Objects.equals(updatedAt, event.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, name, start, end,
-                salesStart, salesEnd, status,
-                createdAt, updatedAt);
+        return Objects.hash(
+                id, domainId, name, start, end, salesStart, salesEnd, status, createdAt, updatedAt);
     }
 }

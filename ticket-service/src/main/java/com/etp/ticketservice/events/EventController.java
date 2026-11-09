@@ -1,22 +1,25 @@
 package com.etp.ticketservice.events;
 
-import com.etp.ticketservice.tickets.dto.CancelTicketRequestDto;
+import com.etp.ticketservice.common.antivirus.AntivirusService;
+import com.etp.ticketservice.common.antivirus.VirusScannable;
+import com.etp.ticketservice.common.util.MultipartFileUtil;
 import com.etp.ticketservice.events.dto.CreateEventRequestDto;
-import com.etp.ticketservice.events.dto.UpdateEventRequestDto;
-import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
 import com.etp.ticketservice.events.dto.CreateEventResponseDto;
 import com.etp.ticketservice.events.dto.GetEventDetailsResponseDto;
 import com.etp.ticketservice.events.dto.ListEventResponseDto;
-import com.etp.ticketservice.tickets.dto.TicketSaleResponseDto;
+import com.etp.ticketservice.events.dto.UpdateEventRequestDto;
 import com.etp.ticketservice.events.dto.UpdateEventResponseDto;
-import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.events.model.CreateEventRequest;
 import com.etp.ticketservice.events.model.UpdateEventRequest;
-import com.etp.ticketservice.common.antivirus.VirusScannable;
+import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.tickets.TicketService;
-import com.etp.ticketservice.common.antivirus.AntivirusService;
-import com.etp.ticketservice.common.util.MultipartFileUtil;
+import com.etp.ticketservice.tickets.dto.CancelTicketRequestDto;
+import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
+import com.etp.ticketservice.tickets.dto.TicketSaleResponseDto;
 import jakarta.validation.Valid;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,10 +41,6 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/v1/events")
 @RequiredArgsConstructor
@@ -59,57 +58,62 @@ public class EventController {
     // carry binary data inline. required = false on newImages so an event with zero
     // images doesn't need an empty file part.
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CreateEventResponseDto> createEvent(@AuthenticationPrincipal Jwt jwt,
+    public ResponseEntity<CreateEventResponseDto> createEvent(
+            @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestPart("event") CreateEventRequestDto createEventRequestDto,
             @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages) {
         log.info("EventController --> createEvent");
         CreateEventRequest createEventRequest = eventService.convertFromDto(createEventRequestDto);
         UUID userId = parseUserId(jwt);
         scanNewImages(resolveNewImages(newImages));
-        Event createdEvent = eventService.createEvent(userId, createEventRequest, resolveNewImages(newImages));
-        CreateEventResponseDto createEventResponseDto = eventService.convertToCreateEventResponseDto(createdEvent);
+        Event createdEvent =
+                eventService.createEvent(userId, createEventRequest, resolveNewImages(newImages));
+        CreateEventResponseDto createEventResponseDto =
+                eventService.convertToCreateEventResponseDto(createdEvent);
         return new ResponseEntity<>(createEventResponseDto, HttpStatus.CREATED);
     }
 
     @GetMapping
-    public ResponseEntity<Page<ListEventResponseDto>> listEvents(@AuthenticationPrincipal Jwt jwt, Pageable pageable
-    ) {
+    public ResponseEntity<Page<ListEventResponseDto>> listEvents(
+            @AuthenticationPrincipal Jwt jwt, Pageable pageable) {
         log.info("EventController --> listEvents");
         UUID userId = parseUserId(jwt);
         Page<Event> events = eventService.listEventsForOrganizer(userId, pageable);
-        return ResponseEntity.ok(
-                events.map(eventService::convertToListEventResponseDto)
-        );
+        return ResponseEntity.ok(events.map(eventService::convertToListEventResponseDto));
     }
 
     @GetMapping(path = "/{eventId}")
-    public ResponseEntity<GetEventDetailsResponseDto> getEvent(@AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID eventId) {
+    public ResponseEntity<GetEventDetailsResponseDto> getEvent(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
         log.info("EventController --> getEvent --> id: {}", eventId);
         UUID userId = parseUserId(jwt);
-        return eventService.getEventForOrganizer(userId, eventId)
+        return eventService
+                .getEventForOrganizer(userId, eventId)
                 .map(eventService::convertToGetEventDetailsResponseDto)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PutMapping(path = "/{eventId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<UpdateEventResponseDto> updateEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId,
+    public ResponseEntity<UpdateEventResponseDto> updateEvent(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID eventId,
             @Valid @RequestPart("event") UpdateEventRequestDto updateEventRequestDto,
             @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages) {
         log.info("EventController --> updateEvent --> id: {}", eventId);
         UpdateEventRequest updateEventRequest = eventService.convertFromDto(updateEventRequestDto);
         UUID userId = parseUserId(jwt);
         scanNewImages(resolveNewImages(newImages));
-        Event updatedEvent = eventService.updateEventForOrganizer(
-                userId, eventId, updateEventRequest, resolveNewImages(newImages)
-        );
-        UpdateEventResponseDto updateEventResponseDto = eventService.convertToUpdateEventResponseDto(updatedEvent);
+        Event updatedEvent =
+                eventService.updateEventForOrganizer(
+                        userId, eventId, updateEventRequest, resolveNewImages(newImages));
+        UpdateEventResponseDto updateEventResponseDto =
+                eventService.convertToUpdateEventResponseDto(updatedEvent);
         return ResponseEntity.ok(updateEventResponseDto);
     }
 
     private void scanNewImages(List<MultipartFile> newImages) {
-        for(MultipartFile image : newImages){
+        for (MultipartFile image : newImages) {
             VirusScannable scannableFile = MultipartFileUtil.toVirusScannable(image);
             antivirusService.scan(scannableFile);
         }
@@ -123,7 +127,8 @@ public class EventController {
     }
 
     @DeleteMapping(path = "/{eventId}")
-    public ResponseEntity<Void> deleteEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+    public ResponseEntity<Void> deleteEvent(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
         log.info("EventController --> deleteEvent --> id: {}", eventId);
         UUID userId = parseUserId(jwt);
         eventService.deleteEventForOrganizer(userId, eventId);
@@ -131,21 +136,24 @@ public class EventController {
     }
 
     @PostMapping(path = "/{eventId}/publish")
-    public ResponseEntity<Void> publishEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+    public ResponseEntity<Void> publishEvent(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
         log.info("EventController --> publishEvent --> id: {}", eventId);
         eventService.publishEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping(path = "/{eventId}/cancel")
-    public ResponseEntity<Void> cancelEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+    public ResponseEntity<Void> cancelEvent(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
         log.info("EventController --> cancelEvent --> id: {}", eventId);
         eventService.cancelEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping(path = "/{eventId}/complete")
-    public ResponseEntity<Void> completeEvent(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
+    public ResponseEntity<Void> completeEvent(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID eventId) {
         log.info("EventController --> completeEvent --> id: {}", eventId);
         eventService.completeEvent(parseUserId(jwt), eventId);
         return ResponseEntity.noContent().build();
@@ -180,10 +188,14 @@ public class EventController {
             @PathVariable UUID eventId,
             @PathVariable UUID ticketId,
             @RequestBody(required = false) CancelTicketRequestDto cancelTicketRequestDto) {
-        log.info("EventController --> cancelTicketForOrganizer --> eventId: {}, ticketId: {}", eventId, ticketId);
+        log.info(
+                "EventController --> cancelTicketForOrganizer --> eventId: {}, ticketId: {}",
+                eventId,
+                ticketId);
         UUID userId = parseUserId(jwt);
         String note = null != cancelTicketRequestDto ? cancelTicketRequestDto.getNote() : null;
-        Ticket cancelledTicket = ticketService.cancelTicketForOrganizer(userId, eventId, ticketId, note);
+        Ticket cancelledTicket =
+                ticketService.cancelTicketForOrganizer(userId, eventId, ticketId, note);
         return ResponseEntity.ok(ticketService.convertToCancelTicketResponseDto(cancelledTicket));
     }
 
@@ -192,11 +204,15 @@ public class EventController {
     // belonging to a PUBLISHED event. Needed so the edit page can show its own gallery's
     // thumbnails before the event (and its images) are ever publicly visible.
     @GetMapping(path = "/{eventId}/images/{imageId}")
-    public ResponseEntity<byte[]> getEventImage(@AuthenticationPrincipal Jwt jwt,
-            @PathVariable UUID eventId, @PathVariable UUID imageId) {
-        log.info("EventController --> getEventImage --> eventId: {}, imageId: {}", eventId, imageId);
+    public ResponseEntity<byte[]> getEventImage(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID eventId,
+            @PathVariable UUID imageId) {
+        log.info(
+                "EventController --> getEventImage --> eventId: {}, imageId: {}", eventId, imageId);
         UUID userId = parseUserId(jwt);
-        return eventService.getEventImageForOrganizer(userId, eventId, imageId)
+        return eventService
+                .getEventImageForOrganizer(userId, eventId, imageId)
                 .map(bytes -> ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(bytes))
                 .orElse(ResponseEntity.notFound().build());
     }

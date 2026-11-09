@@ -19,7 +19,8 @@ public class PaymentCustomerServiceImpl implements PaymentCustomerService {
 
     @Override
     @Transactional
-    public PaymentCustomer saveIfAbsent(User user, PaymentProvider provider, String providerCustomerId) {
+    public PaymentCustomer saveIfAbsent(
+            User user, PaymentProvider provider, String providerCustomerId) {
         PaymentCustomer paymentCustomer = new PaymentCustomer();
         paymentCustomer.setUser(user);
         paymentCustomer.setProvider(provider);
@@ -34,10 +35,15 @@ public class PaymentCustomerServiceImpl implements PaymentCustomerService {
             // Stripe customer the caller just created above becomes a harmless orphan on
             // Stripe's side; the existing row wins, and its providerCustomerId is just as
             // usable as the one we tried to save.
-            return paymentCustomerRepository.findByUserDomainIdAndProvider(user.getDomainId(), provider)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "PaymentCustomer for " + user.getDomainId() + "/" + provider +
-                            " vanished immediately after a unique-constraint conflict"));
+            return paymentCustomerRepository
+                    .findByUserDomainIdAndProvider(user.getDomainId(), provider)
+                    .orElseThrow(() ->
+                            new IllegalStateException(
+                                    "PaymentCustomer for "
+                                            + user.getDomainId()
+                                            + "/"
+                                            + provider
+                                            + " vanished immediately after a unique-constraint conflict"));
         }
     }
 }

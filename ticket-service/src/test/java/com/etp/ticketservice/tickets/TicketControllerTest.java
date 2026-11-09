@@ -1,27 +1,5 @@
 package com.etp.ticketservice.tickets;
 
-import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.tickets.dto.CancelTicketRequestDto;
-import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
-import com.etp.ticketservice.tickets.dto.GetTicketResponseDto;
-import com.etp.ticketservice.tickets.dto.ListTicketResponseDto;
-import com.etp.ticketservice.tickets.dto.ListTicketTicketTypeResponseDto;
-import com.etp.ticketservice.tickets.qrcode.QrCodeService;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import tools.jackson.databind.ObjectMapper;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import static com.etp.ticketservice.common.TestJwts.withSubject;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -34,6 +12,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.etp.ticketservice.common.UserProvisioningTestConfig;
+import com.etp.ticketservice.tickets.dto.CancelTicketRequestDto;
+import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
+import com.etp.ticketservice.tickets.dto.GetTicketResponseDto;
+import com.etp.ticketservice.tickets.dto.ListTicketResponseDto;
+import com.etp.ticketservice.tickets.dto.ListTicketTicketTypeResponseDto;
+import com.etp.ticketservice.tickets.qrcode.QrCodeService;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import tools.jackson.databind.ObjectMapper;
+
 // Same slice-test approach as EventControllerTest -- see that class's comment for why
 // SecurityConfig isn't imported. Every request here is authenticated as the ticket's
 // own owner (ATTENDEE_ID); TicketController itself has no notion of roles at all, it
@@ -42,25 +40,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(UserProvisioningTestConfig.class)
 class TicketControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private TicketService ticketService;
+    @MockitoBean private TicketService ticketService;
 
-    @MockitoBean
-    private QrCodeService qrCodeService;
+    @MockitoBean private QrCodeService qrCodeService;
 
     private static final UUID ATTENDEE_ID = UUID.randomUUID();
 
     @Test
     void listTickets_returnsPageOfTickets() throws Exception {
         Ticket ticket = new Ticket();
-        ListTicketResponseDto dto = new ListTicketResponseDto(
-                UUID.randomUUID(), TicketStatusEnum.PURCHASED,
-                new ListTicketTicketTypeResponseDto(UUID.randomUUID(), "General", 25.0));
+        ListTicketResponseDto dto =
+                new ListTicketResponseDto(
+                        UUID.randomUUID(),
+                        TicketStatusEnum.PURCHASED,
+                        new ListTicketTicketTypeResponseDto(UUID.randomUUID(), "General", 25.0));
 
         when(ticketService.listTicketsForUser(eq(ATTENDEE_ID), any()))
                 .thenReturn(new PageImpl<>(List.of(ticket)));
@@ -101,18 +98,25 @@ class TicketControllerTest {
         UUID ticketId = UUID.randomUUID();
         Ticket cancelledTicket = new Ticket();
         CancelTicketRequestDto requestDto = new CancelTicketRequestDto("Changed my mind");
-        CancelTicketResponseDto responseDto = new CancelTicketResponseDto(
-                ticketId, TicketStatusEnum.CANCELLED, null,
-                TicketCancelReasonEnum.ATTENDEE_REQUEST, "Changed my mind", null);
+        CancelTicketResponseDto responseDto =
+                new CancelTicketResponseDto(
+                        ticketId,
+                        TicketStatusEnum.CANCELLED,
+                        null,
+                        TicketCancelReasonEnum.ATTENDEE_REQUEST,
+                        "Changed my mind",
+                        null);
 
         when(ticketService.cancelTicketForUser(ATTENDEE_ID, ticketId, "Changed my mind"))
                 .thenReturn(cancelledTicket);
-        when(ticketService.convertToCancelTicketResponseDto(cancelledTicket)).thenReturn(responseDto);
+        when(ticketService.convertToCancelTicketResponseDto(cancelledTicket))
+                .thenReturn(responseDto);
 
-        mockMvc.perform(post("/api/v1/tickets/{ticketId}/cancel", ticketId)
-                        .with(attendee())
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(requestDto)))
+        mockMvc.perform(
+                        post("/api/v1/tickets/{ticketId}/cancel", ticketId)
+                                .with(attendee())
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(requestDto)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cancelNote").value("Changed my mind"));
     }
@@ -125,12 +129,19 @@ class TicketControllerTest {
     void cancelTicket_withNoBody_treatsNoteAsNull() throws Exception {
         UUID ticketId = UUID.randomUUID();
         Ticket cancelledTicket = new Ticket();
-        CancelTicketResponseDto responseDto = new CancelTicketResponseDto(
-                ticketId, TicketStatusEnum.CANCELLED, null, TicketCancelReasonEnum.ATTENDEE_REQUEST, null, null);
+        CancelTicketResponseDto responseDto =
+                new CancelTicketResponseDto(
+                        ticketId,
+                        TicketStatusEnum.CANCELLED,
+                        null,
+                        TicketCancelReasonEnum.ATTENDEE_REQUEST,
+                        null,
+                        null);
 
         when(ticketService.cancelTicketForUser(eq(ATTENDEE_ID), eq(ticketId), isNull()))
                 .thenReturn(cancelledTicket);
-        when(ticketService.convertToCancelTicketResponseDto(cancelledTicket)).thenReturn(responseDto);
+        when(ticketService.convertToCancelTicketResponseDto(cancelledTicket))
+                .thenReturn(responseDto);
 
         mockMvc.perform(post("/api/v1/tickets/{ticketId}/cancel", ticketId).with(attendee()))
                 .andExpect(status().isOk());
@@ -142,7 +153,8 @@ class TicketControllerTest {
     void getTicketQrCode_returnsPngBytes() throws Exception {
         UUID ticketId = UUID.randomUUID();
         byte[] pngBytes = {(byte) 0x89, 0x50, 0x4e, 0x47};
-        when(qrCodeService.getQrCodeImageForUserAndTicket(ATTENDEE_ID, ticketId)).thenReturn(pngBytes);
+        when(qrCodeService.getQrCodeImageForUserAndTicket(ATTENDEE_ID, ticketId))
+                .thenReturn(pngBytes);
 
         mockMvc.perform(get("/api/v1/tickets/{ticketId}/qr-codes", ticketId).with(attendee()))
                 .andExpect(status().isOk())

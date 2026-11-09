@@ -1,6 +1,13 @@
 package com.etp.ticketservice.payments;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
 import com.etp.ticketservice.user.User;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -8,22 +15,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-
 @ExtendWith(MockitoExtension.class)
 class PaymentCustomerServiceImplTest {
 
-    @Mock
-    private PaymentCustomerRepository paymentCustomerRepository;
+    @Mock private PaymentCustomerRepository paymentCustomerRepository;
 
-    @InjectMocks
-    private PaymentCustomerServiceImpl paymentCustomerService;
+    @InjectMocks private PaymentCustomerServiceImpl paymentCustomerService;
 
     private static final UUID USER_DOMAIN_ID = UUID.randomUUID();
 
@@ -34,7 +31,8 @@ class PaymentCustomerServiceImplTest {
         when(paymentCustomerRepository.saveAndFlush(any(PaymentCustomer.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        PaymentCustomer result = paymentCustomerService.saveIfAbsent(user, PaymentProvider.STRIPE, "cus_test_123");
+        PaymentCustomer result =
+                paymentCustomerService.saveIfAbsent(user, PaymentProvider.STRIPE, "cus_test_123");
 
         assertThat(result.getUser()).isEqualTo(user);
         assertThat(result.getProvider()).isEqualTo(PaymentProvider.STRIPE);
@@ -49,10 +47,12 @@ class PaymentCustomerServiceImplTest {
                 .thenThrow(new DataIntegrityViolationException("duplicate"));
         PaymentCustomer winner = new PaymentCustomer();
         winner.setProviderCustomerId("cus_winner_456");
-        when(paymentCustomerRepository.findByUserDomainIdAndProvider(USER_DOMAIN_ID, PaymentProvider.STRIPE))
+        when(paymentCustomerRepository.findByUserDomainIdAndProvider(
+                        USER_DOMAIN_ID, PaymentProvider.STRIPE))
                 .thenReturn(Optional.of(winner));
 
-        PaymentCustomer result = paymentCustomerService.saveIfAbsent(user, PaymentProvider.STRIPE, "cus_test_123");
+        PaymentCustomer result =
+                paymentCustomerService.saveIfAbsent(user, PaymentProvider.STRIPE, "cus_test_123");
 
         assertThat(result.getProviderCustomerId()).isEqualTo("cus_winner_456");
     }
@@ -63,10 +63,13 @@ class PaymentCustomerServiceImplTest {
         user.setDomainId(USER_DOMAIN_ID);
         when(paymentCustomerRepository.saveAndFlush(any(PaymentCustomer.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate"));
-        when(paymentCustomerRepository.findByUserDomainIdAndProvider(USER_DOMAIN_ID, PaymentProvider.STRIPE))
+        when(paymentCustomerRepository.findByUserDomainIdAndProvider(
+                        USER_DOMAIN_ID, PaymentProvider.STRIPE))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> paymentCustomerService.saveIfAbsent(user, PaymentProvider.STRIPE, "cus_test_123"))
+        assertThatThrownBy(() ->
+                        paymentCustomerService.saveIfAbsent(
+                                user, PaymentProvider.STRIPE, "cus_test_123"))
                 .isInstanceOf(IllegalStateException.class);
     }
 }

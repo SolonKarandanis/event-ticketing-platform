@@ -1,22 +1,21 @@
 package com.etp.ticketservice.venues;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
 import com.etp.ticketservice.venues.exception.VenueNotFoundException;
 import com.etp.ticketservice.venues.exception.VenueUpdateException;
 import com.etp.ticketservice.venues.model.CreateVenueRequest;
 import com.etp.ticketservice.venues.model.UpdateVenueRequest;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 // Pure Mockito unit tests -- see EventServiceImplTest's class comment for why this layer
 // is worth testing directly. Most of VenueServiceImpl is straight-line DTO<->entity
@@ -25,11 +24,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class VenueServiceImplTest {
 
-    @Mock
-    private VenueRepository venueRepository;
+    @Mock private VenueRepository venueRepository;
 
-    @InjectMocks
-    private VenueServiceImpl venueService;
+    @InjectMocks private VenueServiceImpl venueService;
 
     private static final UUID VENUE_ID = UUID.randomUUID();
 
@@ -81,7 +78,8 @@ class VenueServiceImplTest {
 
     @Test
     void createVenue_happyPath_generatesDomainIdAndMapsAllFields() {
-        when(venueRepository.save(any(Venue.class))).thenAnswer(invocation -> invocation.getArgument(0, Venue.class));
+        when(venueRepository.save(any(Venue.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0, Venue.class));
 
         CreateVenueRequest request = new CreateVenueRequest();
         request.setName("Main Hall");

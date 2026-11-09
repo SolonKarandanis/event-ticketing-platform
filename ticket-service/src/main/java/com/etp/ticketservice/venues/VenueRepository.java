@@ -1,14 +1,13 @@
 package com.etp.ticketservice.venues;
 
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 public interface VenueRepository extends JpaRepository<Venue, Long> {
@@ -26,7 +25,8 @@ public interface VenueRepository extends JpaRepository<Venue, Long> {
     // resolution picks a bytea overload for the unknown-typed parameter instead of text,
     // and LOWER(bytea) then fails outright with "function lower(bytea) does not exist".
     // The explicit cast pins the parameter to text everywhere it's used.
-    @Query("SELECT v FROM Venue v WHERE CAST(:searchTerm AS string) IS NULL OR LOWER(v.name) LIKE LOWER(CONCAT('%', CAST(:searchTerm AS string), '%'))")
+    @Query(
+            "SELECT v FROM Venue v WHERE CAST(:searchTerm AS string) IS NULL OR LOWER(v.name) LIKE LOWER(CONCAT('%', CAST(:searchTerm AS string), '%'))")
     Page<Venue> search(@Param("searchTerm") String searchTerm, Pageable pageable);
 
     // Backs a future "near me" browse filter -- native, not JPQL: passing raw
@@ -43,12 +43,18 @@ public interface VenueRepository extends JpaRepository<Venue, Long> {
     // 003-add-venue-geography migration's backfill), so a venue missing both would
     // otherwise never match ST_DWithin and doesn't need to be explicitly filtered out,
     // but the guard documents that exclusion instead of leaving it implicit.
-    @Query(value = "SELECT v.* FROM venues v WHERE v.location IS NOT NULL " +
-            "AND ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography, :radiusMeters) " +
-            "ORDER BY ST_Distance(v.location, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography) ASC",
-            countQuery = "SELECT count(*) FROM venues v WHERE v.location IS NOT NULL " +
-            "AND ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography, :radiusMeters)",
+    @Query(
+            value =
+                    "SELECT v.* FROM venues v WHERE v.location IS NOT NULL "
+                            + "AND ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography, :radiusMeters) "
+                            + "ORDER BY ST_Distance(v.location, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography) ASC",
+            countQuery =
+                    "SELECT count(*) FROM venues v WHERE v.location IS NOT NULL "
+                            + "AND ST_DWithin(v.location, ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography, :radiusMeters)",
             nativeQuery = true)
-    Page<Venue> findWithinRadius(@Param("latitude") double latitude, @Param("longitude") double longitude,
-            @Param("radiusMeters") double radiusMeters, Pageable pageable);
+    Page<Venue> findWithinRadius(
+            @Param("latitude") double latitude,
+            @Param("longitude") double longitude,
+            @Param("radiusMeters") double radiusMeters,
+            Pageable pageable);
 }

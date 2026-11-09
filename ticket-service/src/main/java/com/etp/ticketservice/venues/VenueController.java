@@ -6,6 +6,7 @@ import com.etp.ticketservice.venues.dto.VenueResponseDto;
 import com.etp.ticketservice.venues.model.CreateVenueRequest;
 import com.etp.ticketservice.venues.model.UpdateVenueRequest;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +22,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.UUID;
 
 @RestController
 @RequestMapping(path = "/api/v1/venues")
@@ -44,7 +43,8 @@ public class VenueController {
     }
 
     @PutMapping(path = "/{venueId}")
-    public ResponseEntity<VenueResponseDto> updateVenue(@PathVariable UUID venueId,
+    public ResponseEntity<VenueResponseDto> updateVenue(
+            @PathVariable UUID venueId,
             @Valid @RequestBody UpdateVenueRequestDto updateVenueRequestDto) {
         log.info("VenueController --> updateVenue");
         UpdateVenueRequest updateVenueRequest = venueService.convertFromDto(updateVenueRequestDto);
@@ -67,7 +67,8 @@ public class VenueController {
     @GetMapping(path = "/{venueId}")
     public ResponseEntity<VenueResponseDto> getVenue(@PathVariable UUID venueId) {
         log.info("VenueController --> getVenue --> id: {}", venueId);
-        return venueService.getVenue(venueId)
+        return venueService
+                .getVenue(venueId)
                 .map(venueService::convertToVenueResponseDto)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

@@ -7,5 +7,6 @@ public interface TicketValidationService {
 
     TicketValidation validateTicketByReferenceCode(String referenceCode);
 
-    TicketValidationResponseDto convertToTicketValidationResponseDto(TicketValidation ticketValidation);
+    TicketValidationResponseDto convertToTicketValidationResponseDto(
+            TicketValidation ticketValidation);
 }

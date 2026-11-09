@@ -1,20 +1,19 @@
 package com.etp.ticketservice.events;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.etp.ticketservice.common.AbstractPostgresContainerTest;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.venues.Venue;
-import com.etp.ticketservice.common.AbstractPostgresContainerTest;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 // A real-Postgres slice test, not a mocked one -- unlike the @WebMvcTest controller
 // slices, there's no meaningful way to fake what's under test here: EventRepository's
@@ -33,14 +32,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class EventRepositoryTest extends AbstractPostgresContainerTest {
 
-    @Autowired
-    private EventRepository eventRepository;
+    @Autowired private EventRepository eventRepository;
 
     @Test
     void findByOrganizerDomainId_fetchJoinsVenueEagerly() {
         Venue venue = persistVenue("Main Hall", "Athens", null, null);
         User organizer = persistUser("Jane Organizer");
-        persistEvent("Test Event", venue, organizer, EventStatusEnum.DRAFT, LocalDateTime.now().plusDays(1), 10.0);
+        persistEvent(
+                "Test Event",
+                venue,
+                organizer,
+                EventStatusEnum.DRAFT,
+                LocalDateTime.now().plusDays(1),
+                10.0);
 
         // Clearing the persistence context before the query under test forces a fresh
         // load from the DB -- without LEFT JOIN FETCH e.venue, reading event.getVenue()
@@ -49,7 +53,9 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
         // the result.
         entityManager.clear();
 
-        Page<Event> page = eventRepository.findByOrganizerDomainId(organizer.getDomainId(), PageRequest.of(0, 10));
+        Page<Event> page =
+                eventRepository.findByOrganizerDomainId(
+                        organizer.getDomainId(), PageRequest.of(0, 10));
 
         assertThat(page.getContent()).hasSize(1);
         assertThat(page.getContent().get(0).getVenue().getName()).isEqualTo("Main Hall");
@@ -60,12 +66,21 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
         Venue venue = persistVenue("Main Hall", "Athens", null, null);
         User owner = persistUser("Jane Organizer");
         User someoneElse = persistUser("Someone Else");
-        Event event = persistEvent("Test Event", venue, owner, EventStatusEnum.DRAFT, LocalDateTime.now().plusDays(1), 10.0);
+        Event event =
+                persistEvent(
+                        "Test Event",
+                        venue,
+                        owner,
+                        EventStatusEnum.DRAFT,
+                        LocalDateTime.now().plusDays(1),
+                        10.0);
 
-        Optional<Event> asOwner = eventRepository.findByDomainIdAndOrganizerDomainId(
-                event.getDomainId(), owner.getDomainId());
-        Optional<Event> asSomeoneElse = eventRepository.findByDomainIdAndOrganizerDomainId(
-                event.getDomainId(), someoneElse.getDomainId());
+        Optional<Event> asOwner =
+                eventRepository.findByDomainIdAndOrganizerDomainId(
+                        event.getDomainId(), owner.getDomainId());
+        Optional<Event> asSomeoneElse =
+                eventRepository.findByDomainIdAndOrganizerDomainId(
+                        event.getDomainId(), someoneElse.getDomainId());
 
         assertThat(asOwner).isPresent();
         assertThat(asSomeoneElse).isEmpty();
@@ -77,18 +92,43 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
         User organizer = persistUser("Jane Organizer");
         LocalDateTime now = LocalDateTime.now();
 
-        persistEvent("Music in the Park", venue, organizer, EventStatusEnum.PUBLISHED, now.plusDays(5), 10.0);
-        persistEvent("Summer Music Festival", venue, organizer, EventStatusEnum.PUBLISHED, now.plusDays(20), 10.0);
+        persistEvent(
+                "Music in the Park",
+                venue,
+                organizer,
+                EventStatusEnum.PUBLISHED,
+                now.plusDays(5),
+                10.0);
+        persistEvent(
+                "Summer Music Festival",
+                venue,
+                organizer,
+                EventStatusEnum.PUBLISHED,
+                now.plusDays(20),
+                10.0);
         // Neither a status mismatch nor a name mismatch alone would prove the WHERE
         // clause combines both correctly -- these two catch the query matching on the
         // wrong condition and still passing.
-        persistEvent("Winter Gala", venue, organizer, EventStatusEnum.PUBLISHED, now.plusDays(1), 10.0);
-        persistEvent("Music Rehearsal", venue, organizer, EventStatusEnum.DRAFT, now.plusDays(1), 10.0);
+        persistEvent(
+                "Winter Gala", venue, organizer, EventStatusEnum.PUBLISHED, now.plusDays(1), 10.0);
+        persistEvent(
+                "Music Rehearsal", venue, organizer, EventStatusEnum.DRAFT, now.plusDays(1), 10.0);
 
-        Page<Event> page = eventRepository.findPublishedEventsSortedBySoonest(
-                "Music", null, null, null, null, null, null, null, null, PageRequest.of(0, 10));
+        Page<Event> page =
+                eventRepository.findPublishedEventsSortedBySoonest(
+                        "Music",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PageRequest.of(0, 10));
 
-        assertThat(page.getContent()).extracting(Event::getName)
+        assertThat(page.getContent())
+                .extracting(Event::getName)
                 .containsExactly("Music in the Park", "Summer Music Festival");
     }
 
@@ -102,10 +142,21 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
         persistEvent("Budget Meetup", venue, organizer, EventStatusEnum.PUBLISHED, start, 20.0);
         persistEvent("Mid-Range Show", venue, organizer, EventStatusEnum.PUBLISHED, start, 35.0);
 
-        Page<Event> page = eventRepository.findPublishedEventsSortedByPriceAsc(
-                null, null, null, null, null, null, null, null, null, PageRequest.of(0, 10));
+        Page<Event> page =
+                eventRepository.findPublishedEventsSortedByPriceAsc(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        PageRequest.of(0, 10));
 
-        assertThat(page.getContent()).extracting(Event::getName)
+        assertThat(page.getContent())
+                .extracting(Event::getName)
                 .containsExactly("Budget Meetup", "Mid-Range Show", "Pricey Gala");
     }
 
@@ -127,11 +178,20 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
         // minPrice/maxPrice are minor units at this layer (see #23) -- 2500-4000 cents
         // excludes both Budget Meetup (2000) and Pricey Gala (5000), leaving only
         // Mid-Range Show (3500).
-        Page<Event> page = eventRepository.findPublishedEventsSortedByPriceAsc(
-                null, null, null, null, 2500L, 4000L, null, null, null, PageRequest.of(0, 10));
+        Page<Event> page =
+                eventRepository.findPublishedEventsSortedByPriceAsc(
+                        null,
+                        null,
+                        null,
+                        null,
+                        2500L,
+                        4000L,
+                        null,
+                        null,
+                        null,
+                        PageRequest.of(0, 10));
 
-        assertThat(page.getContent()).extracting(Event::getName)
-                .containsExactly("Mid-Range Show");
+        assertThat(page.getContent()).extracting(Event::getName).containsExactly("Mid-Range Show");
     }
 
     // The one test in this class that only a real PostGIS-enabled Postgres, not H2 or a
@@ -145,20 +205,36 @@ class EventRepositoryTest extends AbstractPostgresContainerTest {
         double refLatitude = 37.9838;
         double refLongitude = 23.7275;
 
-        Venue nearVenue = persistVenue("Near Venue", "Athens", metersNorth(refLatitude, 500), refLongitude);
-        Venue farVenue = persistVenue("Far Venue", "Athens", metersNorth(refLatitude, 3_000), refLongitude);
-        Venue outsideVenue = persistVenue("Outside Venue", "Athens", metersNorth(refLatitude, 50_000), refLongitude);
+        Venue nearVenue =
+                persistVenue("Near Venue", "Athens", metersNorth(refLatitude, 500), refLongitude);
+        Venue farVenue =
+                persistVenue("Far Venue", "Athens", metersNorth(refLatitude, 3_000), refLongitude);
+        Venue outsideVenue =
+                persistVenue(
+                        "Outside Venue", "Athens", metersNorth(refLatitude, 50_000), refLongitude);
         User organizer = persistUser("Jane Organizer");
         LocalDateTime start = LocalDateTime.now().plusDays(1);
 
         persistEvent("Near Event", nearVenue, organizer, EventStatusEnum.PUBLISHED, start, 10.0);
         persistEvent("Far Event", farVenue, organizer, EventStatusEnum.PUBLISHED, start, 10.0);
-        persistEvent("Outside Event", outsideVenue, organizer, EventStatusEnum.PUBLISHED, start, 10.0);
+        persistEvent(
+                "Outside Event", outsideVenue, organizer, EventStatusEnum.PUBLISHED, start, 10.0);
 
-        Page<Event> page = eventRepository.findPublishedEventsSortedByDistance(
-                null, null, null, null, null, null, refLatitude, refLongitude, 10_000.0, PageRequest.of(0, 10));
+        Page<Event> page =
+                eventRepository.findPublishedEventsSortedByDistance(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        refLatitude,
+                        refLongitude,
+                        10_000.0,
+                        PageRequest.of(0, 10));
 
-        assertThat(page.getContent()).extracting(Event::getName)
+        assertThat(page.getContent())
+                .extracting(Event::getName)
                 .containsExactly("Near Event", "Far Event");
     }
 

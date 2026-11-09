@@ -1,15 +1,14 @@
 package com.etp.ticketservice.tickets;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
@@ -28,21 +27,28 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // Excludes CANCELLED -- a cancelled ticket frees its slot back up, so this is the
     // count both purchaseTicket's sold-out check and the organizer-facing ticketsSold
     // figure should read, not the raw historical count above.
-    @Query("SELECT COUNT(t) FROM Ticket t WHERE t.ticketType.id = :ticketTypeId AND t.status <> :cancelledStatus")
-    int countActiveByTicketTypeId(@Param("ticketTypeId") Long ticketTypeId, @Param("cancelledStatus") TicketStatusEnum cancelledStatus);
+    @Query(
+            "SELECT COUNT(t) FROM Ticket t WHERE t.ticketType.id = :ticketTypeId AND t.status <> :cancelledStatus")
+    int countActiveByTicketTypeId(
+            @Param("ticketTypeId") Long ticketTypeId,
+            @Param("cancelledStatus") TicketStatusEnum cancelledStatus);
 
     // ticketType is a @ManyToOne (to-one) fetch join -- safe to combine with Pageable.
-    @Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType WHERE t.purchaser.domainId = :purchaserDomainId")
-    Page<Ticket> findByPurchaserDomainId(@Param("purchaserDomainId") UUID purchaserDomainId, Pageable pageable);
+    @Query(
+            "SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType WHERE t.purchaser.domainId = :purchaserDomainId")
+    Page<Ticket> findByPurchaserDomainId(
+            @Param("purchaserDomainId") UUID purchaserDomainId, Pageable pageable);
 
     // GetTicketResponseDto walks ticket -> ticketType -> event -> venue; all @ManyToOne
     // (to-one) hops, so chaining the fetch joins never multiplies rows -- no DISTINCT needed.
-    @Query("SELECT t FROM Ticket t " +
-            "LEFT JOIN FETCH t.ticketType tt " +
-            "LEFT JOIN FETCH tt.event e " +
-            "LEFT JOIN FETCH e.venue " +
-            "WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
-    Optional<Ticket> findByDomainIdAndPurchaserDomainId(@Param("domainId") UUID domainId, @Param("purchaserDomainId") UUID purchaserDomainId);
+    @Query(
+            "SELECT t FROM Ticket t "
+                    + "LEFT JOIN FETCH t.ticketType tt "
+                    + "LEFT JOIN FETCH tt.event e "
+                    + "LEFT JOIN FETCH e.venue "
+                    + "WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
+    Optional<Ticket> findByDomainIdAndPurchaserDomainId(
+            @Param("domainId") UUID domainId, @Param("purchaserDomainId") UUID purchaserDomainId);
 
     @Query("SELECT t FROM Ticket t WHERE t.domainId = :domainId")
     Optional<Ticket> findByDomainId(@Param("domainId") UUID domainId);
@@ -62,8 +68,9 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // @Transactional -- see issue #22), so validations can't be left as a lazy proxy to
     // resolve later. Safe to extend this query in place rather than cloning it:
     // confirmed single caller (cancelTicketForOrganizer).
-    @Query("SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e LEFT JOIN FETCH t.validations " +
-            "WHERE t.domainId = :ticketDomainId AND e.domainId = :eventDomainId AND e.organizer.domainId = :organizerDomainId")
+    @Query(
+            "SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e LEFT JOIN FETCH t.validations "
+                    + "WHERE t.domainId = :ticketDomainId AND e.domainId = :eventDomainId AND e.organizer.domainId = :organizerDomainId")
     Optional<Ticket> findByDomainIdAndEventDomainIdAndOrganizerDomainId(
             @Param("ticketDomainId") UUID ticketDomainId,
             @Param("eventDomainId") UUID eventDomainId,
@@ -75,11 +82,11 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // validations and shouldn't pay for the extra DISTINCT/to-many join. Backs
     // cancelTicketForUser's guardCancellable call, same no-ambient-session reasoning as
     // above (issue #22).
-    @Query("SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.validations " +
-            "WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
+    @Query(
+            "SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.validations "
+                    + "WHERE t.domainId = :domainId AND t.purchaser.domainId = :purchaserDomainId")
     Optional<Ticket> findByDomainIdAndPurchaserDomainIdForCancellation(
-            @Param("domainId") UUID domainId,
-            @Param("purchaserDomainId") UUID purchaserDomainId);
+            @Param("domainId") UUID domainId, @Param("purchaserDomainId") UUID purchaserDomainId);
 
     // Backs TicketCancellationServiceImpl#cancelAndPersist. orderItem/ticketOrder are
     // needed to resolve the refund context (amount + Stripe checkout session id);
@@ -88,11 +95,12 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // all be fetch-joined together with no DISTINCT needed, and none of them is left as
     // a lazy proxy once this method's (also no-longer-@Transactional) caller chain
     // returns control past this method's own transaction boundary (issue #22).
-    @Query("SELECT t FROM Ticket t " +
-            "LEFT JOIN FETCH t.orderItem oi LEFT JOIN FETCH oi.ticketOrder " +
-            "LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e LEFT JOIN FETCH e.organizer " +
-            "LEFT JOIN FETCH t.purchaser " +
-            "WHERE t.domainId = :domainId")
+    @Query(
+            "SELECT t FROM Ticket t "
+                    + "LEFT JOIN FETCH t.orderItem oi LEFT JOIN FETCH oi.ticketOrder "
+                    + "LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event e LEFT JOIN FETCH e.organizer "
+                    + "LEFT JOIN FETCH t.purchaser "
+                    + "WHERE t.domainId = :domainId")
     Optional<Ticket> findByDomainIdForCancellation(@Param("domainId") UUID domainId);
 
     // Per-event ticket-sales screen. ticketType/event/purchaser are all @ManyToOne --
@@ -101,8 +109,9 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // URL) -- TicketSaleResponseDto is shared with the cross-event listing below and
     // always carries eventId/eventName, and that DTO conversion runs in the controller,
     // after this method's transaction (and Hibernate session) has already closed.
-    @Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.purchaser " +
-            "WHERE tt.event.domainId = :eventDomainId AND tt.event.organizer.domainId = :organizerDomainId")
+    @Query(
+            "SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.purchaser "
+                    + "WHERE tt.event.domainId = :eventDomainId AND tt.event.organizer.domainId = :organizerDomainId")
     Page<Ticket> findByEventDomainIdAndOrganizerDomainId(
             @Param("eventDomainId") UUID eventDomainId,
             @Param("organizerDomainId") UUID organizerDomainId,
@@ -111,9 +120,11 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // Cross-event ticket-sales screen -- same shape as above, minus the single-event
     // filter, plus event itself fetch-joined (still to-one throughout) since the
     // response needs to show which event each row belongs to.
-    @Query("SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.purchaser " +
-            "WHERE tt.event.organizer.domainId = :organizerDomainId")
-    Page<Ticket> findByOrganizerDomainId(@Param("organizerDomainId") UUID organizerDomainId, Pageable pageable);
+    @Query(
+            "SELECT t FROM Ticket t LEFT JOIN FETCH t.ticketType tt LEFT JOIN FETCH tt.event LEFT JOIN FETCH t.purchaser "
+                    + "WHERE tt.event.organizer.domainId = :organizerDomainId")
+    Page<Ticket> findByOrganizerDomainId(
+            @Param("organizerDomainId") UUID organizerDomainId, Pageable pageable);
 
     // Backs EventServiceImpl#cancelEvent's cascade: every non-cancelled ticket for the
     // event, with validations fetch-joined so the cascade can check "already validated"
@@ -121,8 +132,9 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     // @OneToMany (to-many), hence DISTINCT -- this returns a plain List, not a Page, so
     // there's no pagination/collection-fetch-join conflict to design around here (see
     // EventServiceImpl#listEventsForOrganizer for where that conflict actually applies).
-    @Query("SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.validations " +
-            "WHERE t.ticketType.event.id = :eventId AND t.status <> :cancelledStatus")
+    @Query(
+            "SELECT DISTINCT t FROM Ticket t LEFT JOIN FETCH t.validations "
+                    + "WHERE t.ticketType.event.id = :eventId AND t.status <> :cancelledStatus")
     List<Ticket> findByEventIdAndStatusNotWithValidations(
             @Param("eventId") Long eventId,
             @Param("cancelledStatus") TicketStatusEnum cancelledStatus);

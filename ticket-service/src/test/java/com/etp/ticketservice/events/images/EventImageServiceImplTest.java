@@ -1,19 +1,18 @@
 package com.etp.ticketservice.events.images;
 
-import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.springframework.mock.web.MockMultipartFile;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import javax.imageio.ImageIO;
+import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.mock.web.MockMultipartFile;
 
 // Not a Mockito test -- EventImageServiceImpl has no repository/collaborator to mock, it
 // does real file I/O and real image processing (Thumbnailator), so a real temp directory
@@ -22,8 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // other service test in this package skips the Spring context entirely.
 class EventImageServiceImplTest {
 
-    @TempDir
-    private Path tempDir;
+    @TempDir private Path tempDir;
 
     private EventImageServiceImpl eventImageService;
 
@@ -34,7 +32,8 @@ class EventImageServiceImplTest {
 
     @Test
     void storeImage_emptyFile_throws() {
-        MockMultipartFile empty = new MockMultipartFile("file", "cover.jpg", "image/jpeg", new byte[0]);
+        MockMultipartFile empty =
+                new MockMultipartFile("file", "cover.jpg", "image/jpeg", new byte[0]);
 
         assertThatThrownBy(() -> eventImageService.storeImage(empty, UUID.randomUUID()))
                 .isInstanceOf(InvalidEventImageException.class);
@@ -43,7 +42,8 @@ class EventImageServiceImplTest {
     @Test
     void storeImage_overFiveMegabytes_throws() {
         byte[] tooLarge = new byte[5 * 1024 * 1024 + 1];
-        MockMultipartFile oversized = new MockMultipartFile("file", "cover.jpg", "image/jpeg", tooLarge);
+        MockMultipartFile oversized =
+                new MockMultipartFile("file", "cover.jpg", "image/jpeg", tooLarge);
 
         assertThatThrownBy(() -> eventImageService.storeImage(oversized, UUID.randomUUID()))
                 .isInstanceOf(InvalidEventImageException.class);
@@ -51,7 +51,9 @@ class EventImageServiceImplTest {
 
     @Test
     void storeImage_disallowedContentType_throws() {
-        MockMultipartFile pdf = new MockMultipartFile("file", "doc.pdf", "application/pdf", "not an image".getBytes());
+        MockMultipartFile pdf =
+                new MockMultipartFile(
+                        "file", "doc.pdf", "application/pdf", "not an image".getBytes());
 
         assertThatThrownBy(() -> eventImageService.storeImage(pdf, UUID.randomUUID()))
                 .isInstanceOf(InvalidEventImageException.class);
@@ -59,7 +61,8 @@ class EventImageServiceImplTest {
 
     @Test
     void storeImage_missingContentType_throws() {
-        MockMultipartFile noContentType = new MockMultipartFile("file", "cover.jpg", null, "bytes".getBytes());
+        MockMultipartFile noContentType =
+                new MockMultipartFile("file", "cover.jpg", null, "bytes".getBytes());
 
         assertThatThrownBy(() -> eventImageService.storeImage(noContentType, UUID.randomUUID()))
                 .isInstanceOf(InvalidEventImageException.class);
@@ -71,8 +74,9 @@ class EventImageServiceImplTest {
     // be rejected.
     @Test
     void storeImage_declaredJpegButNotActuallyAnImage_throws() {
-        MockMultipartFile spoofed = new MockMultipartFile(
-                "file", "cover.jpg", "image/jpeg", "definitely not jpeg bytes".getBytes());
+        MockMultipartFile spoofed =
+                new MockMultipartFile(
+                        "file", "cover.jpg", "image/jpeg", "definitely not jpeg bytes".getBytes());
 
         assertThatThrownBy(() -> eventImageService.storeImage(spoofed, UUID.randomUUID()))
                 .isInstanceOf(InvalidEventImageException.class);
@@ -81,8 +85,8 @@ class EventImageServiceImplTest {
     @Test
     void storeImage_thenReadImage_roundTripsAsAValidJpeg() throws Exception {
         UUID imageId = UUID.randomUUID();
-        MockMultipartFile realImage = new MockMultipartFile(
-                "file", "cover.png", "image/png", realPngBytes(50, 50));
+        MockMultipartFile realImage =
+                new MockMultipartFile("file", "cover.png", "image/png", realPngBytes(50, 50));
 
         eventImageService.storeImage(realImage, imageId);
         byte[] stored = eventImageService.readImage(imageId);
@@ -97,7 +101,8 @@ class EventImageServiceImplTest {
     void deleteImage_removesFile_soReadImageThenFailsAsServerInconsistency() throws Exception {
         UUID imageId = UUID.randomUUID();
         eventImageService.storeImage(
-                new MockMultipartFile("file", "cover.png", "image/png", realPngBytes(20, 20)), imageId);
+                new MockMultipartFile("file", "cover.png", "image/png", realPngBytes(20, 20)),
+                imageId);
 
         eventImageService.deleteImage(imageId);
 

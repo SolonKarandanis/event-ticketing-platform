@@ -1,8 +1,7 @@
 package com.etp.ticketservice.events.images;
 
-import org.springframework.web.multipart.MultipartFile;
-
 import java.util.UUID;
+import org.springframework.web.multipart.MultipartFile;
 
 // Deliberately narrow -- everything this interface does is filesystem I/O and image
 // processing (validate, resize, re-encode, read, delete), never a database call. It

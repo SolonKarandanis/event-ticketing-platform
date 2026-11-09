@@ -1,7 +1,7 @@
 package com.etp.ticketservice.tickets.qrcode;
 
-import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.common.exception.ErrorCode;
+import com.etp.ticketservice.tickets.Ticket;
 import com.etp.ticketservice.tickets.qrcode.exception.QrCodeGenerationException;
 import com.etp.ticketservice.tickets.qrcode.exception.QrCodeNotFoundException;
 import com.google.zxing.BarcodeFormat;
@@ -9,16 +9,15 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.UUID;
+import javax.imageio.ImageIO;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
@@ -50,8 +49,11 @@ public class QrCodeServiceImpl implements QrCodeService {
 
     @Override
     public byte[] getQrCodeImageForUserAndTicket(UUID userId, UUID ticketId) {
-        QrCode qrCode = qrCodeRepository.findByTicketDomainIdAndTicketPurchaserDomainId(ticketId, userId)
-                .orElseThrow(() -> new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, ticketId));
+        QrCode qrCode =
+                qrCodeRepository
+                        .findByTicketDomainIdAndTicketPurchaserDomainId(ticketId, userId)
+                        .orElseThrow(() ->
+                                new QrCodeNotFoundException(ErrorCode.QR_CODE_NOT_FOUND, ticketId));
 
         try {
             return Base64.getDecoder().decode(qrCode.getValue());
@@ -62,12 +64,9 @@ public class QrCodeServiceImpl implements QrCodeService {
     }
 
     private String generateQrCodeImage(UUID uniqueId) throws WriterException, IOException {
-        BitMatrix bitMatrix = qrCodeWriter.encode(
-                uniqueId.toString(),
-                BarcodeFormat.QR_CODE,
-                QR_WIDTH,
-                QR_HEIGHT
-        );
+        BitMatrix bitMatrix =
+                qrCodeWriter.encode(
+                        uniqueId.toString(), BarcodeFormat.QR_CODE, QR_WIDTH, QR_HEIGHT);
 
         BufferedImage qrCodeImage = MatrixToImageWriter.toBufferedImage(bitMatrix);
 

@@ -15,8 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 @DisallowConcurrentExecution
 public class TicketOrderExpiryJob implements Job {
 
-    @Autowired
-    private TicketOrderExpirySweeper sweeper;
+    @Autowired private TicketOrderExpirySweeper sweeper;
 
     @Override
     public void execute(JobExecutionContext context) {

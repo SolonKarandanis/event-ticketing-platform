@@ -1,8 +1,9 @@
 package com.etp.ticketservice.tickets;
 
-import com.etp.ticketservice.messaging.TicketEventPublisher;
-
+import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.common.util.MoneyUtils;
+import com.etp.ticketservice.events.EventStatusEnum;
+import com.etp.ticketservice.messaging.TicketEventPublisher;
 import com.etp.ticketservice.orders.TicketOrderItem;
 import com.etp.ticketservice.payments.PaymentGatewayService;
 import com.etp.ticketservice.payments.RefundRequest;
@@ -15,26 +16,23 @@ import com.etp.ticketservice.tickets.dto.ListTicketTicketTypeResponseDto;
 import com.etp.ticketservice.tickets.dto.TicketSaleResponseDto;
 import com.etp.ticketservice.tickets.dto.TicketSaleTicketTypeResponseDto;
 import com.etp.ticketservice.tickets.exception.ReferenceCodeGenerationException;
-import com.etp.ticketservice.tickets.qrcode.QrCodeService;
-import com.etp.ticketservice.tickettypes.TicketType;
-import com.etp.ticketservice.events.EventStatusEnum;
-import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
-import com.etp.ticketservice.user.User;
-import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.tickets.exception.TicketAlreadyCancelledException;
 import com.etp.ticketservice.tickets.exception.TicketAlreadyValidatedException;
 import com.etp.ticketservice.tickets.exception.TicketEventAlreadyCompletedException;
 import com.etp.ticketservice.tickets.exception.TicketNotFoundException;
+import com.etp.ticketservice.tickets.qrcode.QrCodeService;
+import com.etp.ticketservice.tickettypes.TicketType;
+import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.user.User;
+import java.security.SecureRandom;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.security.SecureRandom;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -85,7 +83,9 @@ public class TicketServiceImpl implements TicketService {
         for (int attempt = 0; attempt < REFERENCE_CODE_MAX_ATTEMPTS; attempt++) {
             StringBuilder code = new StringBuilder(REFERENCE_CODE_LENGTH);
             for (int i = 0; i < REFERENCE_CODE_LENGTH; i++) {
-                code.append(REFERENCE_CODE_ALPHABET.charAt(secureRandom.nextInt(REFERENCE_CODE_ALPHABET.length())));
+                code.append(
+                        REFERENCE_CODE_ALPHABET.charAt(
+                                secureRandom.nextInt(REFERENCE_CODE_ALPHABET.length())));
             }
             String candidate = code.toString();
             if (ticketRepository.findByReferenceCode(candidate).isEmpty()) {
@@ -115,8 +115,11 @@ public class TicketServiceImpl implements TicketService {
     // everything guardCancellable needs instead of relying on lazy loading).
     @Override
     public Ticket cancelTicketForUser(UUID userId, UUID ticketId, String note) {
-        Ticket ticket = ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(ticketId, userId)
-                .orElseThrow(() -> new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
+        Ticket ticket =
+                ticketRepository
+                        .findByDomainIdAndPurchaserDomainIdForCancellation(ticketId, userId)
+                        .orElseThrow(() ->
+                                new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
 
         guardCancellable(ticket);
 
@@ -126,7 +129,8 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(readOnly = true)
     public Page<Ticket> listTicketsForEvent(UUID organizerId, UUID eventId, Pageable pageable) {
-        return ticketRepository.findByEventDomainIdAndOrganizerDomainId(eventId, organizerId, pageable);
+        return ticketRepository.findByEventDomainIdAndOrganizerDomainId(
+                eventId, organizerId, pageable);
     }
 
     @Override
@@ -137,9 +141,14 @@ public class TicketServiceImpl implements TicketService {
 
     // See cancelTicketForUser's comment -- same reasoning, not @Transactional.
     @Override
-    public Ticket cancelTicketForOrganizer(UUID organizerId, UUID eventId, UUID ticketId, String note) {
-        Ticket ticket = ticketRepository.findByDomainIdAndEventDomainIdAndOrganizerDomainId(ticketId, eventId, organizerId)
-                .orElseThrow(() -> new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
+    public Ticket cancelTicketForOrganizer(
+            UUID organizerId, UUID eventId, UUID ticketId, String note) {
+        Ticket ticket =
+                ticketRepository
+                        .findByDomainIdAndEventDomainIdAndOrganizerDomainId(
+                                ticketId, eventId, organizerId)
+                        .orElseThrow(() ->
+                                new TicketNotFoundException(ErrorCode.TICKET_NOT_FOUND, ticketId));
 
         guardCancellable(ticket);
 
@@ -162,17 +171,21 @@ public class TicketServiceImpl implements TicketService {
     // two single-ticket, user-facing entry points.
     private void guardCancellable(Ticket ticket) {
         if (TicketStatusEnum.CANCELLED.equals(ticket.getStatus())) {
-            throw new TicketAlreadyCancelledException(ErrorCode.TICKET_ALREADY_CANCELLED, ticket.getDomainId());
+            throw new TicketAlreadyCancelledException(
+                    ErrorCode.TICKET_ALREADY_CANCELLED, ticket.getDomainId());
         }
 
         if (EventStatusEnum.COMPLETED.equals(ticket.getTicketType().getEvent().getStatus())) {
-            throw new TicketEventAlreadyCompletedException(ErrorCode.TICKET_EVENT_ALREADY_COMPLETED, ticket.getDomainId());
+            throw new TicketEventAlreadyCompletedException(
+                    ErrorCode.TICKET_EVENT_ALREADY_COMPLETED, ticket.getDomainId());
         }
 
-        boolean alreadyValidated = ticket.getValidations().stream()
-                .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
+        boolean alreadyValidated =
+                ticket.getValidations().stream()
+                        .anyMatch(v -> TicketValidationStatusEnum.VALID.equals(v.getStatus()));
         if (alreadyValidated) {
-            throw new TicketAlreadyValidatedException(ErrorCode.TICKET_ALREADY_VALIDATED, ticket.getDomainId());
+            throw new TicketAlreadyValidatedException(
+                    ErrorCode.TICKET_ALREADY_VALIDATED, ticket.getDomainId());
         }
     }
 
@@ -180,8 +193,10 @@ public class TicketServiceImpl implements TicketService {
     // independent transactions around one external Stripe HTTP call, so that call never
     // runs with a DB lock held. See TicketCancellationServiceImpl for the split itself,
     // and CheckoutServiceImpl/StripeWebhookServiceImpl for the same shape used elsewhere.
-    private Ticket cancelAndAttemptRefund(UUID ticketDomainId, TicketCancelReasonEnum reason, String note) {
-        TicketCancellationOutcome outcome = ticketCancellationService.cancelAndPersist(ticketDomainId, reason, note);
+    private Ticket cancelAndAttemptRefund(
+            UUID ticketDomainId, TicketCancelReasonEnum reason, String note) {
+        TicketCancellationOutcome outcome =
+                ticketCancellationService.cancelAndPersist(ticketDomainId, reason, note);
 
         if (null == outcome.getRefundAmountMinorUnits()) {
             // orderItem was null -- this ticket was never paid via Stripe at all (the
@@ -196,14 +211,19 @@ public class TicketServiceImpl implements TicketService {
             // comment -- but NOT thrown: cancelAndPersist already committed the
             // cancellation, and nothing here may undo that. Treated as a failed refund
             // instead, logged so it's observable, and still surfaced via refundStatus.
-            log.error("Ticket {} has an orderItem but its TicketOrder has no providerCheckoutSessionId -- cannot attempt refund", ticketDomainId);
+            log.error(
+                    "Ticket {} has an orderItem but its TicketOrder has no providerCheckoutSessionId -- cannot attempt refund",
+                    ticketDomainId);
             refundStatus = RefundStatusEnum.FAILED;
         } else {
             try {
-                RefundResult result = paymentGatewayService.refund(RefundRequest.builder()
-                        .providerCheckoutSessionId(outcome.getProviderCheckoutSessionId())
-                        .amountMinorUnits(outcome.getRefundAmountMinorUnits())
-                        .build());
+                RefundResult result =
+                        paymentGatewayService.refund(
+                                RefundRequest.builder()
+                                        .providerCheckoutSessionId(
+                                                outcome.getProviderCheckoutSessionId())
+                                        .amountMinorUnits(outcome.getRefundAmountMinorUnits())
+                                        .build());
                 providerRefundId = result.getProviderRefundId();
                 refundStatus = translateRefundStatus(result.getStatus());
             } catch (PaymentGatewayException e) {
@@ -213,7 +233,8 @@ public class TicketServiceImpl implements TicketService {
             }
         }
 
-        ticketCancellationService.recordRefundOutcome(ticketDomainId, refundStatus, providerRefundId);
+        ticketCancellationService.recordRefundOutcome(
+                ticketDomainId, refundStatus, providerRefundId);
 
         Ticket ticket = outcome.getTicket();
         ticket.setRefundStatus(refundStatus);
@@ -230,7 +251,8 @@ public class TicketServiceImpl implements TicketService {
     }
 
     @Override
-    public ListTicketTicketTypeResponseDto convertToListTicketTicketTypeResponseDto(TicketType ticketType) {
+    public ListTicketTicketTypeResponseDto convertToListTicketTicketTypeResponseDto(
+            TicketType ticketType) {
         ListTicketTicketTypeResponseDto dto = new ListTicketTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());
@@ -275,7 +297,8 @@ public class TicketServiceImpl implements TicketService {
     }
 
     @Override
-    public TicketSaleTicketTypeResponseDto convertToTicketSaleTicketTypeResponseDto(TicketType ticketType) {
+    public TicketSaleTicketTypeResponseDto convertToTicketSaleTicketTypeResponseDto(
+            TicketType ticketType) {
         TicketSaleTicketTypeResponseDto dto = new TicketSaleTicketTypeResponseDto();
         dto.setId(ticketType.getDomainId());
         dto.setName(ticketType.getName());

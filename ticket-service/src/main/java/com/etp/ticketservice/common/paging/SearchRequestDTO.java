@@ -6,9 +6,9 @@ import lombok.Setter;
 @Getter
 @Setter
 public class SearchRequestDTO {
-	protected Paging paging;
+    protected Paging paging;
 
-	public SearchRequestDTO() {
-		this.paging = new Paging();
-	}
+    public SearchRequestDTO() {
+        this.paging = new Paging();
+    }
 }

@@ -1,7 +1,6 @@
 package com.etp.ticketservice.payments;
 
 import com.etp.ticketservice.user.User;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,6 +14,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,9 +23,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
-
-import java.time.LocalDateTime;
-import java.util.Objects;
 
 // Deliberately NOT shaped like every other entity in this codebase -- no domainId/
 // @NaturalId, since this is purely internal bookkeeping (the provider-customer mapping),
@@ -40,16 +38,12 @@ import java.util.Objects;
 public class PaymentCustomer {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "paymentCustomerGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "paymentCustomerGenerator")
     @SequenceGenerator(
             name = "paymentCustomerGenerator",
             sequenceName = "payment_customers_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -80,10 +74,10 @@ public class PaymentCustomer {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         PaymentCustomer that = (PaymentCustomer) o;
-        return Objects.equals(id, that.id) &&
-               provider == that.provider &&
-               Objects.equals(providerCustomerId, that.providerCustomerId) &&
-               Objects.equals(createdAt, that.createdAt);
+        return Objects.equals(id, that.id)
+                && provider == that.provider
+                && Objects.equals(providerCustomerId, that.providerCustomerId)
+                && Objects.equals(createdAt, that.createdAt);
     }
 
     @Override

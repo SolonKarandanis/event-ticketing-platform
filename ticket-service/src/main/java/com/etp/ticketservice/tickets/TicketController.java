@@ -5,6 +5,7 @@ import com.etp.ticketservice.tickets.dto.CancelTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.GetTicketResponseDto;
 import com.etp.ticketservice.tickets.dto.ListTicketResponseDto;
 import com.etp.ticketservice.tickets.qrcode.QrCodeService;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,8 +23,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping(path = "/api/v1/tickets")
 @RequiredArgsConstructor
@@ -35,16 +34,17 @@ public class TicketController {
     private final QrCodeService qrCodeService;
 
     @GetMapping
-    public Page<ListTicketResponseDto> listTickets(@AuthenticationPrincipal Jwt jwt, Pageable pageable) {
+    public Page<ListTicketResponseDto> listTickets(
+            @AuthenticationPrincipal Jwt jwt, Pageable pageable) {
         log.info("TicketController --> listTickets");
-        return ticketService.listTicketsForUser(
-                parseUserId(jwt),
-                pageable
-        ).map(ticketService::convertToListTicketResponseDto);
+        return ticketService
+                .listTicketsForUser(parseUserId(jwt), pageable)
+                .map(ticketService::convertToListTicketResponseDto);
     }
 
     @GetMapping(path = "/{ticketId}")
-    public ResponseEntity<GetTicketResponseDto> getTicket(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId) {
+    public ResponseEntity<GetTicketResponseDto> getTicket(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId) {
         log.info("TicketController --> getTicket");
         return ticketService
                 .getTicketForUser(parseUserId(jwt), ticketId)
@@ -60,25 +60,23 @@ public class TicketController {
             @RequestBody(required = false) CancelTicketRequestDto cancelTicketRequestDto) {
         log.info("TicketController --> cancelTicket --> id: {}", ticketId);
         String note = null != cancelTicketRequestDto ? cancelTicketRequestDto.getNote() : null;
-        Ticket cancelledTicket = ticketService.cancelTicketForUser(parseUserId(jwt), ticketId, note);
+        Ticket cancelledTicket =
+                ticketService.cancelTicketForUser(parseUserId(jwt), ticketId, note);
         return ResponseEntity.ok(ticketService.convertToCancelTicketResponseDto(cancelledTicket));
     }
 
     @GetMapping(path = "/{ticketId}/qr-codes")
-    public ResponseEntity<byte[]> getTicketQrCode(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId) {
+    public ResponseEntity<byte[]> getTicketQrCode(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID ticketId) {
         log.info("TicketController --> getTicketQrCode");
-        byte[] qrCodeImage = qrCodeService.getQrCodeImageForUserAndTicket(
-                parseUserId(jwt),
-                ticketId
-        );
+        byte[] qrCodeImage =
+                qrCodeService.getQrCodeImageForUserAndTicket(parseUserId(jwt), ticketId);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.IMAGE_PNG);
         headers.setContentLength(qrCodeImage.length);
 
-        return ResponseEntity.ok()
-                .headers(headers)
-                .body(qrCodeImage);
+        return ResponseEntity.ok().headers(headers).body(qrCodeImage);
     }
 
     private UUID parseUserId(Jwt jwt) {

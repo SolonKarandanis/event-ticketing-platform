@@ -2,7 +2,6 @@ package com.etp.ticketservice.tickettypes;
 
 import com.etp.ticketservice.events.Event;
 import com.etp.ticketservice.tickets.Ticket;
-
 import jakarta.persistence.Basic;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -16,6 +15,11 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,12 +29,6 @@ import lombok.Setter;
 import org.hibernate.annotations.NaturalId;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
-
-import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ticket_types")
@@ -42,16 +40,12 @@ import java.util.UUID;
 public class TicketType {
 
     @Id
-    @GeneratedValue(
-            strategy = GenerationType.SEQUENCE,
-            generator = "ticketTypeGenerator"
-    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "ticketTypeGenerator")
     @SequenceGenerator(
             name = "ticketTypeGenerator",
             sequenceName = "ticket_types_seq",
             allocationSize = 1,
-            initialValue = 1
-    )
+            initialValue = 1)
     @Basic(optional = false)
     @Column(name = "id")
     private Long id;
@@ -115,20 +109,28 @@ public class TicketType {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         TicketType ticketType = (TicketType) o;
-        return Objects.equals(id, ticketType.id) &&
-               Objects.equals(domainId, ticketType.domainId) &&
-               Objects.equals(name, ticketType.name) &&
-               Objects.equals(priceMinorUnits, ticketType.priceMinorUnits) &&
-               Objects.equals(currency, ticketType.currency) &&
-               Objects.equals(description, ticketType.description) &&
-               Objects.equals(totalAvailable, ticketType.totalAvailable) &&
-               Objects.equals(createdAt, ticketType.createdAt) &&
-               Objects.equals(updatedAt, ticketType.updatedAt);
+        return Objects.equals(id, ticketType.id)
+                && Objects.equals(domainId, ticketType.domainId)
+                && Objects.equals(name, ticketType.name)
+                && Objects.equals(priceMinorUnits, ticketType.priceMinorUnits)
+                && Objects.equals(currency, ticketType.currency)
+                && Objects.equals(description, ticketType.description)
+                && Objects.equals(totalAvailable, ticketType.totalAvailable)
+                && Objects.equals(createdAt, ticketType.createdAt)
+                && Objects.equals(updatedAt, ticketType.updatedAt);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, domainId, name, priceMinorUnits, currency, description, totalAvailable,
-                createdAt, updatedAt);
+        return Objects.hash(
+                id,
+                domainId,
+                name,
+                priceMinorUnits,
+                currency,
+                description,
+                totalAvailable,
+                createdAt,
+                updatedAt);
     }
 }

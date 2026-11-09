@@ -33,14 +33,16 @@ public class QuartzConfiguration {
         return TriggerBuilder.newTrigger()
                 .forJob(ticketOrderExpiryJobDetail)
                 .withIdentity("ticketOrderExpiryTrigger", "orders")
-                .withSchedule(SimpleScheduleBuilder.simpleSchedule()
-                        .withIntervalInMilliseconds(SWEEP_INTERVAL_MS)
-                        .repeatForever())
+                .withSchedule(
+                        SimpleScheduleBuilder.simpleSchedule()
+                                .withIntervalInMilliseconds(SWEEP_INTERVAL_MS)
+                                .repeatForever())
                 .build();
     }
 
     @Bean
-    public SchedulerFactoryBeanCustomizer autowiringJobFactoryCustomizer(ApplicationContext applicationContext) {
+    public SchedulerFactoryBeanCustomizer autowiringJobFactoryCustomizer(
+            ApplicationContext applicationContext) {
         AutowiringSpringBeanJobFactory jobFactory = new AutowiringSpringBeanJobFactory();
         jobFactory.setApplicationContext(applicationContext);
         return schedulerFactoryBean -> schedulerFactoryBean.setJobFactory(jobFactory);

@@ -10,7 +10,8 @@ import org.springframework.scheduling.quartz.SpringBeanJobFactory;
 // Quartz builds each Job instance itself via reflection on every fire, one job class
 // instantiation per trigger -- it never asks the Spring container for the @Component-managed
 // singleton. Without this, @Autowired fields on a Job (e.g. TicketOrderExpiryJob) stay null.
-public class AutowiringSpringBeanJobFactory extends SpringBeanJobFactory implements ApplicationContextAware {
+public class AutowiringSpringBeanJobFactory extends SpringBeanJobFactory
+        implements ApplicationContextAware {
 
     private transient AutowireCapableBeanFactory beanFactory;
 
@@ -20,7 +21,8 @@ public class AutowiringSpringBeanJobFactory extends SpringBeanJobFactory impleme
     }
 
     @Override
-    protected @NonNull Object createJobInstance(@NonNull TriggerFiredBundle bundle) throws Exception {
+    protected @NonNull Object createJobInstance(@NonNull TriggerFiredBundle bundle)
+            throws Exception {
         Object job = super.createJobInstance(bundle);
         beanFactory.autowireBean(job);
         return job;

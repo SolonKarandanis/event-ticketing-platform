@@ -8,8 +8,7 @@ public final class MoneyUtils {
 
     private static final int MINOR_UNITS_PER_MAJOR_UNIT = 100;
 
-    private MoneyUtils() {
-    }
+    private MoneyUtils() {}
 
     public static Long toMinorUnits(Double majorUnitsAmount) {
         if (null == majorUnitsAmount) {

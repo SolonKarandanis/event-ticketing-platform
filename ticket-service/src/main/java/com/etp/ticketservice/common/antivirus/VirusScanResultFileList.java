@@ -1,9 +1,8 @@
 package com.etp.ticketservice.common.antivirus;
 
-import lombok.*;
-
 import java.io.Serializable;
 import java.util.Collection;
+import lombok.*;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -16,6 +15,5 @@ public class VirusScanResultFileList implements Serializable {
 
     private Result result;
 
-    @Singular
-    private Collection<VirusScanResultFile> scanFiles;
+    @Singular private Collection<VirusScanResultFile> scanFiles;
 }

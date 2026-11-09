@@ -1,41 +1,52 @@
 package com.etp.ticketservice.events;
 
-import com.etp.ticketservice.events.images.EventImageService;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.etp.ticketservice.common.util.MoneyUtils;
+import com.etp.ticketservice.events.exception.EventNotFoundException;
+import com.etp.ticketservice.events.exception.EventNotPublishableException;
+import com.etp.ticketservice.events.exception.EventUpdateException;
+import com.etp.ticketservice.events.exception.InvalidEventDatesException;
+import com.etp.ticketservice.events.exception.InvalidEventStatusTransitionException;
 import com.etp.ticketservice.events.images.EventImage;
+import com.etp.ticketservice.events.images.EventImageRepository;
+import com.etp.ticketservice.events.images.EventImageService;
+import com.etp.ticketservice.events.images.exception.EventImageNotFoundException;
+import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
+import com.etp.ticketservice.events.images.exception.TooManyEventImagesException;
+import com.etp.ticketservice.events.images.model.EventImageRequest;
+import com.etp.ticketservice.events.model.CreateEventRequest;
+import com.etp.ticketservice.events.model.UpdateEventRequest;
 import com.etp.ticketservice.orders.OrderStatusEnum;
 import com.etp.ticketservice.orders.TicketOrderItemRepository;
 import com.etp.ticketservice.tickets.Ticket;
+import com.etp.ticketservice.tickets.TicketRepository;
 import com.etp.ticketservice.tickets.TicketService;
-import com.etp.ticketservice.tickettypes.TicketType;
-import com.etp.ticketservice.ticketvalidation.TicketValidation;
-import com.etp.ticketservice.user.User;
-import com.etp.ticketservice.venues.Venue;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
-import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
-import com.etp.ticketservice.events.images.exception.EventImageNotFoundException;
-import com.etp.ticketservice.events.exception.EventNotFoundException;
-import com.etp.ticketservice.events.exception.EventNotPublishableException;
-import com.etp.ticketservice.common.exception.EventTicketException;
-import com.etp.ticketservice.events.exception.EventUpdateException;
-import com.etp.ticketservice.events.exception.InvalidEventDatesException;
-import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
-import com.etp.ticketservice.events.exception.InvalidEventStatusTransitionException;
+import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.tickettypes.exception.TicketTypeHasSoldTicketsException;
 import com.etp.ticketservice.tickettypes.exception.TicketTypeNotFoundException;
-import com.etp.ticketservice.events.images.exception.TooManyEventImagesException;
-import com.etp.ticketservice.user.UserNotFoundException;
-import com.etp.ticketservice.venues.exception.VenueNotFoundException;
-import com.etp.ticketservice.events.model.CreateEventRequest;
 import com.etp.ticketservice.tickettypes.model.CreateTicketTypeRequest;
-import com.etp.ticketservice.events.images.model.EventImageRequest;
-import com.etp.ticketservice.events.model.UpdateEventRequest;
 import com.etp.ticketservice.tickettypes.model.UpdateTicketTypeRequest;
-import com.etp.ticketservice.events.images.EventImageRepository;
-import com.etp.ticketservice.tickets.TicketRepository;
+import com.etp.ticketservice.ticketvalidation.TicketValidation;
+import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.user.User;
+import com.etp.ticketservice.user.UserNotFoundException;
 import com.etp.ticketservice.user.UserRepository;
+import com.etp.ticketservice.venues.Venue;
 import com.etp.ticketservice.venues.VenueRepository;
+import com.etp.ticketservice.venues.exception.VenueNotFoundException;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,25 +54,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 // Pure Mockito unit tests -- no Spring context, no database, every collaborator (the
 // repositories, EventImageService, TicketEventPublisher) is mocked. This is deliberately
@@ -75,22 +69,14 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class EventServiceImplTest {
 
-    @Mock
-    private UserRepository userRepository;
-    @Mock
-    private VenueRepository venueRepository;
-    @Mock
-    private EventRepository eventRepository;
-    @Mock
-    private TicketRepository ticketRepository;
-    @Mock
-    private TicketOrderItemRepository ticketOrderItemRepository;
-    @Mock
-    private EventImageRepository eventImageRepository;
-    @Mock
-    private TicketService ticketService;
-    @Mock
-    private EventImageService eventImageService;
+    @Mock private UserRepository userRepository;
+    @Mock private VenueRepository venueRepository;
+    @Mock private EventRepository eventRepository;
+    @Mock private TicketRepository ticketRepository;
+    @Mock private TicketOrderItemRepository ticketOrderItemRepository;
+    @Mock private EventImageRepository eventImageRepository;
+    @Mock private TicketService ticketService;
+    @Mock private EventImageService eventImageService;
 
     // Constructed directly in setUp(), not via @InjectMocks -- currency is a
     // constructor-injected String (@Value), which @InjectMocks has no mock to satisfy.
@@ -106,10 +92,17 @@ class EventServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        eventService = new EventServiceImpl(
-                userRepository, venueRepository, eventRepository, ticketRepository,
-                ticketOrderItemRepository, eventImageRepository, ticketService,
-                eventImageService, "usd");
+        eventService =
+                new EventServiceImpl(
+                        userRepository,
+                        venueRepository,
+                        eventRepository,
+                        ticketRepository,
+                        ticketOrderItemRepository,
+                        eventImageRepository,
+                        ticketService,
+                        eventImageService,
+                        "usd");
 
         organizer = new User();
         organizer.setDomainId(ORGANIZER_ID);
@@ -125,7 +118,9 @@ class EventServiceImplTest {
     void createEvent_organizerNotFound_throws() {
         when(userRepository.findByDomainId(ORGANIZER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> eventService.createEvent(ORGANIZER_ID, validCreateEventRequest(), List.of()))
+        assertThatThrownBy(() ->
+                        eventService.createEvent(
+                                ORGANIZER_ID, validCreateEventRequest(), List.of()))
                 .isInstanceOf(UserNotFoundException.class);
 
         verify(venueRepository, never()).findByDomainId(any());
@@ -136,7 +131,9 @@ class EventServiceImplTest {
         when(userRepository.findByDomainId(ORGANIZER_ID)).thenReturn(Optional.of(organizer));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> eventService.createEvent(ORGANIZER_ID, validCreateEventRequest(), List.of()))
+        assertThatThrownBy(() ->
+                        eventService.createEvent(
+                                ORGANIZER_ID, validCreateEventRequest(), List.of()))
                 .isInstanceOf(VenueNotFoundException.class);
     }
 
@@ -160,13 +157,23 @@ class EventServiceImplTest {
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
 
         CreateEventRequest request = validCreateEventRequest();
-        request.setImages(List.of(
-                imageRequest(null, 0), imageRequest(null, 1), imageRequest(null, 2), imageRequest(null, 3),
-                imageRequest(null, 4), imageRequest(null, 5), imageRequest(null, 6), imageRequest(null, 7),
-                imageRequest(null, 8)));
+        request.setImages(
+                List.of(
+                        imageRequest(null, 0),
+                        imageRequest(null, 1),
+                        imageRequest(null, 2),
+                        imageRequest(null, 3),
+                        imageRequest(null, 4),
+                        imageRequest(null, 5),
+                        imageRequest(null, 6),
+                        imageRequest(null, 7),
+                        imageRequest(null, 8)));
 
-        assertThatThrownBy(() -> eventService.createEvent(ORGANIZER_ID, request,
-                List.of(new MockMultipartFile("f", new byte[0]))))
+        assertThatThrownBy(() ->
+                        eventService.createEvent(
+                                ORGANIZER_ID,
+                                request,
+                                List.of(new MockMultipartFile("f", new byte[0]))))
                 .isInstanceOf(TooManyEventImagesException.class);
     }
 
@@ -186,11 +193,13 @@ class EventServiceImplTest {
     void createEvent_happyPath_startsAsDraftWithTicketTypesAndImages() {
         when(userRepository.findByDomainId(ORGANIZER_ID)).thenReturn(Optional.of(organizer));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
-        when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(eventRepository.save(any(Event.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         CreateEventRequest request = validCreateEventRequest();
         request.setImages(List.of(imageRequest(null, 0)));
-        MockMultipartFile imageFile = new MockMultipartFile("newImages", "cover.jpg", "image/jpeg", "bytes".getBytes());
+        MockMultipartFile imageFile =
+                new MockMultipartFile("newImages", "cover.jpg", "image/jpeg", "bytes".getBytes());
 
         Event created = eventService.createEvent(ORGANIZER_ID, request, List.of(imageFile));
 
@@ -210,7 +219,9 @@ class EventServiceImplTest {
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);
         request.setId(null);
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID, EVENT_ID, request, List.of()))
                 .isInstanceOf(EventUpdateException.class);
     }
 
@@ -218,16 +229,23 @@ class EventServiceImplTest {
     void updateEventForOrganizer_idMismatch_throws() {
         UpdateEventRequest request = validUpdateEventRequest(UUID.randomUUID());
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID, EVENT_ID, request, List.of()))
                 .isInstanceOf(EventUpdateException.class);
     }
 
     @Test
     void updateEventForOrganizer_notFound_throws() {
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.empty());
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(
-                ORGANIZER_ID, EVENT_ID, validUpdateEventRequest(EVENT_ID), List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID,
+                                EVENT_ID,
+                                validUpdateEventRequest(EVENT_ID),
+                                List.of()))
                 .isInstanceOf(EventNotFoundException.class);
     }
 
@@ -235,10 +253,15 @@ class EventServiceImplTest {
     void updateEventForOrganizer_terminalStatus_throwsInvalidTransition() {
         Event existingEvent = draftEvent();
         existingEvent.setStatus(EventStatusEnum.COMPLETED);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(existingEvent));
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(
-                ORGANIZER_ID, EVENT_ID, validUpdateEventRequest(EVENT_ID), List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID,
+                                EVENT_ID,
+                                validUpdateEventRequest(EVENT_ID),
+                                List.of()))
                 .isInstanceOf(InvalidEventStatusTransitionException.class);
 
         verify(venueRepository, never()).findByDomainId(any());
@@ -248,16 +271,21 @@ class EventServiceImplTest {
     void updateEventForOrganizer_removingTicketTypeWithSoldTickets_throws() {
         Event existingEvent = draftEvent();
         TicketType soldTicketType = ticketType(existingEvent, 100L, "General", 10.0);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
         when(ticketRepository.countByTicketTypeId(100L)).thenReturn(1);
-        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(0);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                        eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class)))
+                .thenReturn(0);
 
         // The request omits soldTicketType entirely -- an implicit removal.
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);
         request.setTicketTypes(List.of());
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID, EVENT_ID, request, List.of()))
                 .isInstanceOf(TicketTypeHasSoldTicketsException.class);
 
         assertThat(existingEvent.getTicketTypes()).contains(soldTicketType);
@@ -266,7 +294,8 @@ class EventServiceImplTest {
     @Test
     void updateEventForOrganizer_referencesUnknownTicketTypeId_throws() {
         Event existingEvent = draftEvent();
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
 
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);
@@ -276,7 +305,9 @@ class EventServiceImplTest {
         unknownTicketType.setPriceMinorUnits(500L);
         request.setTicketTypes(List.of(unknownTicketType));
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID, EVENT_ID, request, List.of()))
                 .isInstanceOf(TicketTypeNotFoundException.class);
     }
 
@@ -285,10 +316,13 @@ class EventServiceImplTest {
         Event existingEvent = draftEvent();
         TicketType toKeep = ticketType(existingEvent, 100L, "General", 10.0);
         TicketType toRemove = ticketType(existingEvent, 101L, "VIP", 50.0);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
         when(ticketRepository.countByTicketTypeId(101L)).thenReturn(0);
-        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(101L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(0);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                        eq(101L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class)))
+                .thenReturn(0);
         when(eventRepository.save(existingEvent)).thenReturn(existingEvent);
 
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);
@@ -301,10 +335,12 @@ class EventServiceImplTest {
         createRequest.setPriceMinorUnits(800L);
         request.setTicketTypes(List.of(keepRequest, createRequest));
 
-        Event updated = eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of());
+        Event updated =
+                eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of());
 
         assertThat(updated.getTicketTypes()).hasSize(2);
-        assertThat(updated.getTicketTypes()).extracting(TicketType::getName)
+        assertThat(updated.getTicketTypes())
+                .extracting(TicketType::getName)
                 .containsExactlyInAnyOrder("General (renamed)", "Early Bird");
         assertThat(updated.getTicketTypes()).doesNotContain(toRemove);
         assertThat(toKeep.getPriceMinorUnits()).isEqualTo(1200L);
@@ -313,14 +349,17 @@ class EventServiceImplTest {
     @Test
     void updateEventForOrganizer_imageIdNotOnEvent_throwsImageNotFound() {
         Event existingEvent = draftEvent();
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
 
         UpdateEventRequest request = validUpdateEventRequest(EVENT_ID);
         request.setTicketTypes(List.of());
         request.setImages(List.of(imageRequest(UUID.randomUUID(), null)));
 
-        assertThatThrownBy(() -> eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of()))
+        assertThatThrownBy(() ->
+                        eventService.updateEventForOrganizer(
+                                ORGANIZER_ID, EVENT_ID, request, List.of()))
                 .isInstanceOf(EventImageNotFoundException.class);
     }
 
@@ -331,7 +370,8 @@ class EventServiceImplTest {
         existingImage.setDomainId(UUID.randomUUID());
         existingImage.setPosition(0);
         existingEvent.addImage(existingImage);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(existingEvent));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(existingEvent));
         when(venueRepository.findByDomainId(VENUE_ID)).thenReturn(Optional.of(venue));
         when(eventRepository.save(existingEvent)).thenReturn(existingEvent);
 
@@ -339,7 +379,8 @@ class EventServiceImplTest {
         request.setTicketTypes(List.of());
         request.setImages(List.of());
 
-        Event updated = eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of());
+        Event updated =
+                eventService.updateEventForOrganizer(ORGANIZER_ID, EVENT_ID, request, List.of());
 
         assertThat(updated.getImages()).isEmpty();
         verify(eventImageService).deleteImage(existingImage.getDomainId());
@@ -351,7 +392,8 @@ class EventServiceImplTest {
     void publishEvent_notDraft_throws() {
         Event event = draftEvent();
         event.setStatus(EventStatusEnum.PUBLISHED);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
 
         assertThatThrownBy(() -> eventService.publishEvent(ORGANIZER_ID, EVENT_ID))
                 .isInstanceOf(InvalidEventStatusTransitionException.class);
@@ -360,7 +402,8 @@ class EventServiceImplTest {
     @Test
     void publishEvent_noTicketTypes_throwsNotPublishable() {
         Event event = draftEvent();
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
 
         assertThatThrownBy(() -> eventService.publishEvent(ORGANIZER_ID, EVENT_ID))
                 .isInstanceOf(EventNotPublishableException.class);
@@ -370,7 +413,8 @@ class EventServiceImplTest {
     void publishEvent_withTicketTypes_transitionsToPublished() {
         Event event = draftEvent();
         ticketType(event, 100L, "General", 10.0);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
         when(eventRepository.save(event)).thenReturn(event);
 
         Event published = eventService.publishEvent(ORGANIZER_ID, EVENT_ID);
@@ -383,7 +427,8 @@ class EventServiceImplTest {
     @Test
     void cancelEvent_notPublished_throws() {
         Event event = draftEvent();
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
 
         assertThatThrownBy(() -> eventService.cancelEvent(ORGANIZER_ID, EVENT_ID))
                 .isInstanceOf(InvalidEventStatusTransitionException.class);
@@ -394,7 +439,8 @@ class EventServiceImplTest {
         Event event = draftEvent();
         event.setStatus(EventStatusEnum.PUBLISHED);
         event.setId(500L);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
         when(eventRepository.save(event)).thenReturn(event);
 
         Ticket unvalidatedTicket = new Ticket();
@@ -408,7 +454,8 @@ class EventServiceImplTest {
         validation.setStatus(TicketValidationStatusEnum.VALID);
         validatedTicket.addValidation(validation);
 
-        when(ticketRepository.findByEventIdAndStatusNotWithValidations(500L, TicketStatusEnum.CANCELLED))
+        when(ticketRepository.findByEventIdAndStatusNotWithValidations(
+                        500L, TicketStatusEnum.CANCELLED))
                 .thenReturn(List.of(unvalidatedTicket, validatedTicket));
 
         eventService.cancelEvent(ORGANIZER_ID, EVENT_ID);
@@ -417,7 +464,8 @@ class EventServiceImplTest {
         // Actual cancellation/refund now happens inside TicketService (issue #22) --
         // this cascade's own job is just deciding which tickets to call it for.
         verify(ticketService).cancelTicketForEventCancellation(unvalidatedTicket.getDomainId());
-        verify(ticketService, never()).cancelTicketForEventCancellation(validatedTicket.getDomainId());
+        verify(ticketService, never())
+                .cancelTicketForEventCancellation(validatedTicket.getDomainId());
     }
 
     // ---- completeEvent ----
@@ -425,7 +473,8 @@ class EventServiceImplTest {
     @Test
     void completeEvent_notPublished_throws() {
         Event event = draftEvent();
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
 
         assertThatThrownBy(() -> eventService.completeEvent(ORGANIZER_ID, EVENT_ID))
                 .isInstanceOf(InvalidEventStatusTransitionException.class);
@@ -435,7 +484,8 @@ class EventServiceImplTest {
     void completeEvent_published_transitionsToCompleted() {
         Event event = draftEvent();
         event.setStatus(EventStatusEnum.PUBLISHED);
-        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndOrganizerDomainId(EVENT_ID, ORGANIZER_ID))
+                .thenReturn(Optional.of(event));
         when(eventRepository.save(event)).thenReturn(event);
 
         Event completed = eventService.completeEvent(ORGANIZER_ID, EVENT_ID);
@@ -448,41 +498,83 @@ class EventServiceImplTest {
     @Test
     void findPublishedEvents_distanceSortWithNoOrigin_fallsBackToSoonest() {
         when(eventRepository.findPublishedEventsSortedBySoonest(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Page.empty());
 
-        eventService.findPublishedEvents(null, null, null, null, null, null, null, null, null,
-                PublishedEventsSortBy.DISTANCE, PageRequest.of(0, 10));
+        eventService.findPublishedEvents(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                PublishedEventsSortBy.DISTANCE,
+                PageRequest.of(0, 10));
 
-        verify(eventRepository).findPublishedEventsSortedBySoonest(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
-        verify(eventRepository, never()).findPublishedEventsSortedByDistance(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(eventRepository)
+                .findPublishedEventsSortedBySoonest(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(eventRepository, never())
+                .findPublishedEventsSortedByDistance(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void findPublishedEvents_priceAscSort_dispatchesToPriceAscQuery() {
         when(eventRepository.findPublishedEventsSortedByPriceAsc(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(Page.empty());
 
-        eventService.findPublishedEvents(null, null, null, null, null, null, null, null, null,
-                PublishedEventsSortBy.PRICE_ASC, PageRequest.of(0, 10));
+        eventService.findPublishedEvents(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                PublishedEventsSortBy.PRICE_ASC,
+                PageRequest.of(0, 10));
 
-        verify(eventRepository).findPublishedEventsSortedByPriceAsc(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(eventRepository)
+                .findPublishedEventsSortedByPriceAsc(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void findPublishedEvents_withNoExplicitDateRange_defaultsFromToNow() {
         ArgumentCaptor<LocalDateTime> fromCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
         when(eventRepository.findPublishedEventsSortedBySoonest(
-                any(), any(), fromCaptor.capture(), any(), any(), any(), any(), any(), any(), any()))
+                        any(),
+                        any(),
+                        fromCaptor.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
                 .thenReturn(Page.empty());
 
         LocalDateTime before = LocalDateTime.now();
-        eventService.findPublishedEvents(null, null, null, null, null, null, null, null, null,
-                PublishedEventsSortBy.SOONEST, PageRequest.of(0, 10));
+        eventService.findPublishedEvents(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                PublishedEventsSortBy.SOONEST,
+                PageRequest.of(0, 10));
         LocalDateTime after = LocalDateTime.now();
 
         assertThat(fromCaptor.getValue()).isBetween(before, after);
@@ -496,11 +588,30 @@ class EventServiceImplTest {
         ArgumentCaptor<Long> minPriceCaptor = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<Long> maxPriceCaptor = ArgumentCaptor.forClass(Long.class);
         when(eventRepository.findPublishedEventsSortedBySoonest(
-                any(), any(), any(), any(), minPriceCaptor.capture(), maxPriceCaptor.capture(), any(), any(), any(), any()))
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        minPriceCaptor.capture(),
+                        maxPriceCaptor.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any()))
                 .thenReturn(Page.empty());
 
-        eventService.findPublishedEvents(null, null, null, 19.99, 49.99, null, null, null, null,
-                PublishedEventsSortBy.SOONEST, PageRequest.of(0, 10));
+        eventService.findPublishedEvents(
+                null,
+                null,
+                null,
+                19.99,
+                49.99,
+                null,
+                null,
+                null,
+                null,
+                PublishedEventsSortBy.SOONEST,
+                PageRequest.of(0, 10));
 
         assertThat(minPriceCaptor.getValue()).isEqualTo(1999L);
         assertThat(maxPriceCaptor.getValue()).isEqualTo(4999L);
@@ -521,7 +632,9 @@ class EventServiceImplTest {
 
         // Inserted out of position order -- LinkedHashSet iteration order would put
         // "second" first if the conversion trusted insertion order instead of sorting.
-        var result = eventService.convertToEventImageResponseDtoList(new java.util.LinkedHashSet<>(Set.of(second, first)));
+        var result =
+                eventService.convertToEventImageResponseDtoList(
+                        new java.util.LinkedHashSet<>(Set.of(second, first)));
 
         assertThat(result).extracting(dto -> dto.getAltText()).containsExactly("First", "Second");
     }

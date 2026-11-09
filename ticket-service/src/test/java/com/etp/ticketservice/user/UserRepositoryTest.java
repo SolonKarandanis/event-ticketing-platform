@@ -1,15 +1,14 @@
 package com.etp.ticketservice.user;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.etp.ticketservice.common.AbstractPostgresContainerTest;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 // Real-Postgres slice test, same rationale as EventRepositoryTest. Nothing native here,
 // but UserRepository backs UserProvisioningFilter -- a bean that runs on every single
@@ -20,8 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class UserRepositoryTest extends AbstractPostgresContainerTest {
 
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserRepository userRepository;
 
     @Test
     void existsByDomainId_returnsTrue_whenUserAlreadyProvisioned() {

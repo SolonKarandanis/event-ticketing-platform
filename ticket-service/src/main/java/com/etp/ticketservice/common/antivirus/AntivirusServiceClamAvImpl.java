@@ -1,5 +1,8 @@
 package com.etp.ticketservice.common.antivirus;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -7,17 +10,12 @@ import org.springframework.stereotype.Service;
 import xyz.capybara.clamav.ClamavClient;
 import xyz.capybara.clamav.commands.scan.result.ScanResult;
 
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "antivirus.clamav.enabled", havingValue = "true")
-public class AntivirusServiceClamAvImpl extends AbstractAntivirusServiceImpl{
+public class AntivirusServiceClamAvImpl extends AbstractAntivirusServiceImpl {
 
-    @Autowired
-    private ClamavClient avClient;
+    @Autowired private ClamavClient avClient;
 
     @Override
     protected boolean doPing() {

@@ -1,13 +1,13 @@
 package com.etp.ticketservice.payments;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.etp.ticketservice.common.AbstractPostgresContainerTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.dao.DataIntegrityViolationException;
-
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Real-Postgres slice test -- the one place proving ProcessedWebhookEventServiceImpl's
 // idempotency check actually works end to end: that a duplicate (provider,
@@ -18,8 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ProcessedWebhookEventRepositoryTest extends AbstractPostgresContainerTest {
 
-    @Autowired
-    private ProcessedWebhookEventRepository processedWebhookEventRepository;
+    @Autowired private ProcessedWebhookEventRepository processedWebhookEventRepository;
 
     @Test
     void saveAndFlush_duplicateProviderAndProviderEventId_throwsDataIntegrityViolation() {

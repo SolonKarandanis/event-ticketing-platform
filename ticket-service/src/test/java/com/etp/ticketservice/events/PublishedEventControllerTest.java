@@ -1,24 +1,5 @@
 package com.etp.ticketservice.events;
 
-import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.events.dto.ListPublishedEventsRequestDto;
-import com.etp.ticketservice.events.dto.GetPublishedEventDetailsResponseDto;
-import com.etp.ticketservice.events.dto.ListPublishedEventResponseDto;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
-import tools.jackson.databind.ObjectMapper;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
 import static com.etp.ticketservice.common.TestJwts.withSubject;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -31,6 +12,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.etp.ticketservice.common.UserProvisioningTestConfig;
+import com.etp.ticketservice.events.dto.GetPublishedEventDetailsResponseDto;
+import com.etp.ticketservice.events.dto.ListPublishedEventResponseDto;
+import com.etp.ticketservice.events.dto.ListPublishedEventsRequestDto;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
+
 // Every endpoint here is public per the real SecurityConfig (GET/POST
 // /api/v1/published-events/** is permitAll), but this slice doesn't import
 // SecurityConfig -- so, same as VenueControllerTest, every request still needs
@@ -42,21 +41,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(UserProvisioningTestConfig.class)
 class PublishedEventControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private EventService eventService;
+    @MockitoBean private EventService eventService;
 
     private static final UUID CALLER_ID = UUID.randomUUID();
 
     @Test
     void listPublishedEvents_withNoBody_defaultsToEmptyCriteriaAndSoonestSort() throws Exception {
         when(eventService.findPublishedEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq(PublishedEventsSortBy.SOONEST), any(Pageable.class)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(PublishedEventsSortBy.SOONEST),
+                        any(Pageable.class)))
                 .thenReturn(Page.empty());
 
         mockMvc.perform(post("/api/v1/published-events/search").with(withSubject(CALLER_ID)))
@@ -80,21 +86,41 @@ class PublishedEventControllerTest {
         responseDto.setName("Summer Fest");
 
         when(eventService.findPublishedEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq(PublishedEventsSortBy.PRICE_ASC), any(Pageable.class)))
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(PublishedEventsSortBy.PRICE_ASC),
+                        any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(event)));
         when(eventService.convertToListPublishedEventResponseDto(event)).thenReturn(responseDto);
 
-        mockMvc.perform(post("/api/v1/published-events/search")
-                        .with(withSubject(CALLER_ID))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(request)))
+        mockMvc.perform(
+                        post("/api/v1/published-events/search")
+                                .with(withSubject(CALLER_ID))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].name").value("Summer Fest"));
 
-        verify(eventService).findPublishedEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq(PublishedEventsSortBy.PRICE_ASC), eq(Pageable.ofSize(5).withPage(2)));
+        verify(eventService)
+                .findPublishedEvents(
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        isNull(),
+                        eq(PublishedEventsSortBy.PRICE_ASC),
+                        eq(Pageable.ofSize(5).withPage(2)));
     }
 
     @Test
@@ -116,9 +142,12 @@ class PublishedEventControllerTest {
         responseDto.setName("Summer Fest");
 
         when(eventService.getPublishedEvent(eventId)).thenReturn(Optional.of(event));
-        when(eventService.convertToGetPublishedEventDetailsResponseDto(event)).thenReturn(responseDto);
+        when(eventService.convertToGetPublishedEventDetailsResponseDto(event))
+                .thenReturn(responseDto);
 
-        mockMvc.perform(get("/api/v1/published-events/{eventId}", eventId).with(withSubject(CALLER_ID)))
+        mockMvc.perform(
+                        get("/api/v1/published-events/{eventId}", eventId)
+                                .with(withSubject(CALLER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Summer Fest"));
     }
@@ -128,7 +157,9 @@ class PublishedEventControllerTest {
         UUID eventId = UUID.randomUUID();
         when(eventService.getPublishedEvent(eventId)).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/api/v1/published-events/{eventId}", eventId).with(withSubject(CALLER_ID)))
+        mockMvc.perform(
+                        get("/api/v1/published-events/{eventId}", eventId)
+                                .with(withSubject(CALLER_ID)))
                 .andExpect(status().isNotFound());
     }
 
@@ -137,10 +168,12 @@ class PublishedEventControllerTest {
         UUID eventId = UUID.randomUUID();
         UUID imageId = UUID.randomUUID();
         byte[] jpegBytes = {(byte) 0xff, (byte) 0xd8, (byte) 0xff};
-        when(eventService.getPublishedEventImage(eventId, imageId)).thenReturn(Optional.of(jpegBytes));
+        when(eventService.getPublishedEventImage(eventId, imageId))
+                .thenReturn(Optional.of(jpegBytes));
 
-        mockMvc.perform(get("/api/v1/published-events/{eventId}/images/{imageId}", eventId, imageId)
-                        .with(withSubject(CALLER_ID)))
+        mockMvc.perform(
+                        get("/api/v1/published-events/{eventId}/images/{imageId}", eventId, imageId)
+                                .with(withSubject(CALLER_ID)))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("image/jpeg"))
                 .andExpect(content().bytes(jpegBytes));
@@ -152,8 +185,9 @@ class PublishedEventControllerTest {
         UUID imageId = UUID.randomUUID();
         when(eventService.getPublishedEventImage(eventId, imageId)).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/api/v1/published-events/{eventId}/images/{imageId}", eventId, imageId)
-                        .with(withSubject(CALLER_ID)))
+        mockMvc.perform(
+                        get("/api/v1/published-events/{eventId}/images/{imageId}", eventId, imageId)
+                                .with(withSubject(CALLER_ID)))
                 .andExpect(status().isNotFound());
     }
 }

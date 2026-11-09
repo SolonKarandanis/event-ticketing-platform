@@ -2,17 +2,16 @@ package com.etp.ticketservice.events.images;
 
 import com.etp.ticketservice.common.exception.ErrorCode;
 import com.etp.ticketservice.events.images.exception.InvalidEventImageException;
-import lombok.extern.slf4j.Slf4j;
-import net.coobird.thumbnailator.Thumbnails;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import net.coobird.thumbnailator.Thumbnails;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Slf4j
@@ -23,7 +22,8 @@ public class EventImageServiceImpl implements EventImageService {
     // aspect ratio, without upscaling anything already smaller.
     private static final int MAX_DIMENSION = 1600;
     private static final long MAX_FILE_SIZE_BYTES = 5L * 1024 * 1024;
-    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
+    private static final Set<String> ALLOWED_CONTENT_TYPES =
+            Set.of("image/jpeg", "image/png", "image/webp");
 
     private final Path storageDir;
 
@@ -34,11 +34,13 @@ public class EventImageServiceImpl implements EventImageService {
     @Override
     public void storeImage(MultipartFile file, UUID imageDomainId) {
         if (file.isEmpty()) {
-            throw new InvalidEventImageException(ErrorCode.EVENT_IMAGE_INVALID_FILE, "file is empty");
+            throw new InvalidEventImageException(
+                    ErrorCode.EVENT_IMAGE_INVALID_FILE, "file is empty");
         }
 
         if (file.getSize() > MAX_FILE_SIZE_BYTES) {
-            throw new InvalidEventImageException(ErrorCode.EVENT_IMAGE_INVALID_FILE, "file exceeds 5MB");
+            throw new InvalidEventImageException(
+                    ErrorCode.EVENT_IMAGE_INVALID_FILE, "file exceeds 5MB");
         }
 
         // A fast-path rejection on the declared header -- cheap, and catches an
@@ -49,7 +51,8 @@ public class EventImageServiceImpl implements EventImageService {
         // the header claimed.
         String declaredContentType = file.getContentType();
         if (null == declaredContentType || !ALLOWED_CONTENT_TYPES.contains(declaredContentType)) {
-            throw new InvalidEventImageException(ErrorCode.EVENT_IMAGE_INVALID_FILE, declaredContentType);
+            throw new InvalidEventImageException(
+                    ErrorCode.EVENT_IMAGE_INVALID_FILE, declaredContentType);
         }
 
         try {

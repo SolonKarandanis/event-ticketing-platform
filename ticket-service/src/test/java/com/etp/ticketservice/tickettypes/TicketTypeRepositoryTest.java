@@ -1,20 +1,19 @@
 package com.etp.ticketservice.tickettypes;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.etp.ticketservice.common.AbstractPostgresContainerTest;
 import com.etp.ticketservice.events.Event;
+import com.etp.ticketservice.events.EventStatusEnum;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.venues.Venue;
-import com.etp.ticketservice.events.EventStatusEnum;
-import com.etp.ticketservice.common.AbstractPostgresContainerTest;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-
-import java.time.LocalDateTime;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 // Real-Postgres slice test, same rationale as EventRepositoryTest. Only proves
 // findByDomainIdWithLock resolves the right row -- it does NOT exercise the
@@ -27,17 +26,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class TicketTypeRepositoryTest extends AbstractPostgresContainerTest {
 
-    @Autowired
-    private TicketTypeRepository ticketTypeRepository;
+    @Autowired private TicketTypeRepository ticketTypeRepository;
 
     @Test
     void findByDomainIdWithLock_returnsTicketType_whenFound() {
         Venue venue = persistVenue("Main Hall", "Athens", null, null);
         User organizer = persistUser("Jane Organizer");
-        Event event = persistEvent("Test Event", venue, organizer, EventStatusEnum.PUBLISHED, LocalDateTime.now().plusDays(1));
+        Event event =
+                persistEvent(
+                        "Test Event",
+                        venue,
+                        organizer,
+                        EventStatusEnum.PUBLISHED,
+                        LocalDateTime.now().plusDays(1));
         TicketType ticketType = persistTicketType(event, "General", 25.0);
 
-        Optional<TicketType> found = ticketTypeRepository.findByDomainIdWithLock(ticketType.getDomainId());
+        Optional<TicketType> found =
+                ticketTypeRepository.findByDomainIdWithLock(ticketType.getDomainId());
 
         assertThat(found).isPresent();
         assertThat(found.get().getName()).isEqualTo("General");

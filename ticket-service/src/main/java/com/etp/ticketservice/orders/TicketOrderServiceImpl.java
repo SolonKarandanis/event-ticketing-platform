@@ -11,23 +11,22 @@ import com.etp.ticketservice.payments.PaymentProvider;
 import com.etp.ticketservice.tickets.TicketRepository;
 import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
+import com.etp.ticketservice.tickets.exception.TicketsSoldOutException;
 import com.etp.ticketservice.tickettypes.TicketType;
 import com.etp.ticketservice.tickettypes.TicketTypeRepository;
 import com.etp.ticketservice.tickettypes.exception.TicketTypeNotFoundException;
 import com.etp.ticketservice.tickettypes.exception.TicketTypeNotInEventException;
-import com.etp.ticketservice.tickets.exception.TicketsSoldOutException;
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.user.UserNotFoundException;
 import com.etp.ticketservice.user.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 // Separate Spring bean from CheckoutServiceImpl, deliberately -- calling a
 // @Transactional method via `this.` from another method on the SAME bean bypasses the
@@ -52,13 +51,20 @@ public class TicketOrderServiceImpl implements TicketOrderService {
     @Override
     @Transactional
     public TicketOrder reserve(UUID userId, UUID eventDomainId, CreateCheckoutRequestDto request) {
-        User purchaser = userRepository.findByDomainId(userId)
-                .orElseThrow(() -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, userId));
+        User purchaser =
+                userRepository
+                        .findByDomainId(userId)
+                        .orElseThrow(
+                                () -> new UserNotFoundException(ErrorCode.USER_NOT_FOUND, userId));
 
         // Reused as-is -- same blended "doesn't exist or isn't PUBLISHED" semantics
         // EventServiceImpl#getPublishedEvent already relies on.
-        Event event = eventRepository.findByDomainIdAndStatus(eventDomainId, EventStatusEnum.PUBLISHED)
-                .orElseThrow(() -> new EventNotFoundException(ErrorCode.EVENT_NOT_FOUND, eventDomainId));
+        Event event =
+                eventRepository
+                        .findByDomainIdAndStatus(eventDomainId, EventStatusEnum.PUBLISHED)
+                        .orElseThrow(() ->
+                                new EventNotFoundException(
+                                        ErrorCode.EVENT_NOT_FOUND, eventDomainId));
 
         Map<UUID, Integer> quantitiesByTicketTypeId = mergeDuplicateLines(request.getItems());
 
@@ -66,7 +72,8 @@ public class TicketOrderServiceImpl implements TicketOrderService {
         // carts lock the same ticket types in different orders. purchaseTicket never
         // locks more than one TicketType, so it never participates in this ordering
         // question.
-        List<UUID> orderedTicketTypeIds = quantitiesByTicketTypeId.keySet().stream().sorted().toList();
+        List<UUID> orderedTicketTypeIds =
+                quantitiesByTicketTypeId.keySet().stream().sorted().toList();
 
         TicketOrder order = new TicketOrder();
         order.setDomainId(UUID.randomUUID());
@@ -80,17 +87,25 @@ public class TicketOrderServiceImpl implements TicketOrderService {
             // Pessimistic lock -- same reasoning as TicketTypeServiceImpl#purchaseTicket:
             // prevents two concurrent reservations from both reading the same
             // pre-reservation availability count and overselling this ticket type.
-            TicketType ticketType = ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)
-                    .orElseThrow(() -> new TicketTypeNotFoundException(ErrorCode.TICKET_TYPE_NOT_FOUND, ticketTypeId));
+            TicketType ticketType =
+                    ticketTypeRepository
+                            .findByDomainIdWithLock(ticketTypeId)
+                            .orElseThrow(() ->
+                                    new TicketTypeNotFoundException(
+                                            ErrorCode.TICKET_TYPE_NOT_FOUND, ticketTypeId));
 
             if (!ticketType.getEvent().getId().equals(event.getId())) {
-                throw new TicketTypeNotInEventException(ErrorCode.TICKET_TYPE_NOT_IN_EVENT, ticketTypeId);
+                throw new TicketTypeNotInEventException(
+                        ErrorCode.TICKET_TYPE_NOT_IN_EVENT, ticketTypeId);
             }
 
             int quantity = quantitiesByTicketTypeId.get(ticketTypeId);
-            int activeTickets = ticketRepository.countActiveByTicketTypeId(ticketType.getId(), TicketStatusEnum.CANCELLED);
-            int reserved = ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
-                    ticketType.getId(), OrderStatusEnum.PENDING, LocalDateTime.now());
+            int activeTickets =
+                    ticketRepository.countActiveByTicketTypeId(
+                            ticketType.getId(), TicketStatusEnum.CANCELLED);
+            int reserved =
+                    ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                            ticketType.getId(), OrderStatusEnum.PENDING, LocalDateTime.now());
             Integer totalAvailable = ticketType.getTotalAvailable();
 
             // A null totalAvailable means this ticket type is unlimited -- only enforce
@@ -113,8 +128,14 @@ public class TicketOrderServiceImpl implements TicketOrderService {
     @Override
     @Transactional
     public TicketOrder attachProviderCheckoutSession(UUID orderDomainId, String providerSessionId) {
-        TicketOrder order = ticketOrderRepository.findByDomainId(orderDomainId)
-                .orElseThrow(() -> new IllegalStateException("TicketOrder " + orderDomainId + " vanished between reserve() and attachProviderCheckoutSession()"));
+        TicketOrder order =
+                ticketOrderRepository
+                        .findByDomainId(orderDomainId)
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "TicketOrder "
+                                                + orderDomainId
+                                                + " vanished between reserve() and attachProviderCheckoutSession()"));
         order.setProviderCheckoutSessionId(providerSessionId);
         return ticketOrderRepository.save(order);
     }
@@ -122,8 +143,14 @@ public class TicketOrderServiceImpl implements TicketOrderService {
     @Override
     @Transactional
     public void completeOrder(UUID orderDomainId) {
-        TicketOrder order = ticketOrderRepository.findByDomainIdWithLock(orderDomainId)
-                .orElseThrow(() -> new IllegalStateException("TicketOrder " + orderDomainId + " not found while completing order"));
+        TicketOrder order =
+                ticketOrderRepository
+                        .findByDomainIdWithLock(orderDomainId)
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "TicketOrder "
+                                                + orderDomainId
+                                                + " not found while completing order"));
 
         if (OrderStatusEnum.PENDING != order.getStatus()) {
             // Already settled by a concurrent webhook delivery or sweep pass -- the lock
@@ -144,8 +171,14 @@ public class TicketOrderServiceImpl implements TicketOrderService {
     @Override
     @Transactional
     public void expireOrder(UUID orderDomainId) {
-        TicketOrder order = ticketOrderRepository.findByDomainIdWithLock(orderDomainId)
-                .orElseThrow(() -> new IllegalStateException("TicketOrder " + orderDomainId + " not found while expiring order"));
+        TicketOrder order =
+                ticketOrderRepository
+                        .findByDomainIdWithLock(orderDomainId)
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "TicketOrder "
+                                                + orderDomainId
+                                                + " not found while expiring order"));
 
         if (OrderStatusEnum.PENDING != order.getStatus()) {
             return;
@@ -161,7 +194,8 @@ public class TicketOrderServiceImpl implements TicketOrderService {
     private Map<UUID, Integer> mergeDuplicateLines(List<CheckoutLineItemRequestDto> items) {
         Map<UUID, Integer> quantitiesByTicketTypeId = new LinkedHashMap<>();
         for (CheckoutLineItemRequestDto item : items) {
-            quantitiesByTicketTypeId.merge(item.getTicketTypeId(), item.getQuantity(), Integer::sum);
+            quantitiesByTicketTypeId.merge(
+                    item.getTicketTypeId(), item.getQuantity(), Integer::sum);
         }
         return quantitiesByTicketTypeId;
     }

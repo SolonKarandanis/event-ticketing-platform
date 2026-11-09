@@ -1,20 +1,18 @@
 package com.etp.ticketservice.events.dto;
 
-import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
 import com.etp.ticketservice.events.images.dto.EventImageRequestDto;
-
+import com.etp.ticketservice.tickettypes.dto.CreateTicketTypeRequestDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @AllArgsConstructor
@@ -40,6 +38,5 @@ public class CreateEventRequestDto {
     // to keep), so id is always null and newImageIndex always points into the request's
     // "newImages" multipart parts. The 8-image cap is enforced in EventServiceImpl, not
     // here -- that's a 409 Conflict (a state/quota conflict), not a 400 validation error.
-    @Valid
-    private List<EventImageRequestDto> images = new ArrayList<>();
+    @Valid private List<EventImageRequestDto> images = new ArrayList<>();
 }

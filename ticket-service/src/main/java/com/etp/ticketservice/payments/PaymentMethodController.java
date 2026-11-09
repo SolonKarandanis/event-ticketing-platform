@@ -2,6 +2,8 @@ package com.etp.ticketservice.payments;
 
 import com.etp.ticketservice.payments.dto.PaymentMethodResponseDto;
 import com.etp.ticketservice.payments.dto.SetupIntentResponseDto;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,9 +19,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-import java.util.UUID;
-
 // Top-level resource scoped to the current user (like TicketController), not nested
 // under /api/v1/events/** -- no SecurityConfig rule needed, falls through to the
 // existing anyRequest().authenticated() default, which is correct: any authenticated
@@ -34,7 +33,8 @@ public class PaymentMethodController {
     private final PaymentMethodService paymentMethodService;
 
     @PostMapping(path = "/setup-intents")
-    public ResponseEntity<SetupIntentResponseDto> createSetupIntent(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<SetupIntentResponseDto> createSetupIntent(
+            @AuthenticationPrincipal Jwt jwt) {
         log.info("PaymentMethodController --> createSetupIntent");
         String clientSecret = paymentMethodService.createSetupIntent(parseUserId(jwt));
         return new ResponseEntity<>(new SetupIntentResponseDto(clientSecret), HttpStatus.CREATED);
@@ -47,14 +47,16 @@ public class PaymentMethodController {
     }
 
     @DeleteMapping(path = "/{paymentMethodId}")
-    public ResponseEntity<Void> removePaymentMethod(@AuthenticationPrincipal Jwt jwt, @PathVariable String paymentMethodId) {
+    public ResponseEntity<Void> removePaymentMethod(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable String paymentMethodId) {
         log.info("PaymentMethodController --> removePaymentMethod");
         paymentMethodService.removePaymentMethod(parseUserId(jwt), paymentMethodId);
         return ResponseEntity.noContent().build();
     }
 
     @PutMapping(path = "/{paymentMethodId}/default")
-    public ResponseEntity<Void> setDefaultPaymentMethod(@AuthenticationPrincipal Jwt jwt, @PathVariable String paymentMethodId) {
+    public ResponseEntity<Void> setDefaultPaymentMethod(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable String paymentMethodId) {
         log.info("PaymentMethodController --> setDefaultPaymentMethod");
         paymentMethodService.setDefaultPaymentMethod(parseUserId(jwt), paymentMethodId);
         return ResponseEntity.noContent().build();

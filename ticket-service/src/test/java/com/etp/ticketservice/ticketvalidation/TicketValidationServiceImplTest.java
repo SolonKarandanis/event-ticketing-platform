@@ -1,26 +1,25 @@
 package com.etp.ticketservice.ticketvalidation;
 
-import com.etp.ticketservice.tickets.qrcode.QrCode;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
 import com.etp.ticketservice.tickets.Ticket;
-import com.etp.ticketservice.tickets.qrcode.QrCodeStatusEnum;
-import com.etp.ticketservice.tickets.TicketStatusEnum;
-import com.etp.ticketservice.tickets.qrcode.exception.QrCodeNotFoundException;
-import com.etp.ticketservice.tickets.exception.TicketNotFoundException;
-import com.etp.ticketservice.tickets.qrcode.QrCodeRepository;
 import com.etp.ticketservice.tickets.TicketRepository;
+import com.etp.ticketservice.tickets.TicketStatusEnum;
+import com.etp.ticketservice.tickets.exception.TicketNotFoundException;
+import com.etp.ticketservice.tickets.qrcode.QrCode;
+import com.etp.ticketservice.tickets.qrcode.QrCodeRepository;
+import com.etp.ticketservice.tickets.qrcode.QrCodeStatusEnum;
+import com.etp.ticketservice.tickets.qrcode.exception.QrCodeNotFoundException;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 // Pure Mockito unit tests -- see EventServiceImplTest's class comment for why this layer
 // is worth testing directly. The core logic worth pinning down: a cancelled ticket reads
@@ -30,15 +29,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TicketValidationServiceImplTest {
 
-    @Mock
-    private QrCodeRepository qrCodeRepository;
-    @Mock
-    private TicketValidationRepository ticketValidationRepository;
-    @Mock
-    private TicketRepository ticketRepository;
+    @Mock private QrCodeRepository qrCodeRepository;
+    @Mock private TicketValidationRepository ticketValidationRepository;
+    @Mock private TicketRepository ticketRepository;
 
-    @InjectMocks
-    private TicketValidationServiceImpl ticketValidationService;
+    @InjectMocks private TicketValidationServiceImpl ticketValidationService;
 
     @Test
     void validateTicketByQrCode_malformedId_throwsNotFound() {
@@ -49,9 +44,11 @@ class TicketValidationServiceImplTest {
     @Test
     void validateTicketByQrCode_notActiveOrMissing_throwsNotFound() {
         UUID qrCodeId = UUID.randomUUID();
-        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)).thenReturn(Optional.empty());
+        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ticketValidationService.validateTicketByQrCode(qrCodeId.toString()))
+        assertThatThrownBy(
+                        () -> ticketValidationService.validateTicketByQrCode(qrCodeId.toString()))
                 .isInstanceOf(QrCodeNotFoundException.class);
     }
 
@@ -62,10 +59,13 @@ class TicketValidationServiceImplTest {
         ticket.setStatus(TicketStatusEnum.PURCHASED);
         QrCode qrCode = new QrCode();
         qrCode.setTicket(ticket);
-        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)).thenReturn(Optional.of(qrCode));
-        when(ticketValidationRepository.save(any(TicketValidation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE))
+                .thenReturn(Optional.of(qrCode));
+        when(ticketValidationRepository.save(any(TicketValidation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        TicketValidation result = ticketValidationService.validateTicketByQrCode(qrCodeId.toString());
+        TicketValidation result =
+                ticketValidationService.validateTicketByQrCode(qrCodeId.toString());
 
         assertThat(result.getStatus()).isEqualTo(TicketValidationStatusEnum.VALID);
         assertThat(result.getValidationMethod()).isEqualTo(TicketValidationMethod.QR_SCAN);
@@ -81,10 +81,13 @@ class TicketValidationServiceImplTest {
         ticket.addValidation(priorValidation);
         QrCode qrCode = new QrCode();
         qrCode.setTicket(ticket);
-        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)).thenReturn(Optional.of(qrCode));
-        when(ticketValidationRepository.save(any(TicketValidation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE))
+                .thenReturn(Optional.of(qrCode));
+        when(ticketValidationRepository.save(any(TicketValidation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        TicketValidation result = ticketValidationService.validateTicketByQrCode(qrCodeId.toString());
+        TicketValidation result =
+                ticketValidationService.validateTicketByQrCode(qrCodeId.toString());
 
         assertThat(result.getStatus()).isEqualTo(TicketValidationStatusEnum.INVALID);
     }
@@ -96,10 +99,13 @@ class TicketValidationServiceImplTest {
         ticket.setStatus(TicketStatusEnum.CANCELLED);
         QrCode qrCode = new QrCode();
         qrCode.setTicket(ticket);
-        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE)).thenReturn(Optional.of(qrCode));
-        when(ticketValidationRepository.save(any(TicketValidation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(qrCodeRepository.findByDomainIdAndStatus(qrCodeId, QrCodeStatusEnum.ACTIVE))
+                .thenReturn(Optional.of(qrCode));
+        when(ticketValidationRepository.save(any(TicketValidation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        TicketValidation result = ticketValidationService.validateTicketByQrCode(qrCodeId.toString());
+        TicketValidation result =
+                ticketValidationService.validateTicketByQrCode(qrCodeId.toString());
 
         assertThat(result.getStatus()).isEqualTo(TicketValidationStatusEnum.CANCELLED);
     }
@@ -117,7 +123,8 @@ class TicketValidationServiceImplTest {
         Ticket ticket = new Ticket();
         ticket.setStatus(TicketStatusEnum.PURCHASED);
         when(ticketRepository.findByReferenceCode("XY3P9KRT")).thenReturn(Optional.of(ticket));
-        when(ticketValidationRepository.save(any(TicketValidation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ticketValidationRepository.save(any(TicketValidation.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         TicketValidation result = ticketValidationService.validateTicketByReferenceCode("XY3P9KRT");
 

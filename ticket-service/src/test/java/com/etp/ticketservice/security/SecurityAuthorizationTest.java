@@ -1,12 +1,16 @@
 package com.etp.ticketservice.security;
 
-import com.etp.ticketservice.config.SecurityConfig;
+import static com.etp.ticketservice.common.TestJwts.withSubject;
+import static com.etp.ticketservice.common.TestJwts.withSubjectAndRole;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.etp.ticketservice.common.UserProvisioningTestConfig;
-import com.etp.ticketservice.ticketvalidation.dto.TicketValidationRequestDto;
-import com.etp.ticketservice.ticketvalidation.dto.TicketValidationResponseDto;
-import com.etp.ticketservice.ticketvalidation.TicketValidation;
-import com.etp.ticketservice.ticketvalidation.TicketValidationMethod;
-import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.common.antivirus.AntivirusService;
+import com.etp.ticketservice.config.SecurityConfig;
 import com.etp.ticketservice.events.EventService;
 import com.etp.ticketservice.orders.CheckoutService;
 import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
@@ -14,12 +18,18 @@ import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutResponseDto;
 import com.etp.ticketservice.payments.PaymentMethodService;
 import com.etp.ticketservice.payments.StripeWebhookService;
-import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickets.TicketService;
+import com.etp.ticketservice.tickets.qrcode.QrCodeService;
 import com.etp.ticketservice.tickettypes.TicketTypeService;
+import com.etp.ticketservice.ticketvalidation.TicketValidation;
+import com.etp.ticketservice.ticketvalidation.TicketValidationMethod;
 import com.etp.ticketservice.ticketvalidation.TicketValidationService;
+import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import com.etp.ticketservice.ticketvalidation.dto.TicketValidationRequestDto;
+import com.etp.ticketservice.ticketvalidation.dto.TicketValidationResponseDto;
 import com.etp.ticketservice.venues.VenueService;
-import com.etp.ticketservice.common.antivirus.AntivirusService;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -28,17 +38,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
-
-import java.util.List;
-import java.util.UUID;
-
-import static com.etp.ticketservice.common.TestJwts.withSubject;
-import static com.etp.ticketservice.common.TestJwts.withSubjectAndRole;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // Unlike every other @WebMvcTest in this app, this one DOES import the real
 // SecurityConfig -- its whole point is to verify authorizeHttpRequests' actual rules
@@ -62,47 +61,39 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({SecurityConfig.class, JwtAuthenticationConverter.class, UserProvisioningTestConfig.class})
 class SecurityAuthorizationTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private EventService eventService;
-    @MockitoBean
-    private TicketService ticketService;
-    @MockitoBean
-    private AntivirusService antivirusService;
-    @MockitoBean
-    private QrCodeService qrCodeService;
-    @MockitoBean
-    private VenueService venueService;
-    @MockitoBean
-    private TicketTypeService ticketTypeService;
-    @MockitoBean
-    private TicketValidationService ticketValidationService;
-    @MockitoBean
-    private CheckoutService checkoutService;
-    @MockitoBean
-    private StripeWebhookService stripeWebhookService;
-    @MockitoBean
-    private PaymentMethodService paymentMethodService;
+    @MockitoBean private EventService eventService;
+    @MockitoBean private TicketService ticketService;
+    @MockitoBean private AntivirusService antivirusService;
+    @MockitoBean private QrCodeService qrCodeService;
+    @MockitoBean private VenueService venueService;
+    @MockitoBean private TicketTypeService ticketTypeService;
+    @MockitoBean private TicketValidationService ticketValidationService;
+    @MockitoBean private CheckoutService checkoutService;
+    @MockitoBean private StripeWebhookService stripeWebhookService;
+    @MockitoBean private PaymentMethodService paymentMethodService;
 
     private static final UUID USER_ID = UUID.randomUUID();
 
     // ---- permitAll ----
 
     @Test
-    void publishedEventsSearch_isPermitAll_reachesControllerWithoutAnyAuthentication() throws Exception {
-        when(eventService.findPublishedEvents(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+    void publishedEventsSearch_isPermitAll_reachesControllerWithoutAnyAuthentication()
+            throws Exception {
+        when(eventService.findPublishedEvents(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any()))
                 .thenReturn(Page.empty());
 
-        mockMvc.perform(post("/api/v1/published-events/search"))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/published-events/search")).andExpect(status().isOk());
     }
 
     @Test
-    void publishedEventDetails_isPermitAll_reachesControllerWithoutAnyAuthentication() throws Exception {
+    void publishedEventDetails_isPermitAll_reachesControllerWithoutAnyAuthentication()
+            throws Exception {
         mockMvc.perform(get("/api/v1/published-events/{eventId}", UUID.randomUUID()))
                 // Empty Optional -> 404, not 401/403 -- proof this reached the
                 // controller at all rather than being rejected by the filter chain.
@@ -114,10 +105,11 @@ class SecurityAuthorizationTest {
     // not by the resource-server filter chain finding no token and letting it through.
     @Test
     void stripeWebhook_isPermitAll_reachesControllerWithoutAnyAuthentication() throws Exception {
-        mockMvc.perform(post("/api/v1/payments/webhooks/stripe")
-                        .header("Stripe-Signature", "t=123,v1=fake")
-                        .contentType("application/json")
-                        .content("{}"))
+        mockMvc.perform(
+                        post("/api/v1/payments/webhooks/stripe")
+                                .header("Stripe-Signature", "t=123,v1=fake")
+                                .contentType("application/json")
+                                .content("{}"))
                 .andExpect(status().isOk());
     }
 
@@ -125,8 +117,7 @@ class SecurityAuthorizationTest {
 
     @Test
     void eventEndpoints_rejectAnonymousRequest() throws Exception {
-        mockMvc.perform(get("/api/v1/events"))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/events")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -168,16 +159,22 @@ class SecurityAuthorizationTest {
 
     @Test
     void ticketPurchase_rejectsAnonymousRequest() throws Exception {
-        mockMvc.perform(post("/api/v1/events/{eventId}/ticket-types/{ticketTypeId}/tickets",
-                        UUID.randomUUID(), UUID.randomUUID()))
+        mockMvc.perform(
+                        post(
+                                "/api/v1/events/{eventId}/ticket-types/{ticketTypeId}/tickets",
+                                UUID.randomUUID(),
+                                UUID.randomUUID()))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void ticketPurchase_needsOnlyAuthentication_notOrganizerRole() throws Exception {
-        mockMvc.perform(post("/api/v1/events/{eventId}/ticket-types/{ticketTypeId}/tickets",
-                        UUID.randomUUID(), UUID.randomUUID())
-                        .with(withSubjectAndRole(USER_ID, Role.ATTENDEE)))
+        mockMvc.perform(
+                        post(
+                                        "/api/v1/events/{eventId}/ticket-types/{ticketTypeId}/tickets",
+                                        UUID.randomUUID(),
+                                        UUID.randomUUID())
+                                .with(withSubjectAndRole(USER_ID, Role.ATTENDEE)))
                 .andExpect(status().isNoContent());
     }
 
@@ -194,12 +191,15 @@ class SecurityAuthorizationTest {
     @Test
     void checkout_needsOnlyAuthentication_notOrganizerRole() throws Exception {
         when(checkoutService.createCheckout(any(), any(), any()))
-                .thenReturn(new CreateCheckoutResponseDto(UUID.randomUUID(), "https://checkout.stripe.com/test", null));
+                .thenReturn(
+                        new CreateCheckoutResponseDto(
+                                UUID.randomUUID(), "https://checkout.stripe.com/test", null));
 
-        mockMvc.perform(post("/api/v1/events/{eventId}/checkout", UUID.randomUUID())
-                        .with(withSubjectAndRole(USER_ID, Role.ATTENDEE))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(checkoutRequest())))
+        mockMvc.perform(
+                        post("/api/v1/events/{eventId}/checkout", UUID.randomUUID())
+                                .with(withSubjectAndRole(USER_ID, Role.ATTENDEE))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(checkoutRequest())))
                 .andExpect(status().isCreated());
     }
 
@@ -207,25 +207,29 @@ class SecurityAuthorizationTest {
 
     @Test
     void ticketValidations_rejectsAuthenticatedNonStaff() throws Exception {
-        mockMvc.perform(post("/api/v1/ticket-validations")
-                        .with(withSubjectAndRole(USER_ID, Role.ORGANIZER))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(validationRequest())))
+        mockMvc.perform(
+                        post("/api/v1/ticket-validations")
+                                .with(withSubjectAndRole(USER_ID, Role.ORGANIZER))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(validationRequest())))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void ticketValidations_allowsStaff() throws Exception {
         TicketValidation validation = new TicketValidation();
-        TicketValidationResponseDto responseDto = new TicketValidationResponseDto(
-                UUID.randomUUID(), TicketValidationStatusEnum.VALID);
+        TicketValidationResponseDto responseDto =
+                new TicketValidationResponseDto(
+                        UUID.randomUUID(), TicketValidationStatusEnum.VALID);
         when(ticketValidationService.validateTicketByReferenceCode(any())).thenReturn(validation);
-        when(ticketValidationService.convertToTicketValidationResponseDto(validation)).thenReturn(responseDto);
+        when(ticketValidationService.convertToTicketValidationResponseDto(validation))
+                .thenReturn(responseDto);
 
-        mockMvc.perform(post("/api/v1/ticket-validations")
-                        .with(withSubjectAndRole(USER_ID, Role.STAFF))
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsBytes(validationRequest())))
+        mockMvc.perform(
+                        post("/api/v1/ticket-validations")
+                                .with(withSubjectAndRole(USER_ID, Role.STAFF))
+                                .contentType("application/json")
+                                .content(objectMapper.writeValueAsBytes(validationRequest())))
                 .andExpect(status().isOk());
     }
 
@@ -234,8 +238,7 @@ class SecurityAuthorizationTest {
 
     @Test
     void fallbackEndpoints_rejectAnonymousRequest() throws Exception {
-        mockMvc.perform(get("/api/v1/tickets"))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/tickets")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -251,6 +254,7 @@ class SecurityAuthorizationTest {
     }
 
     private CreateCheckoutRequestDto checkoutRequest() {
-        return new CreateCheckoutRequestDto(List.of(new CheckoutLineItemRequestDto(UUID.randomUUID(), 1)));
+        return new CreateCheckoutRequestDto(
+                List.of(new CheckoutLineItemRequestDto(UUID.randomUUID(), 1)));
     }
 }

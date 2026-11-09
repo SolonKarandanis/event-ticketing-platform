@@ -1,11 +1,10 @@
 package com.etp.ticketservice.events.images.dto;
 
 import jakarta.validation.constraints.Size;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.UUID;
 
 // Two shapes in one, the same "id present = keep, absent = create" pattern
 // UpdateTicketTypeRequestDto already uses -- id present means keep this existing image

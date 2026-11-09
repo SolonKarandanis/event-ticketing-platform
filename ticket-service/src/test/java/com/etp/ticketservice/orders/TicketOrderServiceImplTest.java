@@ -1,5 +1,15 @@
 package com.etp.ticketservice.orders;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.etp.ticketservice.events.Event;
 import com.etp.ticketservice.events.EventRepository;
 import com.etp.ticketservice.events.EventStatusEnum;
@@ -18,27 +28,16 @@ import com.etp.ticketservice.tickettypes.exception.TicketTypeNotInEventException
 import com.etp.ticketservice.user.User;
 import com.etp.ticketservice.user.UserNotFoundException;
 import com.etp.ticketservice.user.UserRepository;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 // Pure Mockito unit tests, same rationale as TicketTypeServiceImplTest/EventServiceImplTest:
 // the sold-out-accounting-for-reservations arithmetic, the duplicate-cart-line merge, the
@@ -48,23 +47,15 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TicketOrderServiceImplTest {
 
-    @Mock
-    private UserRepository userRepository;
-    @Mock
-    private EventRepository eventRepository;
-    @Mock
-    private TicketTypeRepository ticketTypeRepository;
-    @Mock
-    private TicketRepository ticketRepository;
-    @Mock
-    private TicketOrderRepository ticketOrderRepository;
-    @Mock
-    private TicketOrderItemRepository ticketOrderItemRepository;
-    @Mock
-    private TicketService ticketService;
+    @Mock private UserRepository userRepository;
+    @Mock private EventRepository eventRepository;
+    @Mock private TicketTypeRepository ticketTypeRepository;
+    @Mock private TicketRepository ticketRepository;
+    @Mock private TicketOrderRepository ticketOrderRepository;
+    @Mock private TicketOrderItemRepository ticketOrderItemRepository;
+    @Mock private TicketService ticketService;
 
-    @InjectMocks
-    private TicketOrderServiceImpl ticketOrderService;
+    @InjectMocks private TicketOrderServiceImpl ticketOrderService;
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID EVENT_ID = UUID.randomUUID();
@@ -73,7 +64,9 @@ class TicketOrderServiceImplTest {
     void reserve_userNotFound_throws() {
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(UUID.randomUUID(), 1)))
+        assertThatThrownBy(() ->
+                        ticketOrderService.reserve(
+                                USER_ID, EVENT_ID, requestFor(UUID.randomUUID(), 1)))
                 .isInstanceOf(UserNotFoundException.class);
 
         verify(eventRepository, never()).findByDomainIdAndStatus(any(), any());
@@ -82,9 +75,12 @@ class TicketOrderServiceImplTest {
     @Test
     void reserve_eventNotFoundOrNotPublished_throws() {
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(new User()));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.empty());
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(UUID.randomUUID(), 1)))
+        assertThatThrownBy(() ->
+                        ticketOrderService.reserve(
+                                USER_ID, EVENT_ID, requestFor(UUID.randomUUID(), 1)))
                 .isInstanceOf(EventNotFoundException.class);
 
         verify(ticketTypeRepository, never()).findByDomainIdWithLock(any());
@@ -94,10 +90,13 @@ class TicketOrderServiceImplTest {
     void reserve_ticketTypeNotFound_throws() {
         UUID ticketTypeId = UUID.randomUUID();
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(new User()));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(eventWithId(10L)));
-        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)).thenReturn(Optional.empty());
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.of(eventWithId(10L)));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 1)))
+        assertThatThrownBy(() ->
+                        ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 1)))
                 .isInstanceOf(TicketTypeNotFoundException.class);
     }
 
@@ -108,10 +107,13 @@ class TicketOrderServiceImplTest {
         Event otherEvent = eventWithId(99L);
         TicketType ticketType = ticketTypeWithCapacity(otherEvent, null, 100L);
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(new User()));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(requestedEvent));
-        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)).thenReturn(Optional.of(ticketType));
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.of(requestedEvent));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId))
+                .thenReturn(Optional.of(ticketType));
 
-        assertThatThrownBy(() -> ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 1)))
+        assertThatThrownBy(() ->
+                        ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 1)))
                 .isInstanceOf(TicketTypeNotInEventException.class);
     }
 
@@ -121,14 +123,20 @@ class TicketOrderServiceImplTest {
         Event event = eventWithId(10L);
         TicketType ticketType = ticketTypeWithCapacity(event, 5, 100L);
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(new User()));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(event));
-        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)).thenReturn(Optional.of(ticketType));
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.of(event));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId))
+                .thenReturn(Optional.of(ticketType));
         // 3 active + 2 already held by another pending order = 5, already at the cap of
         // 5 -- requesting 1 more must push it over even though no real Ticket exists yet.
-        when(ticketRepository.countActiveByTicketTypeId(100L, TicketStatusEnum.CANCELLED)).thenReturn(3);
-        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(2);
+        when(ticketRepository.countActiveByTicketTypeId(100L, TicketStatusEnum.CANCELLED))
+                .thenReturn(3);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                        eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class)))
+                .thenReturn(2);
 
-        assertThatThrownBy(() -> ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 1)))
+        assertThatThrownBy(() ->
+                        ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 1)))
                 .isInstanceOf(TicketsSoldOutException.class);
 
         verify(ticketOrderRepository, never()).save(any());
@@ -140,15 +148,23 @@ class TicketOrderServiceImplTest {
         Event event = eventWithId(10L);
         TicketType ticketType = ticketTypeWithCapacity(event, null, 100L);
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(new User()));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(event));
-        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)).thenReturn(Optional.of(ticketType));
-        when(ticketRepository.countActiveByTicketTypeId(100L, TicketStatusEnum.CANCELLED)).thenReturn(0);
-        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(0);
-        when(ticketOrderRepository.save(any(TicketOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.of(event));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId))
+                .thenReturn(Optional.of(ticketType));
+        when(ticketRepository.countActiveByTicketTypeId(100L, TicketStatusEnum.CANCELLED))
+                .thenReturn(0);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                        eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class)))
+                .thenReturn(0);
+        when(ticketOrderRepository.save(any(TicketOrder.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CreateCheckoutRequestDto request = new CreateCheckoutRequestDto(List.of(
-                new CheckoutLineItemRequestDto(ticketTypeId, 2),
-                new CheckoutLineItemRequestDto(ticketTypeId, 3)));
+        CreateCheckoutRequestDto request =
+                new CreateCheckoutRequestDto(
+                        List.of(
+                                new CheckoutLineItemRequestDto(ticketTypeId, 2),
+                                new CheckoutLineItemRequestDto(ticketTypeId, 3)));
 
         TicketOrder order = ticketOrderService.reserve(USER_ID, EVENT_ID, request);
 
@@ -167,13 +183,20 @@ class TicketOrderServiceImplTest {
         TicketType ticketType = ticketTypeWithCapacity(event, null, 100L);
         ticketType.setPriceMinorUnits(2500L);
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(purchaser));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(event));
-        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId)).thenReturn(Optional.of(ticketType));
-        when(ticketRepository.countActiveByTicketTypeId(100L, TicketStatusEnum.CANCELLED)).thenReturn(0);
-        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class))).thenReturn(0);
-        when(ticketOrderRepository.save(any(TicketOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.of(event));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketTypeId))
+                .thenReturn(Optional.of(ticketType));
+        when(ticketRepository.countActiveByTicketTypeId(100L, TicketStatusEnum.CANCELLED))
+                .thenReturn(0);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                        eq(100L), eq(OrderStatusEnum.PENDING), any(LocalDateTime.class)))
+                .thenReturn(0);
+        when(ticketOrderRepository.save(any(TicketOrder.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        TicketOrder order = ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 2));
+        TicketOrder order =
+                ticketOrderService.reserve(USER_ID, EVENT_ID, requestFor(ticketTypeId, 2));
 
         assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.PENDING);
         assertThat(order.getProvider()).isEqualTo(PaymentProvider.STRIPE);
@@ -202,18 +225,25 @@ class TicketOrderServiceImplTest {
         TicketType lowType = ticketTypeWithCapacity(event, null, 100L);
         TicketType highType = ticketTypeWithCapacity(event, null, 101L);
         when(userRepository.findByDomainId(USER_ID)).thenReturn(Optional.of(new User()));
-        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED)).thenReturn(Optional.of(event));
+        when(eventRepository.findByDomainIdAndStatus(EVENT_ID, EventStatusEnum.PUBLISHED))
+                .thenReturn(Optional.of(event));
         when(ticketTypeRepository.findByDomainIdWithLock(lowId)).thenReturn(Optional.of(lowType));
         when(ticketTypeRepository.findByDomainIdWithLock(highId)).thenReturn(Optional.of(highType));
-        when(ticketRepository.countActiveByTicketTypeId(any(), eq(TicketStatusEnum.CANCELLED))).thenReturn(0);
-        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(any(), eq(OrderStatusEnum.PENDING), any())).thenReturn(0);
-        when(ticketOrderRepository.save(any(TicketOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketRepository.countActiveByTicketTypeId(any(), eq(TicketStatusEnum.CANCELLED)))
+                .thenReturn(0);
+        when(ticketOrderItemRepository.sumReservedQuantityByTicketTypeId(
+                        any(), eq(OrderStatusEnum.PENDING), any()))
+                .thenReturn(0);
+        when(ticketOrderRepository.save(any(TicketOrder.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         // Submitted high-then-low -- the service must still lock low-then-high to avoid
         // deadlocking against a concurrent checkout that locks the same two ticket types.
-        CreateCheckoutRequestDto request = new CreateCheckoutRequestDto(List.of(
-                new CheckoutLineItemRequestDto(highId, 1),
-                new CheckoutLineItemRequestDto(lowId, 1)));
+        CreateCheckoutRequestDto request =
+                new CreateCheckoutRequestDto(
+                        List.of(
+                                new CheckoutLineItemRequestDto(highId, 1),
+                                new CheckoutLineItemRequestDto(lowId, 1)));
 
         ticketOrderService.reserve(USER_ID, EVENT_ID, request);
 
@@ -230,7 +260,8 @@ class TicketOrderServiceImplTest {
         when(ticketOrderRepository.findByDomainId(orderId)).thenReturn(Optional.of(order));
         when(ticketOrderRepository.save(order)).thenReturn(order);
 
-        TicketOrder updated = ticketOrderService.attachProviderCheckoutSession(orderId, "cs_test_123");
+        TicketOrder updated =
+                ticketOrderService.attachProviderCheckoutSession(orderId, "cs_test_123");
 
         assertThat(updated.getProviderCheckoutSessionId()).isEqualTo("cs_test_123");
     }
@@ -330,7 +361,8 @@ class TicketOrderServiceImplTest {
     }
 
     private CreateCheckoutRequestDto requestFor(UUID ticketTypeId, int quantity) {
-        return new CreateCheckoutRequestDto(List.of(new CheckoutLineItemRequestDto(ticketTypeId, quantity)));
+        return new CreateCheckoutRequestDto(
+                List.of(new CheckoutLineItemRequestDto(ticketTypeId, quantity)));
     }
 
     private Event eventWithId(long id) {

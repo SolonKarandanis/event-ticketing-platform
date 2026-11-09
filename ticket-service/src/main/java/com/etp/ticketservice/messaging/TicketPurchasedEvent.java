@@ -15,6 +15,4 @@ public record TicketPurchasedEvent(
         UUID orderId,
         Long price,
         String currency,
-        LocalDateTime purchasedAt
-) {
-}
+        LocalDateTime purchasedAt) {}

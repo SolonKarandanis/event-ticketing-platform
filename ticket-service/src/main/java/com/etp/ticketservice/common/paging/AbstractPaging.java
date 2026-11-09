@@ -7,8 +7,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public abstract class AbstractPaging {
-	
-	@JsonProperty("page")
+
+    @JsonProperty("page")
     protected Integer pagingStart;
 
     @JsonProperty("limit")
@@ -18,6 +18,5 @@ public abstract class AbstractPaging {
     protected String sortingColumn;
 
     @JsonProperty("sortOrder")
-    protected String sortingDirection; 
-
+    protected String sortingDirection;
 }

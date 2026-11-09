@@ -11,8 +11,7 @@ public class AntivirusHealthIndicator implements HealthIndicator {
 
     public static final String AP_PING = "av.ping";
 
-    @Autowired
-    AntivirusService antivirusService;
+    @Autowired AntivirusService antivirusService;
 
     @Override
     public Health health() {

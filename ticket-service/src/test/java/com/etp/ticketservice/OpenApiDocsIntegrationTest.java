@@ -1,16 +1,15 @@
 package com.etp.ticketservice;
 
-import com.etp.ticketservice.common.PostgresTestContainer;
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.server.LocalServerPort;
+import static org.assertj.core.api.Assertions.assertThat;
 
+import com.etp.ticketservice.common.PostgresTestContainer;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 
 // RANDOM_PORT (unlike the bare @SpringBootTest in TicketServiceApplicationTests, whose
 // webEnvironment defaults to MOCK and never binds a real port) so this actually exercises
@@ -26,16 +25,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class OpenApiDocsIntegrationTest extends PostgresTestContainer {
 
-    @LocalServerPort
-    private int port;
+    @LocalServerPort private int port;
 
     private final HttpClient client = HttpClient.newHttpClient();
 
     private HttpResponse<String> get(String path) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:" + port + path))
-                .GET()
-                .build();
+        HttpRequest request =
+                HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:" + port + path))
+                        .GET()
+                        .build();
         return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 

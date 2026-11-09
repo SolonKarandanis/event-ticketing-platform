@@ -28,15 +28,15 @@ public class TicketValidationController {
         TicketValidationMethod method = ticketValidationRequestDto.getMethod();
         TicketValidation ticketValidation;
         if (TicketValidationMethod.MANUAL.equals(method)) {
-            ticketValidation = ticketValidationService.validateTicketByReferenceCode(
-                    ticketValidationRequestDto.getId());
+            ticketValidation =
+                    ticketValidationService.validateTicketByReferenceCode(
+                            ticketValidationRequestDto.getId());
         } else {
-            ticketValidation = ticketValidationService.validateTicketByQrCode(
-                    ticketValidationRequestDto.getId()
-            );
+            ticketValidation =
+                    ticketValidationService.validateTicketByQrCode(
+                            ticketValidationRequestDto.getId());
         }
         return ResponseEntity.ok(
-                ticketValidationService.convertToTicketValidationResponseDto(ticketValidation)
-        );
+                ticketValidationService.convertToTicketValidationResponseDto(ticketValidation));
     }
 }

@@ -1,11 +1,10 @@
 package com.etp.ticketservice.ticketvalidation.dto;
 
 import com.etp.ticketservice.ticketvalidation.TicketValidationStatusEnum;
+import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.UUID;
 
 @Data
 @AllArgsConstructor
