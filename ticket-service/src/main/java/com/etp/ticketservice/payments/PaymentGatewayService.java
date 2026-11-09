@@ -6,6 +6,8 @@ public interface PaymentGatewayService {
 
     CheckoutSessionResult createCheckoutSession(CheckoutSessionRequest request);
 
+    CheckoutSessionStatus getCheckoutSessionStatus(String providerSessionId);
+
     WebhookEvent verifyWebhookSignature(String payload, String signatureHeader);
 
     RefundResult refund(RefundRequest request);

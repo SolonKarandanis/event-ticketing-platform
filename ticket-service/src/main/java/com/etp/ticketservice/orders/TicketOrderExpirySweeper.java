@@ -1,5 +1,6 @@
 package com.etp.ticketservice.orders;
 
+import com.etp.ticketservice.payments.PaymentGatewayService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -19,6 +20,7 @@ public class TicketOrderExpirySweeper {
 
     private final TicketOrderRepository ticketOrderRepository;
     private final TicketOrderService ticketOrderService;
+    private final PaymentGatewayService paymentGatewayService;
 
     public void sweep() {
         List<UUID> expiredOrderIds =
@@ -27,13 +29,38 @@ public class TicketOrderExpirySweeper {
 
         // Per-item try/catch -- an unattended batch job with no caller waiting on a
         // result, so one row's unexpected failure must not block the rest of the batch
-        // from expiring on schedule. Each expireOrder call is its own short
+        // from expiring on schedule. Each order is settled in its own short
         // transaction/lock, same as any other cross-bean call through this interface.
         for (UUID orderId : expiredOrderIds) {
             try {
-                ticketOrderService.expireOrder(orderId);
+                settle(orderId);
             } catch (Exception ex) {
-                log.error("Failed to expire TicketOrder {}", orderId, ex);
+                log.error("Failed to settle stale TicketOrder {}", orderId, ex);
+            }
+        }
+    }
+
+    // Stripe is the source of truth for whether money moved -- a late or lost webhook must
+    // not turn a paid order into an expired one. If Stripe can't be reached the exception
+    // leaves the order PENDING for the next pass.
+    private void settle(UUID orderId) {
+        String sessionId =
+                ticketOrderRepository
+                        .findByDomainId(orderId)
+                        .map(TicketOrder::getProviderCheckoutSessionId)
+                        .orElse(null);
+
+        if (null == sessionId) {
+            // Session creation never succeeded, so there's nothing to pay.
+            ticketOrderService.expireOrder(orderId);
+            return;
+        }
+
+        switch (paymentGatewayService.getCheckoutSessionStatus(sessionId)) {
+            case PAID -> ticketOrderService.completeOrder(orderId, sessionId);
+            case EXPIRED -> ticketOrderService.expireOrder(orderId);
+            case OPEN -> {
+                /* still payable -- check again next pass */
             }
         }
     }

@@ -3,6 +3,7 @@ package com.etp.ticketservice.tickets;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -259,7 +260,7 @@ class TicketServiceImplTest {
     }
 
     @Test
-    void cancelTicketForUser_gatewayThrows_recordsFailedStatusWithoutBlockingCancellation() {
+    void cancelTicketForUser_gatewayThrows_staysRetryableWithoutBlockingCancellation() {
         Ticket ticket = purchasableTicket();
         when(ticketRepository.findByDomainIdAndPurchaserDomainIdForCancellation(TICKET_ID, USER_ID))
                 .thenReturn(Optional.of(ticket));
@@ -268,15 +269,46 @@ class TicketServiceImplTest {
                 .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
         when(paymentGatewayService.refund(any()))
                 .thenThrow(new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR));
+        when(ticketCancellationService.recordRefundAttemptFailed(TICKET_ID))
+                .thenReturn(RefundStatusEnum.PENDING);
 
         // Cancellation already took effect (cancelAndPersist already "ran") regardless
         // of the gateway failure -- no exception propagates out of this call.
         Ticket cancelled = ticketService.cancelTicketForUser(USER_ID, TICKET_ID, null);
 
-        assertThat(cancelled.getRefundStatus()).isEqualTo(RefundStatusEnum.FAILED);
+        assertThat(cancelled.getRefundStatus()).isEqualTo(RefundStatusEnum.PENDING);
         assertThat(cancelled.getProviderRefundId()).isNull();
+        verify(ticketCancellationService, never()).recordRefundOutcome(any(), any(), any());
+    }
+
+    @Test
+    void retryPendingRefund_usesTheSameKeyEveryAttemptSoItCannotDoublePay() {
+        when(ticketCancellationService.loadRefundContext(TICKET_ID))
+                .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
+        when(paymentGatewayService.refund(any()))
+                .thenReturn(
+                        RefundResult.builder()
+                                .providerRefundId("re_test_123")
+                                .status("succeeded")
+                                .build());
+
+        ticketService.retryPendingRefund(TICKET_ID);
+
+        verify(paymentGatewayService)
+                .refund(argThat(r -> ("ticket-refund-" + TICKET_ID).equals(r.getIdempotencyKey())));
         verify(ticketCancellationService)
-                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.FAILED, null);
+                .recordRefundOutcome(TICKET_ID, RefundStatusEnum.SUCCEEDED, "re_test_123");
+    }
+
+    @Test
+    void cancelTicketForEventCancellation_paidTicket_leavesRefundToTheSweeper() {
+        when(ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.EVENT_CANCELLED, null))
+                .thenReturn(refundableOutcome(cancelledTicket(), 1999L, "cs_test_123"));
+
+        ticketService.cancelTicketForEventCancellation(TICKET_ID);
+
+        verify(paymentGatewayService, never()).refund(any());
     }
 
     @Test

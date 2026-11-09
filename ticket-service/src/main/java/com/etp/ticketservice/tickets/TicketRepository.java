@@ -1,17 +1,38 @@
 package com.etp.ticketservice.tickets;
 
+import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
+
+    // Plain lock with no joins: Postgres rejects FOR UPDATE on the nullable side of the
+    // outer joins findByDomainIdForCancellation needs. Serializes concurrent cancels so
+    // only one of them can issue a refund.
+    @Query("SELECT t FROM Ticket t WHERE t.domainId = :domainId")
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Ticket> findByDomainIdWithLock(@Param("domainId") UUID domainId);
+
+    @Query("SELECT t FROM Ticket t WHERE t.providerRefundId = :providerRefundId")
+    Optional<Ticket> findByProviderRefundId(@Param("providerRefundId") String providerRefundId);
+
+    // A non-null providerRefundId means Stripe already has the refund, and only a webhook
+    // can move it on from here.
+    @Query(
+            "SELECT t.domainId FROM Ticket t WHERE t.refundStatus = :status "
+                    + "AND t.providerRefundId IS NULL AND t.cancelledAt < :cutoff")
+    List<UUID> findDomainIdsAwaitingRefund(
+            @Param("status") RefundStatusEnum status, @Param("cutoff") LocalDateTime cutoff);
 
     // Counts every ticket ever created against this ticket type, cancelled or not --
     // deliberately unfiltered. This is what guards the "can't remove a ticket type that

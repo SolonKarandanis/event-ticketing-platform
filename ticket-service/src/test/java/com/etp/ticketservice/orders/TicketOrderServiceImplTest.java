@@ -17,6 +17,8 @@ import com.etp.ticketservice.events.exception.EventNotFoundException;
 import com.etp.ticketservice.orders.dto.CheckoutLineItemRequestDto;
 import com.etp.ticketservice.orders.dto.CreateCheckoutRequestDto;
 import com.etp.ticketservice.payments.PaymentProvider;
+import com.etp.ticketservice.payments.RefundRequest;
+import com.etp.ticketservice.tickets.RefundStatusEnum;
 import com.etp.ticketservice.tickets.TicketRepository;
 import com.etp.ticketservice.tickets.TicketService;
 import com.etp.ticketservice.tickets.TicketStatusEnum;
@@ -271,7 +273,7 @@ class TicketOrderServiceImplTest {
         UUID orderId = UUID.randomUUID();
         when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ticketOrderService.completeOrder(orderId))
+        assertThatThrownBy(() -> ticketOrderService.completeOrder(orderId, "cs_1"))
                 .isInstanceOf(IllegalStateException.class);
 
         verify(ticketService, never()).issueTicket(any(), any(), any());
@@ -286,7 +288,7 @@ class TicketOrderServiceImplTest {
         when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
 
         // Already settled by a concurrent webhook delivery or sweep pass -- a safe no-op.
-        ticketOrderService.completeOrder(orderId);
+        ticketOrderService.completeOrder(orderId, "cs_1");
 
         verify(ticketService, never()).issueTicket(any(), any(), any());
         verify(ticketOrderRepository, never()).save(any());
@@ -300,6 +302,7 @@ class TicketOrderServiceImplTest {
         order.setDomainId(orderId);
         order.setStatus(OrderStatusEnum.PENDING);
         order.setPurchaser(purchaser);
+        order.setEvent(eventWithStatus(EventStatusEnum.PUBLISHED));
 
         TicketType ticketTypeA = new TicketType();
         TicketOrderItem itemA = new TicketOrderItem();
@@ -316,11 +319,99 @@ class TicketOrderServiceImplTest {
         when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
         when(ticketOrderRepository.save(order)).thenReturn(order);
 
-        ticketOrderService.completeOrder(orderId);
+        ticketOrderService.completeOrder(orderId, "cs_1");
 
         verify(ticketService, times(2)).issueTicket(purchaser, ticketTypeA, itemA);
         verify(ticketService, times(1)).issueTicket(purchaser, ticketTypeB, itemB);
         assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.PAID);
+        assertThat(order.getProviderCheckoutSessionId()).isEqualTo("cs_1");
+    }
+
+    @Test
+    void completeOrder_pendingButEventNoLongerOnSale_refundsInsteadOfIssuing() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = expiredOrderFor(orderId, EventStatusEnum.CANCELLED, null);
+        order.setStatus(OrderStatusEnum.PENDING);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+
+        ticketOrderService.completeOrder(orderId, "cs_1");
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.REFUND_PENDING);
+        verify(ticketService, never()).issueTicket(any(), any(), any());
+    }
+
+    @Test
+    void completeOrder_expiredWithCapacityLeft_stillIssuesTickets() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = expiredOrderFor(orderId, EventStatusEnum.PUBLISHED, 10);
+        TicketType ticketType = order.getItems().iterator().next().getTicketType();
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketType.getDomainId()))
+                .thenReturn(Optional.of(ticketType));
+
+        ticketOrderService.completeOrder(orderId, "cs_1");
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.PAID);
+        verify(ticketService).issueTicket(any(), eq(ticketType), any());
+    }
+
+    @Test
+    void completeOrder_expiredAndSoldOut_refundsInsteadOfOverselling() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = expiredOrderFor(orderId, EventStatusEnum.PUBLISHED, 1);
+        TicketType ticketType = order.getItems().iterator().next().getTicketType();
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(ticketTypeRepository.findByDomainIdWithLock(ticketType.getDomainId()))
+                .thenReturn(Optional.of(ticketType));
+        when(ticketRepository.countActiveByTicketTypeId(
+                        ticketType.getId(), TicketStatusEnum.CANCELLED))
+                .thenReturn(1);
+
+        ticketOrderService.completeOrder(orderId, "cs_1");
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.REFUND_PENDING);
+        verify(ticketService, never()).issueTicket(any(), any(), any());
+    }
+
+    @Test
+    void completeOrder_redeliveredAfterRefundPending_isNoOp() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = new TicketOrder();
+        order.setStatus(OrderStatusEnum.REFUND_PENDING);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+
+        ticketOrderService.completeOrder(orderId, "cs_1");
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.REFUND_PENDING);
+        verify(ticketOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void recordRefundOutcome_mapsProviderResultOntoOrderStatus() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = new TicketOrder();
+        order.setStatus(OrderStatusEnum.REFUND_PENDING);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+
+        ticketOrderService.recordRefundOutcome(orderId, RefundStatusEnum.PENDING, "re_1");
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.REFUNDED);
+        assertThat(order.getProviderRefundId()).isEqualTo("re_1");
+    }
+
+    @Test
+    void recordRefundAttemptFailed_marksFailedOnlyOnceAttemptsRunOut() {
+        UUID orderId = UUID.randomUUID();
+        TicketOrder order = new TicketOrder();
+        order.setStatus(OrderStatusEnum.REFUND_PENDING);
+        order.setRefundAttempts(RefundRequest.MAX_ATTEMPTS - 2);
+        when(ticketOrderRepository.findByDomainIdWithLock(orderId)).thenReturn(Optional.of(order));
+
+        ticketOrderService.recordRefundAttemptFailed(orderId);
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.REFUND_PENDING);
+
+        ticketOrderService.recordRefundAttemptFailed(orderId);
+        assertThat(order.getStatus()).isEqualTo(OrderStatusEnum.REFUND_FAILED);
     }
 
     @Test
@@ -363,6 +454,27 @@ class TicketOrderServiceImplTest {
     private CreateCheckoutRequestDto requestFor(UUID ticketTypeId, int quantity) {
         return new CreateCheckoutRequestDto(
                 List.of(new CheckoutLineItemRequestDto(ticketTypeId, quantity)));
+    }
+
+    private Event eventWithStatus(EventStatusEnum status) {
+        Event event = eventWithId(1L);
+        event.setStatus(status);
+        return event;
+    }
+
+    private TicketOrder expiredOrderFor(
+            UUID orderId, EventStatusEnum eventStatus, Integer totalAvailable) {
+        Event event = eventWithStatus(eventStatus);
+        TicketOrder order = new TicketOrder();
+        order.setDomainId(orderId);
+        order.setStatus(OrderStatusEnum.EXPIRED);
+        order.setPurchaser(new User());
+        order.setEvent(event);
+        TicketOrderItem item = new TicketOrderItem();
+        item.setTicketType(ticketTypeWithCapacity(event, totalAvailable, 7L));
+        item.setQuantity(1);
+        order.addItem(item);
+        return order;
     }
 
     private Event eventWithId(long id) {

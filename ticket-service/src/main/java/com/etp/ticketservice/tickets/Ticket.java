@@ -120,6 +120,10 @@ public class Ticket {
     @Column(name = "provider_refund_id")
     private String providerRefundId;
 
+    // Failed gateway calls so far; PendingRefundSweeper stops retrying at the cap.
+    @Column(name = "refund_attempts", nullable = false)
+    private int refundAttempts;
+
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
     @Builder.Default
     private Set<TicketValidation> validations = new LinkedHashSet<>();

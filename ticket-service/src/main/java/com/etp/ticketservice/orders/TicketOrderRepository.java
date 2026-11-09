@@ -24,6 +24,9 @@ public interface TicketOrderRepository extends JpaRepository<TicketOrder, Long> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<TicketOrder> findByDomainIdWithLock(@Param("domainId") UUID domainId);
 
+    @Query("SELECT o.domainId FROM TicketOrder o WHERE o.status = :status")
+    List<UUID> findDomainIdsByStatus(@Param("status") OrderStatusEnum status);
+
     // Unlocked, ids only -- the sweep never holds a lock across the whole candidate
     // batch, only per-order inside TicketOrderServiceImpl#expireOrder.
     @Query("SELECT o.domainId FROM TicketOrder o WHERE o.status = :status AND o.expiresAt < :now")

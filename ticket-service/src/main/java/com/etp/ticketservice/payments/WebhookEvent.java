@@ -16,4 +16,9 @@ public class WebhookEvent {
     // Nullable -- absent for event types we don't act on, or an unparseable/missing
     // client_reference_id.
     private UUID orderDomainId;
+    // Only set when the event's object is a checkout session.
+    private String providerSessionId;
+    // Only set when the event's object is a refund.
+    private String providerRefundId;
+    private String providerRefundStatus;
 }

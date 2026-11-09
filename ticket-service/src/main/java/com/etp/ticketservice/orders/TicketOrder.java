@@ -81,6 +81,14 @@ public class TicketOrder {
     @Column(name = "purchaser_id", insertable = false, updatable = false)
     private Long purchaserId;
 
+    // Only set for a whole-order refund (REFUND_PENDING and after), never for the
+    // per-ticket refunds tracked on Ticket itself.
+    @Column(name = "provider_refund_id")
+    private String providerRefundId;
+
+    @Column(name = "refund_attempts", nullable = false)
+    private int refundAttempts;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "event_id", nullable = false)
     private Event event;

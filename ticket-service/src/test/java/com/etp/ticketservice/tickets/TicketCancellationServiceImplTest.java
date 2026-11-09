@@ -2,12 +2,16 @@ package com.etp.ticketservice.tickets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.etp.ticketservice.messaging.TicketEventPublisher;
 import com.etp.ticketservice.orders.TicketOrder;
 import com.etp.ticketservice.orders.TicketOrderItem;
+import com.etp.ticketservice.payments.RefundRequest;
+import com.etp.ticketservice.tickets.exception.TicketAlreadyCancelledException;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -33,8 +37,7 @@ class TicketCancellationServiceImplTest {
 
     @Test
     void cancelAndPersist_vanishedTicket_throws() {
-        when(ticketRepository.findByDomainIdForCancellation(TICKET_ID))
-                .thenReturn(Optional.empty());
+        when(ticketRepository.findByDomainIdWithLock(TICKET_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
                         ticketCancellationService.cancelAndPersist(
@@ -46,6 +49,7 @@ class TicketCancellationServiceImplTest {
     void cancelAndPersist_noOrderItem_setsCancelledFieldsAndReturnsNullRefundContext() {
         Ticket ticket = new Ticket();
         ticket.setDomainId(TICKET_ID);
+        when(ticketRepository.findByDomainIdWithLock(TICKET_ID)).thenReturn(Optional.of(ticket));
         when(ticketRepository.findByDomainIdForCancellation(TICKET_ID))
                 .thenReturn(Optional.of(ticket));
         when(ticketRepository.save(ticket)).thenReturn(ticket);
@@ -53,6 +57,8 @@ class TicketCancellationServiceImplTest {
         TicketCancellationOutcome outcome =
                 ticketCancellationService.cancelAndPersist(
                         TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, "Changed my mind");
+
+        assertThat(ticket.getRefundStatus()).isNull();
 
         assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.CANCELLED);
         assertThat(ticket.getCancelledAt()).isNotNull();
@@ -76,6 +82,7 @@ class TicketCancellationServiceImplTest {
         Ticket ticket = new Ticket();
         ticket.setDomainId(TICKET_ID);
         ticket.setOrderItem(orderItem);
+        when(ticketRepository.findByDomainIdWithLock(TICKET_ID)).thenReturn(Optional.of(ticket));
         when(ticketRepository.findByDomainIdForCancellation(TICKET_ID))
                 .thenReturn(Optional.of(ticket));
         when(ticketRepository.save(ticket)).thenReturn(ticket);
@@ -86,6 +93,69 @@ class TicketCancellationServiceImplTest {
 
         assertThat(outcome.getRefundAmountMinorUnits()).isEqualTo(1999L);
         assertThat(outcome.getProviderCheckoutSessionId()).isEqualTo("cs_test_123");
+        assertThat(ticket.getRefundStatus()).isEqualTo(RefundStatusEnum.PENDING);
+    }
+
+    @Test
+    void cancelAndPersist_alreadyCancelled_throwsSoASecondRefundCannotStart() {
+        Ticket ticket = new Ticket();
+        ticket.setStatus(TicketStatusEnum.CANCELLED);
+        when(ticketRepository.findByDomainIdWithLock(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() ->
+                        ticketCancellationService.cancelAndPersist(
+                                TICKET_ID, TicketCancelReasonEnum.ATTENDEE_REQUEST, null))
+                .isInstanceOf(TicketAlreadyCancelledException.class);
+
+        verify(ticketRepository, never()).save(any());
+        verify(ticketEventPublisher, never()).publishTicketCancelled(any());
+    }
+
+    @Test
+    void cancelAndPersist_alreadyCancelledDuringEventCascade_isNoOpWithoutRefund() {
+        Ticket ticket = new Ticket();
+        ticket.setStatus(TicketStatusEnum.CANCELLED);
+        when(ticketRepository.findByDomainIdWithLock(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        TicketCancellationOutcome outcome =
+                ticketCancellationService.cancelAndPersist(
+                        TICKET_ID, TicketCancelReasonEnum.EVENT_CANCELLED, null);
+
+        assertThat(outcome.getRefundAmountMinorUnits()).isNull();
+        verify(ticketRepository, never()).save(any());
+    }
+
+    @Test
+    void recordRefundAttemptFailed_staysPendingUntilAttemptsRunOut() {
+        Ticket ticket = new Ticket();
+        ticket.setRefundStatus(RefundStatusEnum.PENDING);
+        ticket.setRefundAttempts(RefundRequest.MAX_ATTEMPTS - 2);
+        when(ticketRepository.findByDomainId(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThat(ticketCancellationService.recordRefundAttemptFailed(TICKET_ID))
+                .isEqualTo(RefundStatusEnum.PENDING);
+        assertThat(ticketCancellationService.recordRefundAttemptFailed(TICKET_ID))
+                .isEqualTo(RefundStatusEnum.FAILED);
+    }
+
+    @Test
+    void applyProviderRefundUpdate_updatesMatchingTicket() {
+        Ticket ticket = new Ticket();
+        ticket.setRefundStatus(RefundStatusEnum.PENDING);
+        when(ticketRepository.findByProviderRefundId("re_1")).thenReturn(Optional.of(ticket));
+
+        ticketCancellationService.applyProviderRefundUpdate("re_1", RefundStatusEnum.SUCCEEDED);
+
+        assertThat(ticket.getRefundStatus()).isEqualTo(RefundStatusEnum.SUCCEEDED);
+    }
+
+    @Test
+    void applyProviderRefundUpdate_unknownRefund_isIgnored() {
+        when(ticketRepository.findByProviderRefundId("re_x")).thenReturn(Optional.empty());
+
+        ticketCancellationService.applyProviderRefundUpdate("re_x", RefundStatusEnum.FAILED);
+
+        verify(ticketRepository, never()).save(any());
     }
 
     @Test

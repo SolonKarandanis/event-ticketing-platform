@@ -43,6 +43,46 @@ class StripePaymentGatewayServiceTest {
     }
 
     @Test
+    void verifyWebhookSignature_refundObject_extractsRefundIdAndStatus() throws Exception {
+        String payload =
+                """
+                {
+                  "id": "evt_refund",
+                  "object": "event",
+                  "type": "refund.updated",
+                  "data": {"object": {"id": "re_1", "object": "refund", "status": "failed"}}
+                }
+                """;
+        String signature = Webhook.Signature.generateSignatureHeader(payload, WEBHOOK_SECRET);
+
+        WebhookEvent event = service.verifyWebhookSignature(payload, signature);
+
+        assertThat(event.getProviderRefundId()).isEqualTo("re_1");
+        assertThat(event.getProviderRefundStatus()).isEqualTo("failed");
+        assertThat(event.getProviderSessionId()).isNull();
+        assertThat(event.getOrderDomainId()).isNull();
+    }
+
+    @Test
+    void verifyWebhookSignature_sessionObject_extractsSessionId() throws Exception {
+        String payload =
+                """
+                {
+                  "id": "evt_session",
+                  "object": "event",
+                  "type": "checkout.session.completed",
+                  "data": {"object": {"id": "cs_1", "object": "checkout.session"}}
+                }
+                """;
+        String signature = Webhook.Signature.generateSignatureHeader(payload, WEBHOOK_SECRET);
+
+        WebhookEvent event = service.verifyWebhookSignature(payload, signature);
+
+        assertThat(event.getProviderSessionId()).isEqualTo("cs_1");
+        assertThat(event.getProviderRefundId()).isNull();
+    }
+
+    @Test
     void verifyWebhookSignature_missingClientReferenceId_orderDomainIdIsNull() throws Exception {
         String payload = checkoutSessionEventPayload("evt_456", "checkout.session.expired", null);
         String signature = Webhook.Signature.generateSignatureHeader(payload, WEBHOOK_SECRET);

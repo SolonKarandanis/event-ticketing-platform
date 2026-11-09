@@ -35,7 +35,11 @@ public interface TicketService {
     // Called once per ticket by EventServiceImpl's event-cancellation cascade --
     // guardCancellable is NOT applied here; the cascade has already decided this ticket
     // is cancellable (it skips an already-validated one itself rather than throwing).
+    // Makes no Stripe call: the refund is left PENDING for PendingRefundSweeper.
     Ticket cancelTicketForEventCancellation(UUID ticketDomainId);
+
+    // Attempts the refund of an already-cancelled ticket; PendingRefundSweeper's entry point.
+    void retryPendingRefund(UUID ticketDomainId);
 
     ListTicketTicketTypeResponseDto convertToListTicketTicketTypeResponseDto(TicketType ticketType);
 

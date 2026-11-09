@@ -161,7 +161,14 @@ public class TicketServiceImpl implements TicketService {
     // deliberate asymmetry that already existed before #22.
     @Override
     public Ticket cancelTicketForEventCancellation(UUID ticketDomainId) {
-        return cancelAndAttemptRefund(ticketDomainId, TicketCancelReasonEnum.EVENT_CANCELLED, null);
+        return ticketCancellationService
+                .cancelAndPersist(ticketDomainId, TicketCancelReasonEnum.EVENT_CANCELLED, null)
+                .getTicket();
+    }
+
+    @Override
+    public void retryPendingRefund(UUID ticketDomainId) {
+        attemptRefund(ticketDomainId, ticketCancellationService.loadRefundContext(ticketDomainId));
     }
 
     // Shared by all three cancel paths above (and cancelTicketForEventCancellation).
@@ -195,9 +202,12 @@ public class TicketServiceImpl implements TicketService {
     // and CheckoutServiceImpl/StripeWebhookServiceImpl for the same shape used elsewhere.
     private Ticket cancelAndAttemptRefund(
             UUID ticketDomainId, TicketCancelReasonEnum reason, String note) {
-        TicketCancellationOutcome outcome =
-                ticketCancellationService.cancelAndPersist(ticketDomainId, reason, note);
+        return attemptRefund(
+                ticketDomainId,
+                ticketCancellationService.cancelAndPersist(ticketDomainId, reason, note));
+    }
 
+    private Ticket attemptRefund(UUID ticketDomainId, TicketCancellationOutcome outcome) {
         if (null == outcome.getRefundAmountMinorUnits()) {
             // orderItem was null -- this ticket was never paid via Stripe at all (the
             // legacy direct-purchase path), so there's nothing to refund.
@@ -223,13 +233,18 @@ public class TicketServiceImpl implements TicketService {
                                         .providerCheckoutSessionId(
                                                 outcome.getProviderCheckoutSessionId())
                                         .amountMinorUnits(outcome.getRefundAmountMinorUnits())
+                                        .idempotencyKey("ticket-refund-" + ticketDomainId)
                                         .build());
                 providerRefundId = result.getProviderRefundId();
-                refundStatus = translateRefundStatus(result.getStatus());
+                refundStatus = RefundStatusEnum.fromProviderStatus(result.getStatus());
             } catch (PaymentGatewayException e) {
-                // Cancellation already took effect regardless -- a failed refund is
-                // recorded for organizer follow-up, never thrown back to the caller.
-                refundStatus = RefundStatusEnum.FAILED;
+                // Cancellation already took effect regardless -- a failed call stays
+                // retryable until its attempts run out, never thrown back to the caller.
+                log.warn("Refund attempt failed for Ticket {}", ticketDomainId, e);
+                Ticket ticket = outcome.getTicket();
+                ticket.setRefundStatus(
+                        ticketCancellationService.recordRefundAttemptFailed(ticketDomainId));
+                return ticket;
             }
         }
 
@@ -240,14 +255,6 @@ public class TicketServiceImpl implements TicketService {
         ticket.setRefundStatus(refundStatus);
         ticket.setProviderRefundId(providerRefundId);
         return ticket;
-    }
-
-    private RefundStatusEnum translateRefundStatus(String stripeStatus) {
-        return switch (stripeStatus) {
-            case "succeeded" -> RefundStatusEnum.SUCCEEDED;
-            case "pending" -> RefundStatusEnum.PENDING;
-            default -> RefundStatusEnum.FAILED; // "failed", "canceled", or any future value
-        };
     }
 
     @Override

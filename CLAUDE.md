@@ -1,3 +1,7 @@
+## ticket-service conventions
+
+Give every Spring Data repository method an explicit JPQL `@Query` with `@Param` arguments, including single-field lookups. `RepositoryConventionsTest` goes red on a missing `@Query`.
+
 ## Agent skills
 
 ### Issue tracker

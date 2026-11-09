@@ -442,12 +442,12 @@ public class EventServiceImpl implements EventService {
         return eventRepository.save(event);
     }
 
-    // Deliberately NOT @Transactional -- the cascade below calls into TicketService,
-    // which orchestrates its own independent transactions around an external Stripe
-    // refund call per ticket (issue #22). Keeping this method transactional would fold
-    // every one of those into one ambient transaction spanning N serial Stripe calls --
-    // exactly the anti-pattern that split was meant to avoid.
+    // One transaction, so the event and all its tickets cancel together or not at all; a
+    // failure leaves the event PUBLISHED and the organizer can simply retry. Safe to hold
+    // open because the cascade makes no Stripe calls -- each refund is committed as PENDING
+    // and paid out afterwards by PendingRefundSweeper.
     @Override
+    @Transactional
     public Event cancelEvent(UUID organizerId, UUID id) {
         Event event =
                 eventRepository

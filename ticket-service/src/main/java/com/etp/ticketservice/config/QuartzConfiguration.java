@@ -1,6 +1,7 @@
 package com.etp.ticketservice.config;
 
 import com.etp.ticketservice.orders.TicketOrderExpiryJob;
+import com.etp.ticketservice.payments.PendingRefundJob;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
 import org.quartz.SimpleScheduleBuilder;
@@ -33,6 +34,26 @@ public class QuartzConfiguration {
         return TriggerBuilder.newTrigger()
                 .forJob(ticketOrderExpiryJobDetail)
                 .withIdentity("ticketOrderExpiryTrigger", "orders")
+                .withSchedule(
+                        SimpleScheduleBuilder.simpleSchedule()
+                                .withIntervalInMilliseconds(SWEEP_INTERVAL_MS)
+                                .repeatForever())
+                .build();
+    }
+
+    @Bean
+    public JobDetail pendingRefundJobDetail() {
+        return JobBuilder.newJob(PendingRefundJob.class)
+                .withIdentity("pendingRefundJob", "payments")
+                .storeDurably()
+                .build();
+    }
+
+    @Bean
+    public Trigger pendingRefundTrigger(JobDetail pendingRefundJobDetail) {
+        return TriggerBuilder.newTrigger()
+                .forJob(pendingRefundJobDetail)
+                .withIdentity("pendingRefundTrigger", "payments")
                 .withSchedule(
                         SimpleScheduleBuilder.simpleSchedule()
                                 .withIntervalInMilliseconds(SWEEP_INTERVAL_MS)

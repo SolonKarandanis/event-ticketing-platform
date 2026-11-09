@@ -17,6 +17,7 @@ import com.stripe.model.PaymentMethodCollection;
 import com.stripe.model.Refund;
 import com.stripe.model.SetupIntent;
 import com.stripe.model.checkout.Session;
+import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.CustomerUpdateParams;
@@ -99,6 +100,22 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
     }
 
     @Override
+    public CheckoutSessionStatus getCheckoutSessionStatus(String providerSessionId) {
+        try {
+            Session session = Session.retrieve(providerSessionId);
+            if ("expired".equals(session.getStatus())) {
+                return CheckoutSessionStatus.EXPIRED;
+            }
+            boolean paid =
+                    "complete".equals(session.getStatus())
+                            && !"unpaid".equals(session.getPaymentStatus());
+            return paid ? CheckoutSessionStatus.PAID : CheckoutSessionStatus.OPEN;
+        } catch (StripeException e) {
+            throw new PaymentGatewayException(ErrorCode.PAYMENT_GATEWAY_ERROR, e);
+        }
+    }
+
+    @Override
     public WebhookEvent verifyWebhookSignature(String payload, String signatureHeader) {
         Event event;
         try {
@@ -110,10 +127,20 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
             throw new InvalidWebhookSignatureException(ErrorCode.INVALID_WEBHOOK_SIGNATURE, e);
         }
 
+        JsonObject object =
+                JsonParser.parseString(event.getDataObjectDeserializer().getRawJson())
+                        .getAsJsonObject();
+        String objectType = stringField(object, "object");
+        boolean isSession = "checkout.session".equals(objectType);
+        boolean isRefund = "refund".equals(objectType);
+
         return WebhookEvent.builder()
                 .providerEventId(event.getId())
                 .eventType(event.getType())
-                .orderDomainId(extractOrderDomainId(event))
+                .orderDomainId(extractOrderDomainId(object))
+                .providerSessionId(isSession ? stringField(object, "id") : null)
+                .providerRefundId(isRefund ? stringField(object, "id") : null)
+                .providerRefundStatus(isRefund ? stringField(object, "status") : null)
                 .build();
     }
 
@@ -127,18 +154,21 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
     // Stripe's own schema evolution, so reading it straight off the raw JSON sidesteps
     // that whole failure mode. getRawJson() returns the data.object JSON directly (the
     // Session object itself, not wrapped in an outer "object"/"data" key).
-    private UUID extractOrderDomainId(Event event) {
-        String rawJson = event.getDataObjectDeserializer().getRawJson();
-        JsonObject sessionJson = JsonParser.parseString(rawJson).getAsJsonObject();
-        JsonElement clientReferenceId = sessionJson.get("client_reference_id");
-        if (null == clientReferenceId || clientReferenceId.isJsonNull()) {
+    private UUID extractOrderDomainId(JsonObject object) {
+        String clientReferenceId = stringField(object, "client_reference_id");
+        if (null == clientReferenceId) {
             return null;
         }
         try {
-            return UUID.fromString(clientReferenceId.getAsString());
+            return UUID.fromString(clientReferenceId);
         } catch (IllegalArgumentException e) {
             return null;
         }
+    }
+
+    private String stringField(JsonObject object, String name) {
+        JsonElement value = object.get(name);
+        return null == value || value.isJsonNull() ? null : value.getAsString();
     }
 
     @Override
@@ -152,7 +182,12 @@ public class StripePaymentGatewayService implements PaymentGatewayService {
                             .setPaymentIntent(session.getPaymentIntent())
                             .setAmount(request.getAmountMinorUnits())
                             .build();
-            Refund refund = Refund.create(params);
+            Refund refund =
+                    Refund.create(
+                            params,
+                            RequestOptions.builder()
+                                    .setIdempotencyKey(request.getIdempotencyKey())
+                                    .build());
             return RefundResult.builder()
                     .providerRefundId(refund.getId())
                     .status(refund.getStatus())
