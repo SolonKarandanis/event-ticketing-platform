@@ -7,10 +7,15 @@ import { EventAnalyticsController } from './ticket-sales/event-analytics.control
 import { OrganizerAnalyticsController } from './ticket-sales/organizer-analytics.controller';
 import { RabbitMqConsumerService } from './rabbitmq/rabbitmq-consumer.service';
 import { KeycloakJwtStrategy } from './auth/keycloak-jwt.strategy';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [ConfigModule.forRoot(), PassportModule],
-  controllers: [EventAnalyticsController, OrganizerAnalyticsController],
+  controllers: [
+    EventAnalyticsController,
+    OrganizerAnalyticsController,
+    HealthController,
+  ],
   providers: [
     drizzleProvider,
     TicketSalesService,
