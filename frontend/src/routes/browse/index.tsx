@@ -55,13 +55,17 @@ export const Route = createFileRoute('/browse/')({
     }
     await Promise.all([
       context.queryClient
-        .ensureQueryData(publishedEventsQueryOptions(buildPublishedEventsParams(deps)))
+        .ensureQueryData(
+          publishedEventsQueryOptions(buildPublishedEventsParams(deps)),
+        )
         .catch(() => {
           // Handled by usePublishedEvents()'s isError below.
         }),
-      context.queryClient.ensureQueryData(publishedEventCitiesQueryOptions()).catch(() => {
-        // Handled by usePublishedEventCities() falling back to an empty city list below.
-      }),
+      context.queryClient
+        .ensureQueryData(publishedEventCitiesQueryOptions())
+        .catch(() => {
+          // Handled by usePublishedEventCities() falling back to an empty city list below.
+        }),
     ])
   },
   component: BrowseEvents,
@@ -149,7 +153,9 @@ function BrowseEvents() {
   // organizer, which apiFetch turns into an unwanted redirect to Keycloak login.
   const { data: cities = [] } = usePublishedEventCities()
 
-  const { data, isPending, isError } = usePublishedEvents(buildPublishedEventsParams(search))
+  const { data, isPending, isError } = usePublishedEvents(
+    buildPublishedEventsParams(search),
+  )
   const showSkeleton = useMinimumDuration(isPending, 400)
   // showSkeleton isn't literally isPending (it stays true a bit longer on purpose --
   // see useMinimumDuration), so TS can't narrow `data` from it the way it could from

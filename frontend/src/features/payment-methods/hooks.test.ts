@@ -20,7 +20,9 @@ import type { PaymentMethodResponse } from './types'
 
 const BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/payment-methods`
 
-function cardFixture(overrides: Partial<PaymentMethodResponse> = {}): PaymentMethodResponse {
+function cardFixture(
+  overrides: Partial<PaymentMethodResponse> = {},
+): PaymentMethodResponse {
   return {
     id: 'pm_123',
     brand: 'visa',
@@ -36,7 +38,9 @@ describe('usePaymentMethods', () => {
   it('returns the saved cards from GET /api/v1/payment-methods', async () => {
     server.use(http.get(BASE_URL, () => HttpResponse.json([cardFixture()])))
 
-    const { result } = renderHook(() => usePaymentMethods(), { wrapper: createQueryWrapper() })
+    const { result } = renderHook(() => usePaymentMethods(), {
+      wrapper: createQueryWrapper(),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toHaveLength(1)
@@ -46,7 +50,9 @@ describe('usePaymentMethods', () => {
   it('resolves to an empty list for a user with no saved cards yet', async () => {
     server.use(http.get(BASE_URL, () => HttpResponse.json([])))
 
-    const { result } = renderHook(() => usePaymentMethods(), { wrapper: createQueryWrapper() })
+    const { result } = renderHook(() => usePaymentMethods(), {
+      wrapper: createQueryWrapper(),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual([])
@@ -57,11 +63,16 @@ describe('useCreateSetupIntent', () => {
   it('returns the clientSecret from POST /api/v1/payment-methods/setup-intents', async () => {
     server.use(
       http.post(`${BASE_URL}/setup-intents`, () =>
-        HttpResponse.json({ clientSecret: 'seti_123_secret_abc' }, { status: 201 }),
+        HttpResponse.json(
+          { clientSecret: 'seti_123_secret_abc' },
+          { status: 201 },
+        ),
       ),
     )
 
-    const { result } = renderHook(() => useCreateSetupIntent(), { wrapper: createQueryWrapper() })
+    const { result } = renderHook(() => useCreateSetupIntent(), {
+      wrapper: createQueryWrapper(),
+    })
 
     result.current.mutate()
 
@@ -78,7 +89,10 @@ describe('useRemovePaymentMethod', () => {
         listRequestCount += 1
         return HttpResponse.json([cardFixture()])
       }),
-      http.delete(`${BASE_URL}/:paymentMethodId`, () => new HttpResponse(null, { status: 204 })),
+      http.delete(
+        `${BASE_URL}/:paymentMethodId`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
     )
 
     const queryClient = createTestQueryClient()
@@ -98,11 +112,16 @@ describe('useRemovePaymentMethod', () => {
   it("surfaces the backend's validation message if the card doesn't belong to this user", async () => {
     server.use(
       http.delete(`${BASE_URL}/:paymentMethodId`, () =>
-        HttpResponse.json({ error: 'Payment method not found' }, { status: 400 }),
+        HttpResponse.json(
+          { error: 'Payment method not found' },
+          { status: 400 },
+        ),
       ),
     )
 
-    const { result } = renderHook(() => useRemovePaymentMethod(), { wrapper: createQueryWrapper() })
+    const { result } = renderHook(() => useRemovePaymentMethod(), {
+      wrapper: createQueryWrapper(),
+    })
 
     result.current.mutate('pm_not_mine')
 
@@ -119,7 +138,10 @@ describe('useSetDefaultPaymentMethod', () => {
         listRequestCount += 1
         return HttpResponse.json([cardFixture()])
       }),
-      http.put(`${BASE_URL}/:paymentMethodId/default`, () => new HttpResponse(null, { status: 204 })),
+      http.put(
+        `${BASE_URL}/:paymentMethodId/default`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
     )
 
     const queryClient = createTestQueryClient()
@@ -129,7 +151,9 @@ describe('useSetDefaultPaymentMethod', () => {
     await waitFor(() => expect(list.result.current.isSuccess).toBe(true))
     expect(listRequestCount).toBe(1)
 
-    const setDefault = renderHook(() => useSetDefaultPaymentMethod(), { wrapper })
+    const setDefault = renderHook(() => useSetDefaultPaymentMethod(), {
+      wrapper,
+    })
     setDefault.result.current.mutate('pm_123')
     await waitFor(() => expect(setDefault.result.current.isSuccess).toBe(true))
 

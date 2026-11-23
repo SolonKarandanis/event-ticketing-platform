@@ -2,7 +2,10 @@ import { getUserManager } from './oidc'
 
 // Every feature's api.ts calls this instead of raw fetch. Attaches Authorization and
 // Accept-Language on every request, and centralizes 401 handling in one place.
-export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+export async function apiFetch(
+  input: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const userManager = getUserManager()
   const user = await userManager.getUser()
 
@@ -75,7 +78,10 @@ function extractErrorMessage(body: unknown, status: number): string {
       if (typeof message === 'string') {
         return message
       }
-      if (Array.isArray(message) && message.every((entry) => typeof entry === 'string')) {
+      if (
+        Array.isArray(message) &&
+        message.every((entry) => typeof entry === 'string')
+      ) {
         return message.join(', ')
       }
     }
@@ -87,14 +93,17 @@ function extractErrorMessage(body: unknown, status: number): string {
 // parseJsonOrThrow, parseBlobOrThrow, and throwIfNotOk below.
 async function throwApiError(response: Response): Promise<never> {
   const body: unknown = await response.json().catch(() => null)
-  throw new ApiError(response.status, extractErrorMessage(body, response.status))
+  throw new ApiError(
+    response.status,
+    extractErrorMessage(body, response.status),
+  )
 }
 
 export async function parseJsonOrThrow<T>(response: Response): Promise<T> {
   if (!response.ok) {
     return throwApiError(response)
   }
-  return await response.json() as Promise<T>
+  return (await response.json()) as Promise<T>
 }
 
 // For endpoints whose success body isn't JSON (the ticket QR code image, image/png) --

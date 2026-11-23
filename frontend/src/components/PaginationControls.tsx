@@ -1,6 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { buttonVariants } from '#/components/ui/button'
-import { Pagination, PaginationContent, PaginationItem } from '#/components/ui/pagination'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from '#/components/ui/pagination'
 import {
   Select,
   SelectContent,
@@ -80,7 +84,10 @@ export function PaginationControls({
                 to="."
                 search={(prev) => ({ ...prev, page: page - 1 })}
                 viewTransition
-                className={buttonVariants({ variant: 'ghost', size: 'default' })}
+                className={buttonVariants({
+                  variant: 'ghost',
+                  size: 'default',
+                })}
               >
                 Previous
               </Link>
@@ -108,7 +115,10 @@ export function PaginationControls({
                 to="."
                 search={(prev) => ({ ...prev, page: page + 1 })}
                 viewTransition
-                className={buttonVariants({ variant: 'ghost', size: 'default' })}
+                className={buttonVariants({
+                  variant: 'ghost',
+                  size: 'default',
+                })}
               >
                 Next
               </Link>

@@ -2,7 +2,11 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button'
 import { PaginatedTable } from '#/components/PaginatedTable'
 import { useVenues, venuesQueryOptions } from '#/features/venues/hooks'
-import { DEFAULT_PAGE, DEFAULT_SIZE, paginationSearchSchema } from '#/lib/pagination'
+import {
+  DEFAULT_PAGE,
+  DEFAULT_SIZE,
+  paginationSearchSchema,
+} from '#/lib/pagination'
 
 export const Route = createFileRoute('/_organizer/venues/')({
   validateSearch: paginationSearchSchema.parse,

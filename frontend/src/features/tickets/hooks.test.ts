@@ -7,14 +7,27 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { server } from '#/test/msw/server'
 import { createQueryWrapper, createTestQueryClient } from '#/test/test-utils'
-import { useCancelTicket, useTicket, useTicketQrCode, useTickets, useValidateTicket } from './hooks'
-import { TicketCancelReason, TicketStatus, TicketValidationMethod, TicketValidationStatus } from './types'
+import {
+  useCancelTicket,
+  useTicket,
+  useTicketQrCode,
+  useTickets,
+  useValidateTicket,
+} from './hooks'
+import {
+  TicketCancelReason,
+  TicketStatus,
+  TicketValidationMethod,
+  TicketValidationStatus,
+} from './types'
 import type { GetTicketResponse, ListTicketResponse } from './types'
 
 const TICKETS_BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/tickets`
 const VALIDATIONS_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/ticket-validations`
 
-function ticketFixture(overrides: Partial<GetTicketResponse> = {}): GetTicketResponse {
+function ticketFixture(
+  overrides: Partial<GetTicketResponse> = {},
+): GetTicketResponse {
   return {
     id: 'ticket-1',
     referenceCode: 'XY3P9KRT',
@@ -38,7 +51,13 @@ describe('useTickets', () => {
     }
     server.use(
       http.get(TICKETS_BASE_URL, () =>
-        HttpResponse.json({ content: [listItem], totalElements: 1, totalPages: 1, number: 0, size: 10 }),
+        HttpResponse.json({
+          content: [listItem],
+          totalElements: 1,
+          totalPages: 1,
+          number: 0,
+          size: 10,
+        }),
       ),
     )
 
@@ -55,7 +74,9 @@ describe('useTickets', () => {
 describe('useTicket', () => {
   it('returns the ticket details from GET /api/v1/tickets/:ticketId', async () => {
     server.use(
-      http.get(`${TICKETS_BASE_URL}/:ticketId`, () => HttpResponse.json(ticketFixture())),
+      http.get(`${TICKETS_BASE_URL}/:ticketId`, () =>
+        HttpResponse.json(ticketFixture()),
+      ),
     )
 
     const { result } = renderHook(() => useTicket('ticket-1'), {
@@ -81,7 +102,9 @@ describe('useTicketQrCode', () => {
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
     server.use(
       http.get(`${TICKETS_BASE_URL}/:ticketId/qr-codes`, () =>
-        HttpResponse.arrayBuffer(pngBytes.buffer, { headers: { 'Content-Type': 'image/png' } }),
+        HttpResponse.arrayBuffer(pngBytes.buffer, {
+          headers: { 'Content-Type': 'image/png' },
+        }),
       ),
     )
 
@@ -101,7 +124,10 @@ describe('useValidateTicket', () => {
   it('resolves normally on a 200 with an ALREADY-USED-style INVALID result -- not an error', async () => {
     server.use(
       http.post(VALIDATIONS_URL, () =>
-        HttpResponse.json({ ticketId: 'ticket-1', status: TicketValidationStatus.INVALID }),
+        HttpResponse.json({
+          ticketId: 'ticket-1',
+          status: TicketValidationStatus.INVALID,
+        }),
       ),
     )
 
@@ -109,7 +135,10 @@ describe('useValidateTicket', () => {
       wrapper: createQueryWrapper(),
     })
 
-    result.current.mutate({ id: 'some-qr-domain-id', method: TicketValidationMethod.QR_SCAN })
+    result.current.mutate({
+      id: 'some-qr-domain-id',
+      method: TicketValidationMethod.QR_SCAN,
+    })
 
     // The whole point of this hook (see its comment in hooks.ts): INVALID is a normal,
     // successful HTTP 200 response, not a thrown error -- the caller reads
@@ -130,7 +159,10 @@ describe('useValidateTicket', () => {
       wrapper: createQueryWrapper(),
     })
 
-    result.current.mutate({ id: 'unknown-id', method: TicketValidationMethod.QR_SCAN })
+    result.current.mutate({
+      id: 'unknown-id',
+      method: TicketValidationMethod.QR_SCAN,
+    })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(result.current.error?.message).toBe('QR code not found')
@@ -143,7 +175,13 @@ describe('useCancelTicket', () => {
     server.use(
       http.get(TICKETS_BASE_URL, () => {
         listRequestCount += 1
-        return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 10 })
+        return HttpResponse.json({
+          content: [],
+          totalElements: 0,
+          totalPages: 0,
+          number: 0,
+          size: 10,
+        })
       }),
       http.post(`${TICKETS_BASE_URL}/:ticketId/cancel`, () =>
         HttpResponse.json({
@@ -159,7 +197,9 @@ describe('useCancelTicket', () => {
     const queryClient = createTestQueryClient()
     const wrapper = createQueryWrapper(queryClient)
 
-    const list = renderHook(() => useTickets({ page: 0, size: 10 }), { wrapper })
+    const list = renderHook(() => useTickets({ page: 0, size: 10 }), {
+      wrapper,
+    })
     await waitFor(() => expect(list.result.current.isSuccess).toBe(true))
     expect(listRequestCount).toBe(1)
 

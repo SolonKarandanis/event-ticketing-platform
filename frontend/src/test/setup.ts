@@ -27,7 +27,15 @@ import { server } from './msw/server'
 // This has to run before server.listen() below actually patches `fetch` -- it does,
 // since this executes as this module loads, and server.listen() only runs later, inside
 // beforeAll.
-Object.assign(globalThis, { Blob, File, FormData, Headers, Request, Response, fetch })
+Object.assign(globalThis, {
+  Blob,
+  File,
+  FormData,
+  Headers,
+  Request,
+  Response,
+  fetch,
+})
 
 // apiFetch (see #/lib/api-client) calls #/lib/oidc's getUserManager().getUser() on
 // every request. Mocked globally so no test ever constructs a real oidc-client-ts

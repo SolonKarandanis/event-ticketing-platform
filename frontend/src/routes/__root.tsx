@@ -60,7 +60,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   // Client-only -- server renders with no manager (AuthProvider tolerates this,
   // falling back to an inert stub since its own initialization work is deferred to an
   // effect that never runs during SSR anyway).
-  const userManager = typeof window !== 'undefined' ? getUserManager() : undefined
+  const userManager =
+    typeof window !== 'undefined' ? getUserManager() : undefined
 
   const onSigninCallback = (user: User | undefined) => {
     const destination = getRoleHomeRoute(getRoles(user))
@@ -85,7 +86,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="font-sans antialiased wrap-anywhere selection:bg-[rgba(79,184,178,0.24)]">
-        <AuthProvider userManager={userManager} onSigninCallback={onSigninCallback}>
+        <AuthProvider
+          userManager={userManager}
+          onSigninCallback={onSigninCallback}
+        >
           <Header />
           {children}
           <Footer />

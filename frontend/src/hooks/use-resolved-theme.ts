@@ -5,14 +5,16 @@ import { useEffect, useState } from 'react'
 // itself (see ThemeToggle.tsx), it doesn't use next-themes.
 export function useResolvedTheme(): 'light' | 'dark' {
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
-    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+    typeof document !== 'undefined' &&
+    document.documentElement.classList.contains('dark')
       ? 'dark'
       : 'light',
   )
 
   useEffect(() => {
     const root = document.documentElement
-    const readTheme = () => setTheme(root.classList.contains('dark') ? 'dark' : 'light')
+    const readTheme = () =>
+      setTheme(root.classList.contains('dark') ? 'dark' : 'light')
 
     readTheme()
     const observer = new MutationObserver(readTheme)

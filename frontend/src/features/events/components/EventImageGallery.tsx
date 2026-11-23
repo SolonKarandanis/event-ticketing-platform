@@ -60,7 +60,9 @@ export function EventImageGallery({
     // snapshot -- resetting event.target.value below clears this same object in
     // place. Array.from(...) copies the File references into a real, independent
     // array first, so the reset can't wipe out what we already read.
-    const selectedFiles = event.target.files ? Array.from(event.target.files) : []
+    const selectedFiles = event.target.files
+      ? Array.from(event.target.files)
+      : []
     // Reset immediately, not just on the happy path -- without this, picking the
     // exact same file twice in a row wouldn't fire a second change event at all.
     event.target.value = ''

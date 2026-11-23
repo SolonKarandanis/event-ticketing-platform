@@ -19,7 +19,9 @@ export const paginationSearchSchema = z.object({
   page: z.coerce.number().int().min(1).optional().catch(undefined),
   size: z.coerce
     .number()
-    .refine((value): value is PageSize => (PAGE_SIZES as readonly number[]).includes(value))
+    .refine((value): value is PageSize =>
+      (PAGE_SIZES as readonly number[]).includes(value),
+    )
     .optional()
     .catch(undefined),
 })

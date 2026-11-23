@@ -17,8 +17,12 @@ export function createTestQueryClient(): QueryClient {
 // Pass an existing client when a test needs to assert against it directly (e.g.
 // spying on invalidateQueries, or reading back what's in the cache after a mutation);
 // otherwise a wrapper-scoped one is created for you.
-export function createQueryWrapper(queryClient: QueryClient = createTestQueryClient()) {
+export function createQueryWrapper(
+  queryClient: QueryClient = createTestQueryClient(),
+) {
   return function QueryWrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
   }
 }

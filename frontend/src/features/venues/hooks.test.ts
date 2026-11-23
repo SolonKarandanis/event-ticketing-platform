@@ -82,9 +82,12 @@ describe('useCreateVenue', () => {
       http.post(BASE_URL, async ({ request: httpRequest }) => {
         receivedContentType = httpRequest.headers.get('content-type')
         receivedBody = (await httpRequest.json()) as CreateVenueRequest
-        return HttpResponse.json(venueFixture({ id: 'created-venue-id', ...receivedBody }), {
-          status: 201,
-        })
+        return HttpResponse.json(
+          venueFixture({ id: 'created-venue-id', ...receivedBody }),
+          {
+            status: 201,
+          },
+        )
       }),
     )
 
@@ -104,10 +107,18 @@ describe('useCreateVenue', () => {
     server.use(
       http.get(BASE_URL, () => {
         listRequestCount += 1
-        return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 10 })
+        return HttpResponse.json({
+          content: [],
+          totalElements: 0,
+          totalPages: 0,
+          number: 0,
+          size: 10,
+        })
       }),
       http.post(BASE_URL, () =>
-        HttpResponse.json(venueFixture({ id: 'created-venue-id' }), { status: 201 }),
+        HttpResponse.json(venueFixture({ id: 'created-venue-id' }), {
+          status: 201,
+        }),
       ),
     )
 
@@ -148,8 +159,17 @@ describe('useInfiniteVenues', () => {
     server.use(
       http.get(BASE_URL, ({ request }) => {
         const page = Number(new URL(request.url).searchParams.get('page'))
-        const content = page === 0 ? [venueFixture({ id: 'venue-1' })] : [venueFixture({ id: 'venue-2' })]
-        return HttpResponse.json({ content, totalElements: 2, totalPages: 2, number: page, size: 20 })
+        const content =
+          page === 0
+            ? [venueFixture({ id: 'venue-1' })]
+            : [venueFixture({ id: 'venue-2' })]
+        return HttpResponse.json({
+          content,
+          totalElements: 2,
+          totalPages: 2,
+          number: page,
+          size: 20,
+        })
       }),
     )
 

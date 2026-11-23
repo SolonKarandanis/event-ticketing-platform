@@ -12,9 +12,15 @@ export interface ListVenuesParams extends PaginationParams {
   q?: string
 }
 
-export async function listVenues({ page, size, q }: ListVenuesParams): Promise<Page<Venue>> {
+export async function listVenues({
+  page,
+  size,
+  q,
+}: ListVenuesParams): Promise<Page<Venue>> {
   const searchParam = q ? `&q=${encodeURIComponent(q)}` : ''
-  const response = await apiFetch(`${BASE_URL}?page=${page}&size=${size}${searchParam}`)
+  const response = await apiFetch(
+    `${BASE_URL}?page=${page}&size=${size}${searchParam}`,
+  )
   return parseJsonOrThrow<Page<Venue>>(response)
 }
 
@@ -32,7 +38,10 @@ export async function createVenue(request: CreateVenueRequest): Promise<Venue> {
   return parseJsonOrThrow<Venue>(response)
 }
 
-export async function updateVenue(venueId: string, request: UpdateVenueRequest): Promise<Venue> {
+export async function updateVenue(
+  venueId: string,
+  request: UpdateVenueRequest,
+): Promise<Venue> {
   const response = await apiFetch(`${BASE_URL}/${venueId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

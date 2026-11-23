@@ -1,5 +1,10 @@
 // Named React Query hooks wrapping api.ts -- see issue #18 (#19).
-import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { toastErrorMessage } from '#/lib/api-client'
 import {
@@ -62,7 +67,9 @@ export function useSetDefaultPaymentMethod() {
       toast.success('Default payment method updated')
     },
     onError: (error) => {
-      toast.error(toastErrorMessage(error, "Couldn't update default payment method"))
+      toast.error(
+        toastErrorMessage(error, "Couldn't update default payment method"),
+      )
     },
   })
 }

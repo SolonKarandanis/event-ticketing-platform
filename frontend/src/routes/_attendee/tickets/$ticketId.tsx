@@ -22,12 +22,16 @@ export const Route = createFileRoute('/_attendee/tickets/$ticketId')({
   // branches below should be what render on failure.
   loader: async ({ context, params }) => {
     await Promise.all([
-      context.queryClient.ensureQueryData(ticketQueryOptions(params.ticketId)).catch(() => {
-        // Handled by useTicket()'s isError below.
-      }),
-      context.queryClient.ensureQueryData(ticketQrCodeQueryOptions(params.ticketId)).catch(() => {
-        // Handled by useTicketQrCode()'s isPending staying true / no data below.
-      }),
+      context.queryClient
+        .ensureQueryData(ticketQueryOptions(params.ticketId))
+        .catch(() => {
+          // Handled by useTicket()'s isError below.
+        }),
+      context.queryClient
+        .ensureQueryData(ticketQrCodeQueryOptions(params.ticketId))
+        .catch(() => {
+          // Handled by useTicketQrCode()'s isPending staying true / no data below.
+        }),
     ])
   },
   component: TicketDetails,
@@ -56,8 +60,12 @@ function TicketDetails() {
       <Link to="/tickets" className="nav-link mb-4 inline-block">
         &larr; Back to My Tickets
       </Link>
-      {isPending && <p className="text-sm text-(--sea-ink-soft)">Loading ticket...</p>}
-      {!isPending && isError && <p className="text-sm text-destructive">Couldn't find this ticket.</p>}
+      {isPending && (
+        <p className="text-sm text-(--sea-ink-soft)">Loading ticket...</p>
+      )}
+      {!isPending && isError && (
+        <p className="text-sm text-destructive">Couldn't find this ticket.</p>
+      )}
 
       {!isPending && !isError && (
         <div className="island-shell mx-auto max-w-md rounded-xl p-6 text-center">
@@ -118,7 +126,9 @@ function TicketDetails() {
                 className="mb-3"
               />
               <ConfirmButton
-                label={cancelTicket.isPending ? 'Cancelling...' : 'Cancel Ticket'}
+                label={
+                  cancelTicket.isPending ? 'Cancelling...' : 'Cancel Ticket'
+                }
                 title="Cancel this ticket?"
                 description="This can't be undone. You'll need to purchase a new ticket if you change your mind."
                 confirmLabel="Cancel Ticket"

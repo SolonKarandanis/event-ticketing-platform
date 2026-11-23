@@ -8,8 +8,15 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { server } from '#/test/msw/server'
 import { createQueryWrapper } from '#/test/test-utils'
-import { usePublishedEvent, usePublishedEventCities, usePublishedEvents } from './hooks'
-import type { GetPublishedEventDetailsResponse, ListPublishedEventResponse } from './types'
+import {
+  usePublishedEvent,
+  usePublishedEventCities,
+  usePublishedEvents,
+} from './hooks'
+import type {
+  GetPublishedEventDetailsResponse,
+  ListPublishedEventResponse,
+} from './types'
 
 const BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/published-events`
 
@@ -35,14 +42,34 @@ describe('usePublishedEvents', () => {
       http.post(`${BASE_URL}/search`, async ({ request }) => {
         receivedBody = (await request.json()) as Record<string, unknown>
         const events: ListPublishedEventResponse[] = [
-          { id: 'event-1', name: 'Summer Fest', start: null, end: null, venue: testVenue, coverImageId: null },
+          {
+            id: 'event-1',
+            name: 'Summer Fest',
+            start: null,
+            end: null,
+            venue: testVenue,
+            coverImageId: null,
+          },
         ]
-        return HttpResponse.json({ content: events, totalElements: 1, totalPages: 1, number: 0, size: 10 })
+        return HttpResponse.json({
+          content: events,
+          totalElements: 1,
+          totalPages: 1,
+          number: 0,
+          size: 10,
+        })
       }),
     )
 
     const { result } = renderHook(
-      () => usePublishedEvents({ page: 0, size: 10, q: 'fest', city: 'Testville', sortBy: 'priceAsc' }),
+      () =>
+        usePublishedEvents({
+          page: 0,
+          size: 10,
+          q: 'fest',
+          city: 'Testville',
+          sortBy: 'priceAsc',
+        }),
       { wrapper: createQueryWrapper() },
     )
 
@@ -64,17 +91,23 @@ describe('usePublishedEvent', () => {
       start: null,
       end: null,
       venue: testVenue,
-      ticketTypes: [{ id: 'tt-1', name: 'General', price: 25, description: null }],
+      ticketTypes: [
+        { id: 'tt-1', name: 'General', price: 25, description: null },
+      ],
       images: [{ id: 'image-1', altText: 'Main stage' }],
     }
-    server.use(http.get(`${BASE_URL}/:eventId`, () => HttpResponse.json(details)))
+    server.use(
+      http.get(`${BASE_URL}/:eventId`, () => HttpResponse.json(details)),
+    )
 
     const { result } = renderHook(() => usePublishedEvent('event-1'), {
       wrapper: createQueryWrapper(),
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(result.current.data?.images).toEqual([{ id: 'image-1', altText: 'Main stage' }])
+    expect(result.current.data?.images).toEqual([
+      { id: 'image-1', altText: 'Main stage' },
+    ])
   })
 
   it('never calls the network when eventId is empty -- the enabled guard', () => {
@@ -89,7 +122,11 @@ describe('usePublishedEvent', () => {
 
 describe('usePublishedEventCities', () => {
   it('returns the distinct city list from GET /api/v1/published-events/cities', async () => {
-    server.use(http.get(`${BASE_URL}/cities`, () => HttpResponse.json(['Athens', 'Testville'])))
+    server.use(
+      http.get(`${BASE_URL}/cities`, () =>
+        HttpResponse.json(['Athens', 'Testville']),
+      ),
+    )
 
     const { result } = renderHook(() => usePublishedEventCities(), {
       wrapper: createQueryWrapper(),

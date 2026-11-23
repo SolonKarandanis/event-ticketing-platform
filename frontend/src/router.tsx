@@ -14,7 +14,9 @@ export function getRouter() {
       ...context,
       auth: {
         getUser: () =>
-          typeof window !== 'undefined' ? getUserManager().getUser() : Promise.resolve(null),
+          typeof window !== 'undefined'
+            ? getUserManager().getUser()
+            : Promise.resolve(null),
       },
     },
     scrollRestoration: true,

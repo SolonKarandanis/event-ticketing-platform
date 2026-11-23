@@ -2,7 +2,10 @@
 // card's own remove/set-default mutation state only disables *that* card's buttons, not
 // every card's. Same reasoning as TicketTypeRow being split out of EventForm.
 import { CreditCard, Star, Trash2 } from 'lucide-react'
-import { useRemovePaymentMethod, useSetDefaultPaymentMethod } from '#/features/payment-methods/hooks'
+import {
+  useRemovePaymentMethod,
+  useSetDefaultPaymentMethod,
+} from '#/features/payment-methods/hooks'
 import type { PaymentMethodResponse } from '#/features/payment-methods/types'
 
 // Stripe's raw brand slugs aren't display-ready as-is, and a bare capitalize() mis-renders
@@ -69,7 +72,9 @@ export function PaymentMethodCard({ card }: PaymentMethodCardProps) {
           <p className="text-sm text-(--sea-ink)">{expiry(card)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-(--sea-ink)">{formatCardBrand(card.brand)}</p>
+          <p className="text-sm font-semibold text-(--sea-ink)">
+            {formatCardBrand(card.brand)}
+          </p>
           <button
             type="button"
             aria-label="Remove card"

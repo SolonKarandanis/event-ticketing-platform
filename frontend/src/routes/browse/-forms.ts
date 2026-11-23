@@ -104,7 +104,9 @@ const PAGE_SIZE = 12
 // one-second-different `to`/`from` and a cache miss on an otherwise-warm prefetch --
 // not a correctness issue (usePublishedEvents just fetches again), only a missed
 // optimization.
-export function buildPublishedEventsParams(search: BrowseSearch): ListPublishedEventsParams {
+export function buildPublishedEventsParams(
+  search: BrowseSearch,
+): ListPublishedEventsParams {
   const page = search.page ?? 1
   const hasLocation = search.lat !== undefined && search.lng !== undefined
 

@@ -49,10 +49,16 @@ export function venueSearchInfiniteQueryOptions(searchTerm: string) {
   return infiniteQueryOptions({
     queryKey: [...venuesKey, 'search', searchTerm],
     queryFn: ({ pageParam }) =>
-      listVenues({ page: pageParam, size: VENUE_PICKER_PAGE_SIZE, q: searchTerm || undefined }),
+      listVenues({
+        page: pageParam,
+        size: VENUE_PICKER_PAGE_SIZE,
+        q: searchTerm || undefined,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
-      lastPage.number + 1 < lastPage.totalPages ? lastPage.number + 1 : undefined,
+      lastPage.number + 1 < lastPage.totalPages
+        ? lastPage.number + 1
+        : undefined,
   })
 }
 

@@ -77,7 +77,9 @@ function EventDetails() {
     event === undefined
       ? 0
       : cartLines.reduce((sum, [ticketTypeId, qty]) => {
-          const ticketType = event.ticketTypes.find((tt) => tt.id === ticketTypeId)
+          const ticketType = event.ticketTypes.find(
+            (tt) => tt.id === ticketTypeId,
+          )
           return sum + (ticketType?.price ?? 0) * qty
         }, 0)
 
@@ -98,7 +100,10 @@ function EventDetails() {
       const { checkoutUrl } = await createCheckout.mutateAsync({
         eventId,
         request: {
-          items: cartLines.map(([ticketTypeId, quantity]) => ({ ticketTypeId, quantity })),
+          items: cartLines.map(([ticketTypeId, quantity]) => ({
+            ticketTypeId,
+            quantity,
+          })),
         },
       })
       window.location.href = checkoutUrl
@@ -158,7 +163,9 @@ function EventDetails() {
               </h2>
               {event.ticketTypes.map((ticketType) => (
                 <p key={ticketType.id}>
-                  <span className="font-medium text-(--sea-ink)">{ticketType.name}</span>
+                  <span className="font-medium text-(--sea-ink)">
+                    {ticketType.name}
+                  </span>
                   {' — '}
                   {formatPrice(ticketType.price)}
                   {ticketType.description ? ` · ${ticketType.description}` : ''}
@@ -167,14 +174,21 @@ function EventDetails() {
             </div>
 
             <div className="island-shell h-fit rounded-xl p-5 lg:sticky lg:top-6">
-              <h3 className="mb-4 font-semibold text-(--sea-ink)">Build Your Order</h3>
+              <h3 className="mb-4 font-semibold text-(--sea-ink)">
+                Build Your Order
+              </h3>
               <div className="grid gap-3">
                 {event.ticketTypes.map((ticketType) => {
                   const quantity = quantities[ticketType.id] ?? 0
                   return (
-                    <div key={ticketType.id} className="flex items-center justify-between">
+                    <div
+                      key={ticketType.id}
+                      className="flex items-center justify-between"
+                    >
                       <div>
-                        <p className="text-sm font-medium text-(--sea-ink)">{ticketType.name}</p>
+                        <p className="text-sm font-medium text-(--sea-ink)">
+                          {ticketType.name}
+                        </p>
                         <p className="text-xs text-(--sea-ink-soft)">
                           {formatPrice(ticketType.price)} each
                         </p>
@@ -185,7 +199,9 @@ function EventDetails() {
                           aria-label={`Decrease ${ticketType.name} quantity`}
                           className="h-7 w-7 rounded-full border border-(--line) text-sm text-(--sea-ink) disabled:opacity-40"
                           disabled={quantity === 0 || createCheckout.isPending}
-                          onClick={() => setQuantity(ticketType.id, quantity - 1)}
+                          onClick={() =>
+                            setQuantity(ticketType.id, quantity - 1)
+                          }
                         >
                           −
                         </button>
@@ -197,7 +213,9 @@ function EventDetails() {
                           aria-label={`Increase ${ticketType.name} quantity`}
                           className="h-7 w-7 rounded-full border border-(--line) text-sm text-(--sea-ink) disabled:opacity-40"
                           disabled={createCheckout.isPending}
-                          onClick={() => setQuantity(ticketType.id, quantity + 1)}
+                          onClick={() =>
+                            setQuantity(ticketType.id, quantity + 1)
+                          }
                         >
                           +
                         </button>

@@ -19,7 +19,9 @@ function Callback() {
     return (
       <main className="page-wrap px-4 py-12">
         <p className="island-kicker mb-2">Sign-in failed</p>
-        <p className="text-sm text-[var(--sea-ink-soft)]">{auth.error.message}</p>
+        <p className="text-sm text-[var(--sea-ink-soft)]">
+          {auth.error.message}
+        </p>
         <Link to="/" className="nav-link mt-4 inline-block">
           Back to Home
         </Link>

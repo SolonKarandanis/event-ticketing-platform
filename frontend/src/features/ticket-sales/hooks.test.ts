@@ -8,13 +8,19 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { HttpResponse, http } from 'msw'
 import { server } from '#/test/msw/server'
 import { createQueryWrapper, createTestQueryClient } from '#/test/test-utils'
-import { useCancelTicketForOrganizer, useEventTicketSales, useOrganizerTicketSales } from './hooks'
+import {
+  useCancelTicketForOrganizer,
+  useEventTicketSales,
+  useOrganizerTicketSales,
+} from './hooks'
 import { TicketCancelReason, TicketStatus } from '#/features/tickets/types'
 import type { TicketSaleResponse } from './types'
 
 const EVENTS_BASE_URL = `${import.meta.env.VITE_TICKET_SERVICE_URL}/api/v1/events`
 
-function ticketSaleFixture(overrides: Partial<TicketSaleResponse> = {}): TicketSaleResponse {
+function ticketSaleFixture(
+  overrides: Partial<TicketSaleResponse> = {},
+): TicketSaleResponse {
   return {
     id: 'ticket-1',
     referenceCode: 'XY3P9KRT',
@@ -43,9 +49,12 @@ describe('useEventTicketSales', () => {
       ),
     )
 
-    const { result } = renderHook(() => useEventTicketSales('event-1', { page: 0, size: 10 }), {
-      wrapper: createQueryWrapper(),
-    })
+    const { result } = renderHook(
+      () => useEventTicketSales('event-1', { page: 0, size: 10 }),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.content).toHaveLength(1)
@@ -53,9 +62,12 @@ describe('useEventTicketSales', () => {
   })
 
   it('never calls the network when eventId is empty -- the enabled guard', () => {
-    const { result } = renderHook(() => useEventTicketSales('', { page: 0, size: 10 }), {
-      wrapper: createQueryWrapper(),
-    })
+    const { result } = renderHook(
+      () => useEventTicketSales('', { page: 0, size: 10 }),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
 
     expect(result.current.isPending).toBe(true)
     expect(result.current.fetchStatus).toBe('idle')
@@ -67,7 +79,13 @@ describe('useOrganizerTicketSales', () => {
     server.use(
       http.get(`${EVENTS_BASE_URL}/tickets`, () =>
         HttpResponse.json({
-          content: [ticketSaleFixture({ id: 'ticket-2', eventId: 'event-2', eventName: 'Winter Gala' })],
+          content: [
+            ticketSaleFixture({
+              id: 'ticket-2',
+              eventId: 'event-2',
+              eventName: 'Winter Gala',
+            }),
+          ],
           totalElements: 1,
           totalPages: 1,
           number: 0,
@@ -76,9 +94,12 @@ describe('useOrganizerTicketSales', () => {
       ),
     )
 
-    const { result } = renderHook(() => useOrganizerTicketSales({ page: 0, size: 10 }), {
-      wrapper: createQueryWrapper(),
-    })
+    const { result } = renderHook(
+      () => useOrganizerTicketSales({ page: 0, size: 10 }),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.content[0].eventName).toBe('Winter Gala')
@@ -93,11 +114,23 @@ describe('useCancelTicketForOrganizer', () => {
     server.use(
       http.get(`${EVENTS_BASE_URL}/:eventId/tickets`, () => {
         eventListRequestCount += 1
-        return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 10 })
+        return HttpResponse.json({
+          content: [],
+          totalElements: 0,
+          totalPages: 0,
+          number: 0,
+          size: 10,
+        })
       }),
       http.get(`${EVENTS_BASE_URL}/tickets`, () => {
         organizerListRequestCount += 1
-        return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 10 })
+        return HttpResponse.json({
+          content: [],
+          totalElements: 0,
+          totalPages: 0,
+          number: 0,
+          size: 10,
+        })
       }),
       http.post(`${EVENTS_BASE_URL}/:eventId/tickets/:ticketId/cancel`, () =>
         HttpResponse.json({
@@ -113,14 +146,25 @@ describe('useCancelTicketForOrganizer', () => {
     const queryClient = createTestQueryClient()
     const wrapper = createQueryWrapper(queryClient)
 
-    const eventList = renderHook(() => useEventTicketSales('event-1', { page: 0, size: 10 }), { wrapper })
-    const organizerList = renderHook(() => useOrganizerTicketSales({ page: 0, size: 10 }), { wrapper })
+    const eventList = renderHook(
+      () => useEventTicketSales('event-1', { page: 0, size: 10 }),
+      { wrapper },
+    )
+    const organizerList = renderHook(
+      () => useOrganizerTicketSales({ page: 0, size: 10 }),
+      { wrapper },
+    )
     await waitFor(() => expect(eventList.result.current.isSuccess).toBe(true))
-    await waitFor(() => expect(organizerList.result.current.isSuccess).toBe(true))
+    await waitFor(() =>
+      expect(organizerList.result.current.isSuccess).toBe(true),
+    )
     expect(eventListRequestCount).toBe(1)
     expect(organizerListRequestCount).toBe(1)
 
-    const cancel = renderHook(() => useCancelTicketForOrganizer('event-1', 'ticket-1'), { wrapper })
+    const cancel = renderHook(
+      () => useCancelTicketForOrganizer('event-1', 'ticket-1'),
+      { wrapper },
+    )
     cancel.result.current.mutate({})
     await waitFor(() => expect(cancel.result.current.isSuccess).toBe(true))
 
@@ -133,17 +177,25 @@ describe('useCancelTicketForOrganizer', () => {
   it("surfaces the backend's real error message on failure", async () => {
     server.use(
       http.post(`${EVENTS_BASE_URL}/:eventId/tickets/:ticketId/cancel`, () =>
-        HttpResponse.json({ error: 'This ticket has already been cancelled' }, { status: 409 }),
+        HttpResponse.json(
+          { error: 'This ticket has already been cancelled' },
+          { status: 409 },
+        ),
       ),
     )
 
-    const { result } = renderHook(() => useCancelTicketForOrganizer('event-1', 'ticket-1'), {
-      wrapper: createQueryWrapper(),
-    })
+    const { result } = renderHook(
+      () => useCancelTicketForOrganizer('event-1', 'ticket-1'),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
 
     result.current.mutate({ note: 'Refund requested' })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
-    expect(result.current.error?.message).toBe('This ticket has already been cancelled')
+    expect(result.current.error?.message).toBe(
+      'This ticket has already been cancelled',
+    )
   })
 })

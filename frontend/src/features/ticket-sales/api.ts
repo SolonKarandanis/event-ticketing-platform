@@ -16,14 +16,19 @@ export async function listTicketsForEvent(
   eventId: string,
   { page, size }: PaginationParams,
 ): Promise<Page<TicketSaleResponse>> {
-  const response = await apiFetch(`${EVENTS_BASE_URL}/${eventId}/tickets?page=${page}&size=${size}`)
+  const response = await apiFetch(
+    `${EVENTS_BASE_URL}/${eventId}/tickets?page=${page}&size=${size}`,
+  )
   return parseJsonOrThrow<Page<TicketSaleResponse>>(response)
 }
 
-export async function listTicketsForOrganizer(
-  { page, size }: PaginationParams,
-): Promise<Page<TicketSaleResponse>> {
-  const response = await apiFetch(`${EVENTS_BASE_URL}/tickets?page=${page}&size=${size}`)
+export async function listTicketsForOrganizer({
+  page,
+  size,
+}: PaginationParams): Promise<Page<TicketSaleResponse>> {
+  const response = await apiFetch(
+    `${EVENTS_BASE_URL}/tickets?page=${page}&size=${size}`,
+  )
   return parseJsonOrThrow<Page<TicketSaleResponse>>(response)
 }
 
@@ -32,10 +37,13 @@ export async function cancelTicketForOrganizer(
   ticketId: string,
   request: CancelTicketForOrganizerRequest,
 ): Promise<CancelTicketForOrganizerResponse> {
-  const response = await apiFetch(`${EVENTS_BASE_URL}/${eventId}/tickets/${ticketId}/cancel`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
-  })
+  const response = await apiFetch(
+    `${EVENTS_BASE_URL}/${eventId}/tickets/${ticketId}/cancel`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  )
   return parseJsonOrThrow<CancelTicketForOrganizerResponse>(response)
 }

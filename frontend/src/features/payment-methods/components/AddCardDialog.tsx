@@ -5,7 +5,12 @@
 // clean rather than risking a stale/already-used clientSecret.
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from '@stripe/react-stripe-js'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,7 +24,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '#/components/ui/dialog'
-import { paymentMethodsKey, useCreateSetupIntent } from '#/features/payment-methods/hooks'
+import {
+  paymentMethodsKey,
+  useCreateSetupIntent,
+} from '#/features/payment-methods/hooks'
 import { getStripe } from '#/lib/stripe'
 
 interface AddCardFormProps {
@@ -83,9 +91,16 @@ function AddCardForm({ onSuccess, onCancel }: AddCardFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement />
-      {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+      {errorMessage && (
+        <p className="text-sm text-destructive">{errorMessage}</p>
+      )}
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isConfirming}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={isConfirming}
+        >
           Cancel
         </Button>
         <Button type="submit" disabled={!stripe || !elements || isConfirming}>
@@ -135,18 +150,26 @@ export function AddCardDialog() {
         <DialogHeader>
           <DialogTitle>Add a card</DialogTitle>
           <DialogDescription>
-            Your card details go directly to Stripe and never pass through our servers.
+            Your card details go directly to Stripe and never pass through our
+            servers.
           </DialogDescription>
         </DialogHeader>
 
         {createSetupIntent.isPending && (
-          <p className="text-sm text-(--sea-ink-soft)">Preparing secure payment form…</p>
+          <p className="text-sm text-(--sea-ink-soft)">
+            Preparing secure payment form…
+          </p>
         )}
 
         {createSetupIntent.isError && (
           <div className="space-y-3">
-            <p className="text-sm text-destructive">Couldn't start adding a card.</p>
-            <Button variant="outline" onClick={() => createSetupIntent.mutate()}>
+            <p className="text-sm text-destructive">
+              Couldn't start adding a card.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => createSetupIntent.mutate()}
+            >
               Retry
             </Button>
           </div>
@@ -157,7 +180,10 @@ export function AddCardDialog() {
             stripe={getStripe()}
             options={{ clientSecret: createSetupIntent.data.clientSecret }}
           >
-            <AddCardForm onSuccess={handleSuccess} onCancel={() => handleOpenChange(false)} />
+            <AddCardForm
+              onSuccess={handleSuccess}
+              onCancel={() => handleOpenChange(false)}
+            />
           </Elements>
         )}
       </DialogContent>

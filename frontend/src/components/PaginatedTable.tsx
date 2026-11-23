@@ -52,7 +52,11 @@ interface PaginatedTableProps<T> {
   errorMessage?: ReactNode
 }
 
-function ColumnHeaderRow<T>({ columns }: { columns: PaginatedTableColumn<T>[] }) {
+function ColumnHeaderRow<T>({
+  columns,
+}: {
+  columns: PaginatedTableColumn<T>[]
+}) {
   return (
     <TableRow>
       {columns.map((column) => (

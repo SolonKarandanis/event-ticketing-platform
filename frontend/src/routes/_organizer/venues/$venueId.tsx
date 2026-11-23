@@ -2,7 +2,11 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { VenueForm } from '#/features/venues/components/VenueForm'
 import { formValuesToRequest, venueToFormValues } from '#/features/venues/forms'
 import type { VenueFormValues } from '#/features/venues/forms'
-import { useUpdateVenue, useVenue, venueQueryOptions } from '#/features/venues/hooks'
+import {
+  useUpdateVenue,
+  useVenue,
+  venueQueryOptions,
+} from '#/features/venues/hooks'
 
 export const Route = createFileRoute('/_organizer/venues/$venueId')({
   // Same warm-cache-on-navigation/intent-preload trick as venues/index.tsx. Swallowed
@@ -10,7 +14,9 @@ export const Route = createFileRoute('/_organizer/venues/$venueId')({
   // should be what renders on failure, not the router's generic error boundary.
   loader: async ({ context, params }) => {
     try {
-      await context.queryClient.ensureQueryData(venueQueryOptions(params.venueId))
+      await context.queryClient.ensureQueryData(
+        venueQueryOptions(params.venueId),
+      )
     } catch {
       // Handled by useVenue()'s isError below.
     }
@@ -40,16 +46,20 @@ function EditVenue() {
       <h1 className="display-title mb-6 text-3xl font-bold text-(--sea-ink)">
         Edit Venue
       </h1>
-        {isPending && <p className="text-sm text-(--sea-ink-soft)">Loading venue...</p>}
-        {!isPending && isError && <p className="text-sm text-destructive">Couldn't load this venue.</p>}
-        {!isPending && !isError &&(
-            <VenueForm
-                defaultValues={venueToFormValues(venue)}
-                onSubmit={handleSubmit}
-                isSubmitting={updateVenue.isPending}
-                submitLabel="Save Venue"
-            />
-        )}
+      {isPending && (
+        <p className="text-sm text-(--sea-ink-soft)">Loading venue...</p>
+      )}
+      {!isPending && isError && (
+        <p className="text-sm text-destructive">Couldn't load this venue.</p>
+      )}
+      {!isPending && !isError && (
+        <VenueForm
+          defaultValues={venueToFormValues(venue)}
+          onSubmit={handleSubmit}
+          isSubmitting={updateVenue.isPending}
+          submitLabel="Save Venue"
+        />
+      )}
     </main>
   )
 }

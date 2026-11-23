@@ -12,8 +12,13 @@ import type { CreateCheckoutRequest } from './types'
 // this app queries order/checkout state yet.
 export function useCreateCheckout() {
   return useMutation({
-    mutationFn: ({ eventId, request }: { eventId: string; request: CreateCheckoutRequest }) =>
-      createCheckout(eventId, request),
+    mutationFn: ({
+      eventId,
+      request,
+    }: {
+      eventId: string
+      request: CreateCheckoutRequest
+    }) => createCheckout(eventId, request),
     onError: (error) => {
       toast.error(toastErrorMessage(error, "Couldn't start checkout"))
     },

@@ -1,49 +1,60 @@
 // Named React Query hooks wrapping api.ts -- query keys and invalidation live here
 // once, not duplicated at call sites. See issue #9.
-import type {PaginationParams} from "#/lib/pagination.ts";
-import {queryOptions, useMutation, useQuery, useQueryClient} from "@tanstack/react-query";
-import {cancelTicket, getTicket, getTicketQrCode, listTickets, validateTicket} from "#/features/tickets/api.ts";
-import type {CancelTicketRequest} from "#/features/tickets/types.ts";
-import {toast} from "sonner";
-import {toastErrorMessage} from "#/lib/api-client.ts";
+import type { PaginationParams } from '#/lib/pagination.ts'
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
+import {
+  cancelTicket,
+  getTicket,
+  getTicketQrCode,
+  listTickets,
+  validateTicket,
+} from '#/features/tickets/api.ts'
+import type { CancelTicketRequest } from '#/features/tickets/types.ts'
+import { toast } from 'sonner'
+import { toastErrorMessage } from '#/lib/api-client.ts'
 
 const ticketsKey = ['tickets'] as const
 
 // Exported so route loaders can ensureQueryData against the exact same cache entry
 // these hooks read -- see features/events/hooks.ts for the pattern this follows.
 export function ticketsQueryOptions(params: PaginationParams) {
-    return queryOptions({
-        queryKey: [...ticketsKey, params],
-        queryFn: () => listTickets(params),
-    });
+  return queryOptions({
+    queryKey: [...ticketsKey, params],
+    queryFn: () => listTickets(params),
+  })
 }
 
 export function ticketQueryOptions(ticketId: string) {
-    return queryOptions({
-        queryKey: [...ticketsKey, ticketId],
-        queryFn: () => getTicket(ticketId),
-        enabled: Boolean(ticketId),
-    });
+  return queryOptions({
+    queryKey: [...ticketsKey, ticketId],
+    queryFn: () => getTicket(ticketId),
+    enabled: Boolean(ticketId),
+  })
 }
 
 export function ticketQrCodeQueryOptions(ticketId: string) {
-    return queryOptions({
-        queryKey: [...ticketsKey, ticketId, 'qr-code'],
-        queryFn: () => getTicketQrCode(ticketId),
-        enabled: Boolean(ticketId),
-    });
+  return queryOptions({
+    queryKey: [...ticketsKey, ticketId, 'qr-code'],
+    queryFn: () => getTicketQrCode(ticketId),
+    enabled: Boolean(ticketId),
+  })
 }
 
 export function useTickets(params: PaginationParams) {
-    return useQuery(ticketsQueryOptions(params));
+  return useQuery(ticketsQueryOptions(params))
 }
 
 export function useTicket(ticketId: string) {
-    return useQuery(ticketQueryOptions(ticketId));
+  return useQuery(ticketQueryOptions(ticketId))
 }
 
 export function useTicketQrCode(ticketId: string) {
-    return useQuery(ticketQrCodeQueryOptions(ticketId));
+  return useQuery(ticketQrCodeQueryOptions(ticketId))
 }
 
 // No onSuccess toast/invalidation here: a validation call resolves with HTTP 200 for a
@@ -54,24 +65,25 @@ export function useTicketQrCode(ticketId: string) {
 // Nothing in ListTicketResponse/GetTicketResponse reflects validation state either, so
 // there's no tickets query left stale to invalidate.
 export function useValidateTicket() {
-    return useMutation({
-        mutationFn: validateTicket,
-        onError: (error) => {
-            toast.error(toastErrorMessage(error, "Couldn't validate ticket"));
-        },
-    });
+  return useMutation({
+    mutationFn: validateTicket,
+    onError: (error) => {
+      toast.error(toastErrorMessage(error, "Couldn't validate ticket"))
+    },
+  })
 }
 
 export function useCancelTicket(ticketId: string) {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: (request: CancelTicketRequest) => cancelTicket(ticketId, request),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ticketsKey });
-            toast.success('Ticket cancelled');
-        },
-        onError: (error) => {
-            toast.error(toastErrorMessage(error, "Couldn't cancel ticket"));
-        },
-    });
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (request: CancelTicketRequest) =>
+      cancelTicket(ticketId, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ticketsKey })
+      toast.success('Ticket cancelled')
+    },
+    onError: (error) => {
+      toast.error(toastErrorMessage(error, "Couldn't cancel ticket"))
+    },
+  })
 }

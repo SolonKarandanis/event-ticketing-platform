@@ -42,7 +42,10 @@ describe('useCreateCheckout', () => {
   it('surfaces the backend validation message on a sold-out/invalid cart', async () => {
     server.use(
       http.post(CHECKOUT_URL, () =>
-        HttpResponse.json({ error: 'Not enough tickets available' }, { status: 409 }),
+        HttpResponse.json(
+          { error: 'Not enough tickets available' },
+          { status: 409 },
+        ),
       ),
     )
 

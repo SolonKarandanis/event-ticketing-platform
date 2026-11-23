@@ -99,7 +99,9 @@ describe('useCreateEvent', () => {
     ticketTypes: [{ name: 'General', price: 10 }],
     images: [{ newImageIndex: 0, altText: 'A cover photo' }],
   }
-  const newImageFiles = [new File(['fake-image-bytes'], 'cover.jpg', { type: 'image/jpeg' })]
+  const newImageFiles = [
+    new File(['fake-image-bytes'], 'cover.jpg', { type: 'image/jpeg' }),
+  ]
 
   it('sends the event as a JSON blob part and the file as a matching newImages part', async () => {
     let receivedEvent: CreateEventRequest | undefined
@@ -151,7 +153,13 @@ describe('useCreateEvent', () => {
     server.use(
       http.get(BASE_URL, () => {
         listRequestCount += 1
-        return HttpResponse.json({ content: [], totalElements: 0, totalPages: 0, number: 0, size: 10 })
+        return HttpResponse.json({
+          content: [],
+          totalElements: 0,
+          totalPages: 0,
+          number: 0,
+          size: 10,
+        })
       }),
       http.post(BASE_URL, () =>
         HttpResponse.json(
@@ -196,7 +204,10 @@ describe('useCreateEvent', () => {
   it('surfaces a 409 (too many images) as a real error, not a silent failure', async () => {
     server.use(
       http.post(BASE_URL, () =>
-        HttpResponse.json({ error: 'An event can have at most 8 images' }, { status: 409 }),
+        HttpResponse.json(
+          { error: 'An event can have at most 8 images' },
+          { status: 409 },
+        ),
       ),
     )
 
@@ -207,6 +218,8 @@ describe('useCreateEvent', () => {
     result.current.mutate({ request, newImageFiles })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
-    expect(result.current.error?.message).toBe('An event can have at most 8 images')
+    expect(result.current.error?.message).toBe(
+      'An event can have at most 8 images',
+    )
   })
 })

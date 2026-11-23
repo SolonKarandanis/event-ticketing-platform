@@ -9,7 +9,10 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Skeleton } from '#/components/ui/skeleton'
 import { AddCardDialog } from '#/features/payment-methods/components/AddCardDialog'
 import { PaymentMethodCard } from '#/features/payment-methods/components/PaymentMethodCard'
-import { paymentMethodsQueryOptions, usePaymentMethods } from '#/features/payment-methods/hooks'
+import {
+  paymentMethodsQueryOptions,
+  usePaymentMethods,
+} from '#/features/payment-methods/hooks'
 import { useMinimumDuration } from '#/hooks/use-minimum-duration'
 
 export const Route = createFileRoute('/_attendee/payment-methods')({
@@ -40,7 +43,10 @@ function PaymentMethods() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
             // Index as key is fine: a fixed-count placeholder grid, never reordered.
-            <div key={index} className="island-shell aspect-[1.6/1] rounded-2xl p-5">
+            <div
+              key={index}
+              className="island-shell aspect-[1.6/1] rounded-2xl p-5"
+            >
               <Skeleton className="h-6 w-6" />
               <Skeleton className="mt-6 h-6 w-2/3" />
               <Skeleton className="mt-6 h-4 w-1/3" />

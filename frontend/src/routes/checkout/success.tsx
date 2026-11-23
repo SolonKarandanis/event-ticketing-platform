@@ -30,8 +30,8 @@ function CheckoutSuccess() {
           Thanks for your purchase
         </h1>
         <p className="mb-6 text-sm text-(--sea-ink-soft)">
-          Your payment went through. Your tickets are being issued now and will show up
-          under My Tickets shortly.
+          Your payment went through. Your tickets are being issued now and will
+          show up under My Tickets shortly.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <Button asChild>

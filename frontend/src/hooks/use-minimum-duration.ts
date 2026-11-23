@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from 'react'
 // would otherwise flash on and off faster than a human can actually register it for a
 // fast response. Never holds it artificially if `isActive` was never actually true
 // (cached data that never shows a loading state at all).
-export function useMinimumDuration(isActive: boolean, minDurationMs: number): boolean {
+export function useMinimumDuration(
+  isActive: boolean,
+  minDurationMs: number,
+): boolean {
   const [shown, setShown] = useState(isActive)
   const startedAtRef = useRef<number | null>(isActive ? Date.now() : null)
 

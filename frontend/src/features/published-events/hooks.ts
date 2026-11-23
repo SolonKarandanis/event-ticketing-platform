@@ -3,7 +3,11 @@
 // isPending/isError directly, same as every other list/get hook in this app; toasts
 // are reserved for mutations.
 import { queryOptions, useQuery } from '@tanstack/react-query'
-import { getPublishedEvent, listPublishedEventCities, listPublishedEvents } from './api'
+import {
+  getPublishedEvent,
+  listPublishedEventCities,
+  listPublishedEvents,
+} from './api'
 import type { ListPublishedEventsParams } from './api'
 
 const publishedEventsKey = ['published-events'] as const
