@@ -4,6 +4,7 @@ import com.etp.ticketservice.security.JwtAuthenticationConverter;
 import com.etp.ticketservice.security.Role;
 import com.etp.ticketservice.security.UserProvisioningFilter;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,13 +24,14 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(
             HttpSecurity http,
             UserProvisioningFilter userProvisioningFilter,
-            JwtAuthenticationConverter jwtAuthenticationConverter)
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            @Value("${app.cors.allowed-origins}") List<String> allowedOrigins)
             throws Exception {
-        http.cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource(allowedOrigins)))
                 .authorizeHttpRequests(authorize ->
                         authorize
-                                // Local-dev-only scope throughout this project (see the CORS
-                                // rule below, hardcoded to localhost:3000) -- the generated spec
+                                // Local-dev-only scope throughout this project -- the generated
+                                // spec
                                 // and its UI are left open rather than gated behind a role, the
                                 // same reasoning that already applies to published-events reads.
                                 .requestMatchers(
@@ -85,14 +87,17 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // The frontend (localhost:3000) is the first browser client this API has ever had --
+    // The frontend is the first browser client this API has ever had --
     // curl/Postman in every "Ui Testing" lesson so far aren't subject to CORS at all, so
     // nothing exposed the gap until now. Spring Security auto-permits the OPTIONS preflight
     // for any path this configuration source covers, ahead of the authorizeHttpRequests
     // rules above, so the preflight itself doesn't need a matcher/rule of its own.
-    private CorsConfigurationSource corsConfigurationSource() {
+    //
+    // Allowed origins come from app.cors.allowed-origins, filtered per environment (see
+    // environments/): localhost:3000 for local dev, the deployed frontend's URL elsewhere.
+    private CorsConfigurationSource corsConfigurationSource(List<String> allowedOrigins) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:3000"));
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(
                 List.of("Authorization", "Content-Type", "Accept-Language"));
