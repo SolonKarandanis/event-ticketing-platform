@@ -35,6 +35,13 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                                 .permitAll()
+                                // Load balancers / container probes call these without a JWT.
+                                // Only health is opened -- every other actuator path still
+                                // falls through to anyRequest().authenticated() -- and its
+                                // body is just {"status": ...}: show-details stays "never".
+                                .requestMatchers(
+                                        HttpMethod.GET, "/actuator/health", "/actuator/health/**")
+                                .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**")
                                 .permitAll()
                                 // The search endpoint is POST (see PublishedEventController), so
