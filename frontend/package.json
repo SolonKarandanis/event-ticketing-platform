@@ -36,6 +36,7 @@
     "cmdk": "^1.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
+    "nitro": "^3.0.261103-rc",
     "oidc-client-ts": "^3.5.0",
     "qr-scanner": "^1.4.2",
     "radix-ui": "^1.6.7",
