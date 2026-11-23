@@ -77,6 +77,18 @@ dependencies {
     testAnnotationProcessor("org.projectlombok:lombok")
 }
 
+// Applies the Liquibase changelogs to the -Penv database once, then exits -- CI runs this
+// before a multi-node rollout, since those environments set liquibase.enabled=false and the
+// app nodes no longer migrate on startup. Uses the app's own runtime classpath (processed,
+// env-filtered resources included) so changeset filenames and the Liquibase version match
+// what the app itself would record.
+tasks.register<JavaExec>("migrate") {
+    group = "database"
+    description = "Applies Liquibase migrations to the -Penv database, then exits."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass = "com.etp.migration.MigrationApplication"
+}
+
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }

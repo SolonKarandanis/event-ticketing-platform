@@ -36,3 +36,33 @@ jobs:
       # have Docker running by default, so no extra service/setup is needed for that.
       - name: Build and test
         run: ./gradlew build --no-daemon
+
+  # Applies Liquibase migrations to staging once, before its nodes roll -- staging runs
+  # several nodes with liquibase.enabled=false, so the app itself no longer migrates on
+  # startup. Only on pushes to master, after build/test pass.
+  #
+  # Needs a self-hosted runner: the staging DB (pgproxy.home.arpa) is on the home network
+  # and unreachable from GitHub-hosted runners.
+  migrate-staging:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: self-hosted
+    # Never let two pushes migrate at once; a queued run waits rather than being cancelled
+    # mid-migration (which would leave the changelog lock held).
+    concurrency:
+      group: ticket-service-migrate-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply migrations to staging
+        run: ./gradlew migrate -Penv=staging --no-daemon

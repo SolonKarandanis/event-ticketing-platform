@@ -18,6 +18,11 @@ import org.springframework.context.annotation.Configuration;
 // reasoning as a Camunda-style liquibase-maven-plugin profile with its own
 // databaseChangeLogTableName, just expressed as an explicit bean since this project has no
 // Maven/Liquibase build step.
+//
+// Both beans honour spring.liquibase.enabled themselves -- Boot only applies that property to
+// its own (here disabled) bean. Multi-node environments set it false so app nodes never
+// migrate on startup; the schema is applied once beforehand by `./gradlew migrate`
+// (com.etp.migration.MigrationApplication), which forces it back on.
 @Configuration
 public class LiquibaseConfiguration {
 
@@ -25,8 +30,10 @@ public class LiquibaseConfiguration {
     public SpringLiquibase liquibase(
             DataSource dataSource,
             @Value("${spring.liquibase.change-log}") String changeLog,
-            @Value("${spring.liquibase.default-schema}") String defaultSchema) {
+            @Value("${spring.liquibase.default-schema}") String defaultSchema,
+            @Value("${spring.liquibase.enabled:true}") boolean enabled) {
         SpringLiquibase liquibase = new SpringLiquibase();
+        liquibase.setShouldRun(enabled);
         liquibase.setDataSource(dataSource);
         liquibase.setChangeLog(changeLog);
         liquibase.setDefaultSchema(defaultSchema);
@@ -34,8 +41,10 @@ public class LiquibaseConfiguration {
     }
 
     @Bean
-    public SpringLiquibase quartzLiquibase(DataSource dataSource) {
+    public SpringLiquibase quartzLiquibase(
+            DataSource dataSource, @Value("${spring.liquibase.enabled:true}") boolean enabled) {
         SpringLiquibase liquibase = new SpringLiquibase();
+        liquibase.setShouldRun(enabled);
         liquibase.setDataSource(dataSource);
         liquibase.setChangeLog("classpath:db/quartz-changelog/db.changelog-quartz.xml");
         liquibase.setDefaultSchema("public");
