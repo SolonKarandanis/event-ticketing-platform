@@ -57,6 +57,21 @@ class ActuatorHealthIntegrationTest extends PostgresTestContainer {
     }
 
     @Test
+    void prometheusIsPublicAndExposesJvmHttpAndHikariMetrics() throws Exception {
+        get("/actuator/health"); // make sure at least one HTTP request has been timed
+
+        HttpResponse<String> response = get("/actuator/prometheus");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body())
+                .contains("jvm_memory_used_bytes")
+                .contains("jvm_gc_")
+                .contains("http_server_requests_seconds")
+                .contains("hikaricp_connections")
+                .contains("tomcat_");
+    }
+
+    @Test
     void otherActuatorPathsStillRequireAuthentication() throws Exception {
         assertThat(get("/actuator/env").statusCode()).isEqualTo(401);
     }

@@ -44,6 +44,10 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         HttpMethod.GET, "/actuator/health", "/actuator/health/**")
                                 .permitAll()
+                                // Prometheus scrapes without a JWT too. Metrics carry no
+                                // request bodies or user data, only counters and gauges.
+                                .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                                .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**")
                                 .permitAll()
                                 // The search endpoint is POST (see PublishedEventController), so
