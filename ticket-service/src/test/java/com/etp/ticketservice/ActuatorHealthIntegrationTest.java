@@ -14,20 +14,30 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 // Real HTTP over a random port, same setup as OpenApiDocsIntegrationTest (see its comment
 // for why plain java.net.http.HttpClient) -- this is about what an unauthenticated probe
 // actually sees through the full security filter chain, so a MockMvc slice isn't enough.
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "app.metrics.token=" + ActuatorHealthIntegrationTest.METRICS_TOKEN)
 class ActuatorHealthIntegrationTest extends PostgresTestContainer {
+
+    static final String METRICS_TOKEN = "test-metrics-token";
 
     @LocalServerPort private int port;
 
     private final HttpClient client = HttpClient.newHttpClient();
 
-    private HttpResponse<String> get(String path) throws Exception {
-        HttpRequest request =
+    private HttpResponse<String> get(String path, String... headers) throws Exception {
+        HttpRequest.Builder request =
                 HttpRequest.newBuilder()
                         .uri(URI.create("http://localhost:" + port + "/ticket-service" + path))
-                        .GET()
-                        .build();
-        return client.send(request, HttpResponse.BodyHandlers.ofString());
+                        .GET();
+        if (headers.length > 0) {
+            request.headers(headers);
+        }
+        return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> scrape(String token) throws Exception {
+        return get("/actuator/prometheus", "Authorization", "Bearer " + token);
     }
 
     @Test
@@ -57,10 +67,10 @@ class ActuatorHealthIntegrationTest extends PostgresTestContainer {
     }
 
     @Test
-    void prometheusIsPublicAndExposesJvmHttpAndHikariMetrics() throws Exception {
+    void prometheusWithTheTokenExposesJvmHttpAndHikariMetrics() throws Exception {
         get("/actuator/health"); // make sure at least one HTTP request has been timed
 
-        HttpResponse<String> response = get("/actuator/prometheus");
+        HttpResponse<String> response = scrape(METRICS_TOKEN);
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body())
@@ -69,6 +79,23 @@ class ActuatorHealthIntegrationTest extends PostgresTestContainer {
                 .contains("http_server_requests_seconds")
                 .contains("hikaricp_connections")
                 .contains("tomcat_");
+    }
+
+    @Test
+    void prometheusWithoutATokenIsUnauthorized() throws Exception {
+        assertThat(get("/actuator/prometheus").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void prometheusWithAWrongTokenIsUnauthorized() throws Exception {
+        assertThat(scrape("not-the-token").statusCode()).isEqualTo(401);
+    }
+
+    // A Keycloak JWT is not the scraper token: user tokens get no metrics either. The
+    // JWT chain never sees this path, so even a well-formed JWT is just a wrong token here.
+    @Test
+    void prometheusRejectsAJwtShapedBearerToken() throws Exception {
+        assertThat(scrape("eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln").statusCode()).isEqualTo(401);
     }
 
     @Test

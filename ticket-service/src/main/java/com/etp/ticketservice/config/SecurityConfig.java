@@ -1,24 +1,53 @@
 package com.etp.ticketservice.config;
 
 import com.etp.ticketservice.security.JwtAuthenticationConverter;
+import com.etp.ticketservice.security.MetricsTokenFilter;
 import com.etp.ticketservice.security.Role;
 import com.etp.ticketservice.security.UserProvisioningFilter;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 public class SecurityConfig {
+
+    // Prometheus authenticates with a static shared token, not a Keycloak JWT, so the
+    // metrics path gets its own chain, ordered ahead of the main one. In the main chain the
+    // resource-server filter would try to parse the token as a JWT and answer 401 first.
+    // This chain has no oauth2ResourceServer and no UserProvisioningFilter, so the scraper
+    // never becomes a row in users either.
+    @Bean
+    @Order(1)
+    public SecurityFilterChain metricsFilterChain(
+            HttpSecurity http, @Value("${app.metrics.token}") String metricsToken)
+            throws Exception {
+        http.securityMatcher("/actuator/prometheus")
+                .authorizeHttpRequests(authorize ->
+                        authorize.anyRequest().hasAuthority(MetricsTokenFilter.SCRAPER_AUTHORITY))
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(
+                        session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions ->
+                        exceptions.authenticationEntryPoint(
+                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .addFilterBefore(new MetricsTokenFilter(metricsToken), AuthorizationFilter.class);
+
+        return http.build();
+    }
 
     @Bean
     public SecurityFilterChain filterChain(
@@ -41,12 +70,10 @@ public class SecurityConfig {
                                 // Only health is opened -- every other actuator path still
                                 // falls through to anyRequest().authenticated() -- and its
                                 // body is just {"status": ...}: show-details stays "never".
+                                // /actuator/prometheus never reaches this chain: see
+                                // metricsFilterChain.
                                 .requestMatchers(
                                         HttpMethod.GET, "/actuator/health", "/actuator/health/**")
-                                .permitAll()
-                                // Prometheus scrapes without a JWT too. Metrics carry no
-                                // request bodies or user data, only counters and gauges.
-                                .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
                                 .permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/v1/published-events/**")
                                 .permitAll()

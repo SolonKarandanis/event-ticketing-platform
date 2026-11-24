@@ -7,13 +7,14 @@ import {
   HTTP_SERVER_REQUESTS,
   HttpMetricsMiddleware,
 } from './http-metrics.middleware';
+import { MetricsController } from './metrics.controller';
 
 // GET /metrics for the Prometheus scraper: Node's default process metrics (memory,
 // event-loop lag, GC) plus HTTP request timings from HttpMetricsMiddleware.
-// No guard on purpose, like /health: auth is per-controller (@UseGuards), not global,
-// so the library's controller is public. Keep the scraper on a private network.
+// MetricsController replaces the library's public controller so scrapes need the
+// METRICS_TOKEN bearer token (see MetricsTokenGuard).
 @Module({
-  imports: [PrometheusModule.register()],
+  imports: [PrometheusModule.register({ controller: MetricsController })],
   providers: [
     makeHistogramProvider({
       name: HTTP_SERVER_REQUESTS,

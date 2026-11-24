@@ -12,12 +12,16 @@ class ThingsController {
   }
 }
 
-// Over real HTTP, like HealthController's spec: checks /metrics needs no token and that
-// requests are recorded by route pattern rather than raw URL.
+const METRICS_TOKEN = 'test-metrics-token';
+
+// Over real HTTP, like HealthController's spec: checks /metrics needs the scraper token
+// and that requests are recorded by route pattern rather than raw URL.
 describe('MetricsModule', () => {
   let app: INestApplication;
+  const originalToken = process.env.METRICS_TOKEN;
 
   beforeAll(async () => {
+    process.env.METRICS_TOKEN = METRICS_TOKEN;
     const moduleRef = await Test.createTestingModule({
       imports: [MetricsModule],
       controllers: [ThingsController],
@@ -29,16 +33,22 @@ describe('MetricsModule', () => {
 
   afterAll(async () => {
     await app.close();
+    if (originalToken === undefined) {
+      delete process.env.METRICS_TOKEN;
+    } else {
+      process.env.METRICS_TOKEN = originalToken;
+    }
   });
 
   const scrape = async () =>
     (
       await request(app.getHttpServer() as Server)
         .get('/metrics')
+        .set('Authorization', `Bearer ${METRICS_TOKEN}`)
         .expect(200)
     ).text;
 
-  it('serves Node process metrics without a token', async () => {
+  it('serves Node process metrics with the scraper token', async () => {
     const body = await scrape();
 
     expect(body).toContain('process_resident_memory_bytes');
@@ -74,5 +84,37 @@ describe('MetricsModule', () => {
     await scrape();
 
     expect(await scrape()).not.toContain('route="/metrics"');
+  });
+
+  describe('without the right token', () => {
+    const scrapeWith = (authorization?: string) => {
+      const req = request(app.getHttpServer() as Server).get('/metrics');
+      return authorization === undefined
+        ? req
+        : req.set('Authorization', authorization);
+    };
+
+    it('rejects a missing header', async () => {
+      await scrapeWith().expect(401);
+    });
+
+    it('rejects a wrong token, including one of a different length', async () => {
+      await scrapeWith('Bearer test-metrics-tokeX').expect(401);
+      await scrapeWith('Bearer short').expect(401);
+    });
+
+    it('rejects the token without the Bearer scheme', async () => {
+      await scrapeWith(METRICS_TOKEN).expect(401);
+    });
+
+    it('rejects everything when METRICS_TOKEN is empty', async () => {
+      process.env.METRICS_TOKEN = '';
+      try {
+        await scrapeWith('Bearer ').expect(401);
+        await scrapeWith(`Bearer ${METRICS_TOKEN}`).expect(401);
+      } finally {
+        process.env.METRICS_TOKEN = METRICS_TOKEN;
+      }
+    });
   });
 });
