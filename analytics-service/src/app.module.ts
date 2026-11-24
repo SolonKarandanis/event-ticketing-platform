@@ -8,9 +8,10 @@ import { OrganizerAnalyticsController } from './ticket-sales/organizer-analytics
 import { RabbitMqConsumerService } from './rabbitmq/rabbitmq-consumer.service';
 import { KeycloakJwtStrategy } from './auth/keycloak-jwt.strategy';
 import { HealthController } from './health/health.controller';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
-  imports: [ConfigModule.forRoot(), PassportModule],
+  imports: [ConfigModule.forRoot(), PassportModule, MetricsModule],
   controllers: [
     EventAnalyticsController,
     OrganizerAnalyticsController,

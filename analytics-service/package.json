@@ -26,6 +26,8 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.7",
+    "@prometheus-io/client": "^0.16.1",
+    "@willsoto/nestjs-prometheus": "^7.0.0",
     "amqp-connection-manager": "^5.0.0",
     "amqplib": "^2.0.1",
     "drizzle-orm": "^0.45.2",
